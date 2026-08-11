@@ -8,6 +8,7 @@ import { ledgerToCsv, ledgerToStatement } from "./export.js";
 import { nairaToKobo, formatNaira } from "../lib/money.js";
 import { withTrace } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
+import { encryptField, decryptField } from "../lib/crypto.js";
 import type { RailId } from "../domain/types.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
@@ -199,6 +200,31 @@ export function buildApi(app: App): Express {
         merchant: { id: merchant.id, businessName: merchant.businessName, quaiAddress: merchant.quaiAddress },
         created: !existing,
       });
+    }),
+  );
+
+  // Diagnostics: pinpoint config/runtime issues without needing server logs.
+  server.get(
+    "/admin/diag",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const out: Record<string, unknown> = {};
+      out.fieldKeyLength = app.config.FIELD_ENCRYPTION_KEY.length; // want 64
+      try {
+        const enc = encryptField("diag-test");
+        out.encryption = decryptField(enc) === "diag-test" ? "ok" : "roundtrip-mismatch";
+      } catch (e) {
+        out.encryption = `ERROR: ${(e as Error).message}`;
+      }
+      try {
+        await app.repos.merchants.list();
+        out.dbRead = "ok";
+      } catch (e) {
+        out.dbRead = `ERROR: ${(e as Error).message}`;
+      }
+      out.whatsappMode = app.config.WHATSAPP_MODE;
+      out.quaiMode = app.config.QUAI_ADAPTER_MODE;
+      res.json(out);
     }),
   );
 
