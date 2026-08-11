@@ -5,10 +5,12 @@ services:
     name: rhodium
     runtime: node
     plan: free
+    # NODE_ENV=production is set during build, so force dev deps (tsc, vite) with
+    # --include=dev on BOTH installs, else the builds can't find their tools.
     buildCommand: >-
       npm install --include=dev &&
       npm run prisma:generate &&
-      npm --prefix dashboard install &&
+      npm --prefix dashboard install --include=dev &&
       npm --prefix dashboard run build &&
       npm run build:prod
     startCommand: npx prisma migrate deploy && npm run start:prod
