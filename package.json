@@ -1,0 +1,52 @@
+{
+  "name": "rhodium",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WhatsApp-native merchant commerce + embedded credit (MVP). Modular monolith.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:prod": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/http/server.ts",
+    "start": "node dist/http/server.js",
+    "start:prod": "node dist/http/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "tsx src/demo/magic-moment.ts",
+    "demo:crypto": "tsx src/demo/crypto-moment.ts",
+    "smoke:paystack": "tsx src/smoke/paystack-check.ts",
+    "smoke:whatsapp": "tsx src/smoke/whatsapp-check.ts",
+    "seed:merchant": "tsx src/smoke/seed-merchant.ts",
+    "contracts:install": "npm --prefix chain install",
+    "contracts:compile": "npm --prefix chain run compile",
+    "contracts:deploy": "npm --prefix chain run deploy",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "dashboard:install": "npm --prefix dashboard install",
+    "dashboard:build": "npm --prefix dashboard run build",
+    "setup": "npm install && npm run db:up && npm run prisma:generate && npm run prisma:migrate && npm run dashboard:install && npm run dashboard:build",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "express": "^4.21.2",
+    "js-sha3": "^0.9.3",
+    "pino": "^9.5.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

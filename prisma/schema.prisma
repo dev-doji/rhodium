@@ -1,0 +1,139 @@
+// Rhodium MVP data model (§2.4). Postgres — ledger integrity non-negotiable.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Merchant {
+  id                      String   @id
+  phoneEnc                String   @map("phone_enc") // encrypted E.164
+  phoneHash               String   @unique @map("phone_hash") // deterministic lookup
+  businessName            String   @map("business_name")
+  status                  String   @default("pending")
+  kycState                String   @default("unverified") @map("kyc_state")
+  cryptoEnabled           Boolean  @default(false) @map("crypto_enabled")
+  settlementBankCode      String?  @map("settlement_bank_code")
+  settlementAccountEnc    String?  @map("settlement_account_enc") // encrypted
+  processorSubaccountCode String?  @map("processor_subaccount_code")
+  quaiAddress             String?  @map("quai_address")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  products Product[]
+  orders   Order[]
+  ledger   LedgerEntry[]
+  buyers   Buyer[]
+
+  @@map("merchant")
+}
+
+model Product {
+  id         String   @id
+  merchantId String   @map("merchant_id")
+  name       String
+  price      Int // kobo
+  imageUrl   String?  @map("image_url")
+  stockQty   Int?     @map("stock_qty")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId])
+  @@map("product")
+}
+
+model Order {
+  id         String   @id
+  merchantId String   @map("merchant_id")
+  buyerRef   String   @map("buyer_ref")
+  items      Json
+  amount     Int // kobo
+  rail       String   @default("fiat")
+  status     String   @default("draft")
+  createdAt  DateTime @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  payment  Payment?
+
+  @@index([merchantId])
+  @@index([status])
+  @@map("order")
+}
+
+model Payment {
+  id              String    @id
+  orderId         String    @unique @map("order_id")
+  railId          String    @map("rail_id")
+  // NOT unique: live Paystack DVAs are per-customer and reused across orders.
+  providerRef     String    @map("provider_ref")
+  instructionType String    @map("instruction_type")
+  amount          Int // kobo
+  status          String    @default("pending")
+  confirmedAt     DateTime? @map("confirmed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([status])
+  @@index([providerRef])
+  @@map("payment")
+}
+
+// Append-only. There is no update/delete path in code for this table.
+model LedgerEntry {
+  id           String   @id
+  merchantId   String   @map("merchant_id")
+  orderId      String   @map("order_id")
+  paymentId    String   @map("payment_id")
+  type         String
+  amount       Int // kobo, signed
+  balanceAfter Int      @map("balance_after")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId])
+  @@map("ledger_entry")
+}
+
+model Buyer {
+  id         String   @id
+  merchantId String   @map("merchant_id")
+  phoneEnc   String   @map("phone_enc") // encrypted
+  phoneHash  String   @map("phone_hash") // deterministic lookup
+  name       String?
+  firstSeen  DateTime @default(now()) @map("first_seen")
+  orderCount Int      @default(0) @map("order_count")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@unique([merchantId, phoneHash])
+  @@index([merchantId])
+  @@map("buyer")
+}
+
+// Idempotency ledger for event processing (replayed webhook -> no double entry).
+model ProcessedEvent {
+  key         String   @id
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_event")
+}
+
+// Append-only audit log on ledger + money-adjacent actions (§2.5 security).
+model AuditLog {
+  id        String   @id
+  actor     String
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@map("audit_log")
+}

@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rhodium
+          POSTGRES_PASSWORD: rhodium
+          POSTGRES_DB: rhodium
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U rhodium"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://rhodium:rhodium@localhost:5433/rhodium?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npm run prisma:migrate
+      - run: npm run typecheck
+      - run: npm test

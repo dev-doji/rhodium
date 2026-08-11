@@ -1,0 +1,17 @@
+{
+  "name": "rhodium-chain",
+  "private": true,
+  "version": "0.1.0",
+  "description": "RhodiumPay contract — Hardhat project for Quai Orchard testnet.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.cjs --network orchard"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "quais": "1.0.0-alpha.56"
+  }
+}

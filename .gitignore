@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.local
+coverage/
+.DS_Store
+media-store/
+dashboard/dist/
+dashboard/node_modules/
+chain/node_modules/
+chain/artifacts/
+chain/cache/

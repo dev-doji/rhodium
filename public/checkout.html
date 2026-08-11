@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rhodium · Pay with BlipPay</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#0e1116; color:#e8eaed;
+           display:flex; min-height:100vh; align-items:center; justify-content:center; padding:20px; }
+    .card { width:100%; max-width:420px; background:#171b22; border:1px solid #262c36; border-radius:18px; padding:26px; }
+    .brand { font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:#7c8798; }
+    h1 { font-size:20px; margin:6px 0 2px; }
+    .merchant { color:#9aa4b2; font-size:14px; margin-bottom:20px; }
+    .amount { font-size:38px; font-weight:800; letter-spacing:-.02em; }
+    .usdt { color:#57d38c; font-weight:600; margin-top:2px; }
+    .row { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #232935; font-size:14px; color:#aeb7c4; }
+    .row b { color:#e8eaed; font-weight:600; }
+    button { width:100%; margin-top:22px; padding:15px; font-size:16px; font-weight:700; border:0; border-radius:12px;
+             background:linear-gradient(135deg,#4b7bec,#3867d6); color:#fff; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:default; }
+    .hint { font-size:12px; color:#7c8798; margin-top:14px; text-align:center; line-height:1.5; }
+    .ok { background:#14351f; border:1px solid #1f7a44; color:#7ee6a6; padding:16px; border-radius:12px; text-align:center; margin-top:18px; font-weight:600; }
+    .err { background:#3a1b1b; border:1px solid #7a2a2a; color:#f0a3a3; padding:12px; border-radius:10px; margin-top:14px; font-size:14px; }
+    .paid-badge { display:inline-block; background:#1f7a44; color:#fff; font-size:12px; padding:3px 10px; border-radius:999px; }
+    code { background:#0e1116; padding:2px 6px; border-radius:6px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="brand">Rhodium × BlipPay</div>
+    <h1 id="merchant">Loading…</h1>
+    <div class="merchant" id="orderline"></div>
+    <div class="amount" id="amount">—</div>
+    <div class="usdt" id="usdt"></div>
+    <div id="body"></div>
+  </div>
+
+  <script>
+    const orderId = location.pathname.split("/").pop();
+    const $ = (id) => document.getElementById(id);
+    let data;
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/checkout/${orderId}`);
+        if (!res.ok) throw new Error("order not found");
+        data = await res.json();
+        render();
+      } catch (e) {
+        $("body").innerHTML = `<div class="err">${e.message}</div>`;
+      }
+    }
+
+    function render() {
+      const { order, merchantName, instruction, quaiMode } = data;
+      $("merchant").textContent = merchantName;
+      $("orderline").textContent = `Order ${order.id.slice(-6).toUpperCase()}`;
+      $("amount").textContent = order.amountFormatted;
+      const usdt = instruction.cryptoAmount ? (Number(instruction.cryptoAmount) / 1e6).toFixed(2) : "?";
+      $("usdt").textContent = `≈ ${usdt} ${instruction.tokenSymbol || "USDT"} on Quai`;
+
+      if (order.status === "paid") { paid(); return; }
+
+      $("body").innerHTML = `
+        <div class="row"><span>Network</span><b>Quai Orchard testnet</b></div>
+        <div class="row"><span>Settles to</span><b>Merchant wallet — no custody</b></div>
+        <button id="pay">Pay with BlipPay / Pelagus</button>
+        <div class="hint">Opens your Quai wallet (BlipPay or Pelagus). Funds go straight to
+          the merchant; Rhodium never holds them. You'll get a receipt on WhatsApp.</div>`;
+      $("pay").onclick = () => pay(quaiMode, instruction);
+    }
+
+    async function pay(quaiMode, instruction) {
+      const btn = $("pay");
+      btn.disabled = true; btn.textContent = "Confirming…";
+      try {
+        const provider = window.pelagus || window.blip || window.ethereum;
+        if (quaiMode === "live" && provider) {
+          await payOnChain(provider, instruction);
+        } else {
+          // Mock/demo path: simulate a BlipPay payment so the full loop is visible.
+          const res = await fetch("/api/crypto/simulate-pay", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ orderId }),
+          });
+          if (!res.ok) throw new Error((await res.json()).message || "payment failed");
+        }
+        await pollPaid();
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Pay with BlipPay / Pelagus";
+        $("body").insertAdjacentHTML("beforeend", `<div class="err">${e.message}</div>`);
+      }
+    }
+
+    // Live path via the injected EIP-1193 provider (BlipPay / Pelagus). Uses
+    // quais.js to encode the RhodiumPay call. Native QUAI = payNative + value.
+    async function payOnChain(provider, instruction) {
+      const accounts = await provider.request({ method: "quai_requestAccounts" });
+      const from = accounts[0];
+      const { quais } = await import("https://cdn.jsdelivr.net/npm/quais@latest/+esm").catch(() => ({}));
+      if (!quais) throw new Error("could not load quais.js — try again in the wallet's browser");
+      const orderIdHash = instruction.orderIdBytes32 || quais.id(orderId);
+
+      let dataHex, txParams;
+      if (instruction.method === "payNative") {
+        const iface = new quais.Interface([
+          "function payNative(bytes32 orderId, address merchant)"
+        ]);
+        dataHex = iface.encodeFunctionData("payNative", [orderIdHash, instruction.merchantAddress]);
+        const valueHex = "0x" + BigInt(instruction.cryptoAmount).toString(16);
+        txParams = { from, to: instruction.contractAddress, data: dataHex, value: valueHex };
+      } else {
+        // ERC-20 path assumes the buyer has already approved the contract.
+        const iface = new quais.Interface([
+          "function payToken(bytes32 orderId, address merchant, address token, uint256 amount)"
+        ]);
+        dataHex = iface.encodeFunctionData("payToken", [
+          orderIdHash, instruction.merchantAddress, instruction.tokenAddress, instruction.cryptoAmount,
+        ]);
+        txParams = { from, to: instruction.contractAddress, data: dataHex };
+      }
+
+      const txHash = await provider.request({ method: "quai_sendTransaction", params: [txParams] });
+      await fetch("/api/crypto/confirm", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId, txHash }),
+      });
+    }
+
+    async function pollPaid() {
+      for (let i = 0; i < 20; i++) {
+        const res = await fetch(`/api/checkout/${orderId}`);
+        const d = await res.json();
+        if (d.order.status === "paid") { paid(); return; }
+        await new Promise((r) => setTimeout(r, 700));
+      }
+      paid(); // optimistic
+    }
+
+    function paid() {
+      $("body").innerHTML = `<div class="ok">✅ Payment confirmed<br><span class="paid-badge">settled to merchant</span>
+        <div class="hint" style="margin-top:10px">Your receipt is on its way via WhatsApp. You can close this.</div></div>`;
+    }
+
+    load();
+  </script>
+</body>
+</html>

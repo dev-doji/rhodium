@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.git
+coverage
+media-store
+dashboard/node_modules
+dashboard/dist
+chain/node_modules
+chain/artifacts
+chain/cache
+*.log

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rhodium · Live Traction</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:#0b0e13; color:#e8eaed; padding:28px; }
+    h1 { font-size:22px; margin:0 0 2px; }
+    .sub { color:#7c8798; margin-bottom:24px; font-size:14px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:26px; }
+    .tile { background:#141a23; border:1px solid #232b38; border-radius:14px; padding:18px; }
+    .tile .label { color:#8b95a5; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+    .tile .value { font-size:30px; font-weight:800; margin-top:8px; letter-spacing:-.02em; }
+    .split { display:flex; gap:8px; margin-top:10px; }
+    .pill { font-size:12px; padding:3px 10px; border-radius:999px; }
+    .pill.fiat { background:#1b2a4a; color:#8fb6ff; }
+    .pill.crypto { background:#14351f; color:#7ee6a6; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #1e2530; font-size:14px; }
+    th { color:#8b95a5; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+    .rail { font-size:12px; padding:2px 8px; border-radius:999px; }
+    .rail.crypto { background:#14351f; color:#7ee6a6; }
+    .rail.fiat { background:#1b2a4a; color:#8fb6ff; }
+    .live { display:inline-flex; align-items:center; gap:6px; color:#57d38c; font-size:12px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#57d38c; animation:pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  </style>
+</head>
+<body>
+  <h1>Rhodium — Live Sales Traction</h1>
+  <div class="sub">WhatsApp merchant commerce · bank transfer + Quai/BlipPay crypto · <span class="live"><span class="dot"></span>updating live</span></div>
+
+  <div class="grid" id="tiles"></div>
+
+  <h2 style="font-size:16px;">Recent purchases</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Order</th><th>Rail</th><th>Amount</th></tr></thead>
+    <tbody id="recent"></tbody>
+  </table>
+
+  <script>
+    async function tick() {
+      try {
+        const t = await (await fetch("/api/traction")).json();
+        document.getElementById("tiles").innerHTML = `
+          <div class="tile"><div class="label">GMV</div><div class="value">${t.gmvFormatted}</div></div>
+          <div class="tile"><div class="label">Sales</div><div class="value">${t.salesCount}</div></div>
+          <div class="tile"><div class="label">Unique buyers</div><div class="value">${t.uniqueBuyers}</div></div>
+          <div class="tile"><div class="label">Merchants</div><div class="value">${t.merchantsTransacting}</div></div>
+          <div class="tile"><div class="label">Rail split</div><div class="value" style="font-size:18px">
+            <div class="split"><span class="pill fiat">bank ${t.railSplit.fiat}</span><span class="pill crypto">crypto ${t.railSplit.crypto}</span></div>
+          </div></div>`;
+        document.getElementById("recent").innerHTML = t.recent.map((r) => `
+          <tr><td>${new Date(r.at).toLocaleTimeString()}</td>
+              <td>${r.orderId.slice(-6).toUpperCase()}</td>
+              <td><span class="rail ${r.rail}">${r.rail}</span></td>
+              <td>${r.amountFormatted}</td></tr>`).join("") ||
+          `<tr><td colspan="4" style="color:#7c8798">No sales yet — make a purchase to see it here.</td></tr>`;
+      } catch (e) { /* keep polling */ }
+    }
+    tick();
+    setInterval(tick, 2000);
+  </script>
+</body>
+</html>
