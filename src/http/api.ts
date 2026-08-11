@@ -9,7 +9,8 @@ import { nairaToKobo, formatNaira } from "../lib/money.js";
 import { withTrace } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import type { RailId } from "../domain/types.js";
-import { ValidationError, NotFoundError } from "../lib/errors.js";
+import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
+import { timingSafeEqual } from "node:crypto";
 
 /**
  * HTTP surface (§2.1): the two ingress points are (a) provider + WhatsApp
@@ -152,6 +153,69 @@ export function buildApi(app: App): Express {
     "/api/traction",
     asyncRoute(async (_req, res) => {
       res.json(await app.traction.snapshot());
+    }),
+  );
+
+  // --- Admin (bearer = APP_SECRET) — manage merchants over HTTPS. Used to seed
+  //     a merchant / set a Quai wallet when direct DB access isn't available. ---
+  const requireAdmin = (req: Request): void => {
+    const header = req.header("authorization") ?? "";
+    const provided = header.startsWith("Bearer ") ? header.slice(7) : "";
+    const expected = app.config.APP_SECRET;
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new UnauthorizedError("bad admin token");
+    }
+  };
+
+  server.post(
+    "/admin/merchants",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const { phone, businessName, quaiAddress } = req.body ?? {};
+      if (!phone || !businessName) {
+        throw new ValidationError("phone and businessName required");
+      }
+      const existing = await app.repos.merchants.byPhone(String(phone));
+      const merchant = existing
+        ? await app.repos.merchants.update(existing.id, {
+            businessName: String(businessName),
+            status: "active",
+            kycState: "verified",
+            cryptoEnabled: true,
+            ...(quaiAddress ? { quaiAddress: String(quaiAddress) } : {}),
+          })
+        : await app.repos.merchants.create({
+            id: ref("mch"),
+            phone: String(phone),
+            businessName: String(businessName),
+            status: "active",
+            kycState: "verified",
+            cryptoEnabled: true,
+            quaiAddress: quaiAddress ? String(quaiAddress) : undefined,
+          });
+      res.json({
+        merchant: { id: merchant.id, businessName: merchant.businessName, quaiAddress: merchant.quaiAddress },
+        created: !existing,
+      });
+    }),
+  );
+
+  server.get(
+    "/admin/merchants",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const merchants = await app.repos.merchants.list();
+      res.json({
+        merchants: merchants.map((m) => ({
+          id: m.id,
+          businessName: m.businessName,
+          status: m.status,
+          cryptoEnabled: m.cryptoEnabled,
+          quaiAddress: m.quaiAddress,
+        })),
+      });
     }),
   );
 
