@@ -406,6 +406,12 @@ export function buildApi(app: App): Express {
   server.get("/traction", (_req, res) => {
     res.sendFile(resolve("public/traction.html"));
   });
+  server.get("/privacy", (_req, res) => {
+    res.sendFile(resolve("public/privacy.html"));
+  });
+  server.get("/terms", (_req, res) => {
+    res.sendFile(resolve("public/terms.html"));
+  });
   server.use(express.static(resolve("public")));
 
   // Serve product images (local object store) + built dashboard, if present.
