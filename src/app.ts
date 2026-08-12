@@ -20,6 +20,7 @@ import { WhatsAppCloudTransport } from "./modules/whatsapp/cloud-transport.js";
 import { AuthService } from "./modules/auth/auth-service.js";
 import { ReconciliationJob } from "./jobs/reconciliation-job.js";
 import { TractionService } from "./modules/traction/traction-service.js";
+import { WalletService } from "./modules/wallet/wallet-service.js";
 import { AuditService, InMemoryAuditSink, type AuditSink } from "./modules/audit/audit-service.js";
 import { InMemoryMetrics, type Metrics } from "./modules/metrics/metrics.js";
 import { InMemoryObjectStore, LocalObjectStore, type ObjectStore } from "./modules/storage/object-store.js";
@@ -38,6 +39,7 @@ export interface App {
   auth: AuthService;
   reconciliation: ReconciliationJob;
   traction: TractionService;
+  wallets: WalletService;
   waTransport: NotificationTransport;
 }
 
@@ -88,6 +90,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const commerce = new CommerceService(repos, objectStore, clock);
   const payments = new PaymentsOrchestrator(repos, rails, bus, clock, metrics, audit);
   const conversations = new ConversationStore();
+  const wallets = new WalletService();
   const whatsapp = new WhatsAppService(
     waTransport,
     commerce,
@@ -95,6 +98,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     ledger,
     repos,
     conversations,
+    wallets,
     { publicBaseUrl: config.PUBLIC_BASE_URL, waNumber: config.WHATSAPP_WA_NUMBER },
   );
   const auth = new AuthService(repos, clock, async (phone, code) => {
@@ -120,6 +124,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     auth,
     reconciliation,
     traction,
+    wallets,
     waTransport,
   };
 }

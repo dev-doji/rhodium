@@ -2,6 +2,7 @@ import type { NotificationTransport } from "../notification/transport.js";
 import type { CommerceService } from "../commerce/commerce-service.js";
 import type { PaymentsOrchestrator } from "../payments/payments-orchestrator.js";
 import type { LedgerService } from "../ledger/ledger-service.js";
+import type { WalletService } from "../wallet/wallet-service.js";
 import type { Repositories } from "../../db/repositories.js";
 import type { ConversationStore } from "./conversation-store.js";
 import { bankMenu, pickBank } from "./banks.js";
@@ -49,6 +50,7 @@ export class WhatsAppService {
     private ledger: LedgerService,
     private repos: Repositories,
     private convo: ConversationStore,
+    private wallets: WalletService,
     private opts: WhatsAppOptions,
   ) {}
 
@@ -134,10 +136,21 @@ export class WhatsAppService {
           settlementBankCode: bank.code,
           settlementAccountNumber: String(data.accountNumber),
         });
+        // Generate an embedded Quai wallet so they can accept crypto instantly.
+        // Resilient: if generation fails, onboarding still succeeds (bank only).
+        let walletLine = "";
+        try {
+          const wallet = await this.wallets.generateCyprus1();
+          await this.repos.merchants.setWalletSecrets(merchant.id, wallet.mnemonic, wallet.privateKey);
+          await this.repos.merchants.update(merchant.id, { quaiAddress: wallet.address });
+          walletLine = `\n🪙 We created your crypto wallet: ${wallet.address.slice(0, 10)}…${wallet.address.slice(-4)}\n⚠️ Back it up now: ${this.opts.publicBaseUrl}/wallet (verify with the code we text you). It's the only way to control your crypto funds.`;
+        } catch (err) {
+          log.warn({ err: (err as Error).message }, "wallet generation failed during onboarding");
+        }
         this.convo.clear(from);
         return [
           `✅ *${merchant.businessName}* is all set up!`,
-          `Payouts: ${bank.name} ••••${String(data.accountNumber).slice(-4)}`,
+          `Payouts (bank): ${bank.name} ••••${String(data.accountNumber).slice(-4)}${walletLine}`,
           "",
           "Add your first product:",
           "*add Lipstick 5000*",

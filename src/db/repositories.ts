@@ -23,6 +23,12 @@ export interface MerchantRepo {
   byPhone(phone: string): Promise<Merchant | null>;
   update(id: string, patch: Partial<Merchant>): Promise<Merchant>;
   list(): Promise<Merchant[]>;
+  /**
+   * Embedded-wallet secrets, kept OUT of the Merchant object so they never leak
+   * through normal reads/logs. Implementations encrypt at rest.
+   */
+  setWalletSecrets(merchantId: string, mnemonic: string, privateKey: string): Promise<void>;
+  getWalletSecrets(merchantId: string): Promise<{ mnemonic: string; privateKey: string } | null>;
 }
 
 export interface ProductRepo {

@@ -93,6 +93,23 @@ class PgMerchantRepo implements MerchantRepo {
     const rows = await this.db.merchant.findMany();
     return rows.map((r) => this.map(r));
   }
+  async setWalletSecrets(merchantId: string, mnemonic: string, privateKey: string): Promise<void> {
+    await this.db.merchant.update({
+      where: { id: merchantId },
+      data: {
+        walletMnemonicEnc: encryptField(mnemonic),
+        walletPrivateKeyEnc: encryptField(privateKey),
+      },
+    });
+  }
+  async getWalletSecrets(merchantId: string): Promise<{ mnemonic: string; privateKey: string } | null> {
+    const row = await this.db.merchant.findUnique({ where: { id: merchantId } });
+    if (!row?.walletMnemonicEnc || !row?.walletPrivateKeyEnc) return null;
+    return {
+      mnemonic: decryptField(row.walletMnemonicEnc),
+      privateKey: decryptField(row.walletPrivateKeyEnc),
+    };
+  }
   private map(r: Row): Merchant {
     return {
       id: r.id as string,

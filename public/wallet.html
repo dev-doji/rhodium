@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rhodium — Back up your wallet</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:#0b0e13; color:#e8eaed;
+           display:flex; min-height:100vh; align-items:center; justify-content:center; padding:20px; }
+    .card { width:100%; max-width:440px; background:#141922; border:1px solid #232b38; border-radius:18px; padding:26px; }
+    h1 { font-size:20px; margin:0 0 6px; } .sub { color:#8b95a5; font-size:14px; margin-bottom:20px; }
+    label { font-size:13px; color:#aeb7c4; } input { width:100%; padding:12px; margin:6px 0 14px; border:1px solid #2b3444;
+            border-radius:10px; background:#0e1420; color:#fff; font-size:15px; }
+    button { width:100%; padding:13px; border:0; border-radius:10px; background:linear-gradient(135deg,#4b7bec,#3059d6);
+             color:#fff; font-weight:700; font-size:15px; cursor:pointer; } button:disabled { opacity:.6; }
+    .warn { background:#2a2418; border:1px solid #5c4a22; color:#e0b968; padding:12px; border-radius:10px; font-size:13px; margin:14px 0; }
+    .secret { font-family:ui-monospace,monospace; font-size:14px; background:#0e1420; border:1px solid #2b3444;
+              border-radius:10px; padding:14px; word-break:break-word; margin:8px 0; user-select:all; }
+    .lbl { font-size:12px; color:#7c8798; text-transform:uppercase; letter-spacing:.08em; margin-top:12px; }
+    .err { background:#2a1618; border:1px solid #5c2a2e; color:#f0a3a3; padding:10px; border-radius:8px; font-size:14px; margin-top:10px; }
+    .ok { color:#7ee6a6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔐 Back up your Rhodium wallet</h1>
+    <div class="sub">Verify it's you, then save your secret recovery phrase. We show it once — keep it safe and never share it.</div>
+    <div id="body"></div>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let phone = "", token = "";
+
+    function stepPhone() {
+      $("body").innerHTML = `
+        <label>Your WhatsApp number (the one you onboarded with)</label>
+        <input id="phone" placeholder="+2348012345678" />
+        <button id="send">Text me a code</button>
+        <div id="msg"></div>`;
+      $("send").onclick = async () => {
+        phone = $("phone").value.trim();
+        $("send").disabled = true;
+        try {
+          const r = await fetch("/auth/otp/request", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ phone }) });
+          if (!r.ok) throw new Error("could not send code");
+          stepCode();
+        } catch(e) { $("msg").innerHTML = `<div class="err">${e.message}</div>`; $("send").disabled = false; }
+      };
+    }
+
+    function stepCode() {
+      $("body").innerHTML = `
+        <label>Enter the 6-digit code we sent on WhatsApp</label>
+        <input id="code" placeholder="123456" inputmode="numeric" />
+        <button id="verify">Verify &amp; reveal</button>
+        <div id="msg"></div>`;
+      $("verify").onclick = async () => {
+        $("verify").disabled = true;
+        try {
+          const v = await fetch("/auth/otp/verify", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ phone, code: $("code").value.trim() }) });
+          if (!v.ok) throw new Error("invalid code");
+          token = (await v.json()).token;
+          reveal();
+        } catch(e) { $("msg").innerHTML = `<div class="err">${e.message}</div>`; $("verify").disabled = false; }
+      };
+    }
+
+    async function reveal() {
+      try {
+        const r = await fetch("/api/wallet/reveal", { method:"POST", headers:{ authorization:"Bearer "+token } });
+        if (!r.ok) throw new Error("no wallet found for this account");
+        const w = await r.json();
+        $("body").innerHTML = `
+          <div class="warn">⚠️ Anyone with this phrase controls your funds. Write it down offline. Never share it or type it into any other site.</div>
+          <div class="lbl">Wallet address</div><div class="secret">${w.address}</div>
+          <div class="lbl">Secret recovery phrase (12 words)</div><div class="secret">${w.mnemonic}</div>
+          <div class="lbl">Private key</div><div class="secret">${w.privateKey}</div>
+          <p class="ok">Saved it? You can import this into BlipPay or Pelagus to control your funds.</p>`;
+      } catch(e) { $("body").innerHTML = `<div class="err">${e.message}</div>`; }
+    }
+
+    stepPhone();
+  </script>
+</body>
+</html>

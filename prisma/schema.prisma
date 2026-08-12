@@ -20,6 +20,8 @@ model Merchant {
   settlementAccountEnc    String?  @map("settlement_account_enc") // encrypted
   processorSubaccountCode String?  @map("processor_subaccount_code")
   quaiAddress             String?  @map("quai_address")
+  walletMnemonicEnc       String?  @map("wallet_mnemonic_enc") // encrypted embedded-wallet secrets
+  walletPrivateKeyEnc     String?  @map("wallet_private_key_enc")
   createdAt               DateTime @default(now()) @map("created_at")
 
   products Product[]

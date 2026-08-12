@@ -353,6 +353,26 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // Reveal the embedded wallet's secret phrase — 2FA-gated (bearer token issued
+  // only after phone-OTP). Secrets are decrypted here and never logged.
+  server.post(
+    "/api/wallet/reveal",
+    guard,
+    asyncRoute(async (req: AuthedRequest, res) => {
+      const merchant = await app.repos.merchants.byId(req.merchantId!);
+      const secrets = await app.repos.merchants.getWalletSecrets(req.merchantId!);
+      if (!merchant?.quaiAddress || !secrets) {
+        throw new NotFoundError("wallet", { merchantId: req.merchantId });
+      }
+      res.set("Cache-Control", "no-store");
+      res.json({
+        address: merchant.quaiAddress,
+        mnemonic: secrets.mnemonic,
+        privateKey: secrets.privateKey,
+      });
+    }),
+  );
+
   server.get(
     "/api/ledger",
     guard,
@@ -411,6 +431,9 @@ export function buildApi(app: App): Express {
   });
   server.get("/terms", (_req, res) => {
     res.sendFile(resolve("public/terms.html"));
+  });
+  server.get("/wallet", (_req, res) => {
+    res.sendFile(resolve("public/wallet.html"));
   });
   server.use(express.static(resolve("public")));
 

@@ -55,6 +55,13 @@ class MemMerchantRepo implements MerchantRepo {
   async list(): Promise<Merchant[]> {
     return [...this.m.values()];
   }
+  private secrets = new Map<string, { mnemonic: string; privateKey: string }>();
+  async setWalletSecrets(merchantId: string, mnemonic: string, privateKey: string): Promise<void> {
+    this.secrets.set(merchantId, { mnemonic, privateKey });
+  }
+  async getWalletSecrets(merchantId: string): Promise<{ mnemonic: string; privateKey: string } | null> {
+    return this.secrets.get(merchantId) ?? null;
+  }
 }
 
 class MemProductRepo implements ProductRepo {
