@@ -20,6 +20,10 @@ import { timingSafeEqual } from "node:crypto";
 export function buildApi(app: App): Express {
   const server = express();
 
+  // In-memory recorder of inbound WhatsApp webhooks — lets us diagnose delivery
+  // + processing over HTTPS without server-log access.
+  const waDebug: { count: number; events: Record<string, unknown>[] } = { count: 0, events: [] };
+
   // Trace id per request for payment-path tracing (§2.5 observability).
   server.use((req, _res, next) => {
     const traceId = req.header("x-request-id") ?? ref("trace");
@@ -67,11 +71,28 @@ export function buildApi(app: App): Express {
     express.json(),
     asyncRoute(async (req: Request, res: Response) => {
       // Parse the Cloud API inbound message envelope.
-      const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
-      const msg = entry?.messages?.[0];
-      if (msg?.type === "text" && msg.from) {
-        await app.whatsapp.handleInbound({ from: `+${msg.from}`, text: msg.text.body });
+      const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+      const msg = value?.messages?.[0];
+      const rec: Record<string, unknown> = {
+        at: new Date().toISOString(),
+        from: msg?.from,
+        type: msg?.type,
+        text: msg?.text?.body,
+        isStatus: !!value?.statuses,
+      };
+      try {
+        if (msg?.type === "text" && msg.from) {
+          const reply = await app.whatsapp.handleInbound({ from: `+${msg.from}`, text: msg.text.body });
+          rec.replied = String(reply).slice(0, 80);
+        } else {
+          rec.skipped = true;
+        }
+      } catch (e) {
+        rec.error = (e as Error).message;
       }
+      waDebug.count += 1;
+      waDebug.events.unshift(rec);
+      waDebug.events = waDebug.events.slice(0, 25);
       res.sendStatus(200); // always 200 so Meta doesn't retry-storm
     }),
   );
@@ -225,6 +246,14 @@ export function buildApi(app: App): Express {
       out.whatsappMode = app.config.WHATSAPP_MODE;
       out.quaiMode = app.config.QUAI_ADAPTER_MODE;
       res.json(out);
+    }),
+  );
+
+  server.get(
+    "/admin/debug/webhooks",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      res.json(waDebug);
     }),
   );
 
