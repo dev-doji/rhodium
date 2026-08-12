@@ -86,7 +86,14 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const notifications = new NotificationService(repos, channels, metrics);
   const commerce = new CommerceService(repos, objectStore, clock);
   const payments = new PaymentsOrchestrator(repos, rails, bus, clock, metrics, audit);
-  const whatsapp = new WhatsAppService(waTransport, commerce, payments, repos);
+  const whatsapp = new WhatsAppService(
+    waTransport,
+    commerce,
+    payments,
+    ledger,
+    repos,
+    config.PUBLIC_BASE_URL,
+  );
   const auth = new AuthService(repos, clock, async (phone, code) => {
     await waTransport.send(phone, `Your Rhodium code is ${code}. Expires in 5 min.`);
   });

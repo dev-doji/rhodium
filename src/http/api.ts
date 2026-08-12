@@ -120,6 +120,7 @@ export function buildApi(app: App): Express {
         merchantName: merchant?.businessName ?? "Merchant",
         instruction,
         quaiMode: app.config.QUAI_ADAPTER_MODE,
+        quaiExplorer: app.config.QUAI_EXPLORER_URL,
       });
     }),
   );

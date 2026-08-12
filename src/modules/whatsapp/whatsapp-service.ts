@@ -1,10 +1,19 @@
 import type { NotificationTransport } from "../notification/transport.js";
 import type { CommerceService } from "../commerce/commerce-service.js";
 import type { PaymentsOrchestrator } from "../payments/payments-orchestrator.js";
+import type { LedgerService } from "../ledger/ledger-service.js";
 import type { Repositories } from "../../db/repositories.js";
 import { formatNaira, nairaToKobo } from "../../lib/money.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../lib/errors.js";
+
+/** Format a crypto base-unit amount for humans (QUAI=18 dp, USDT=6 dp). */
+function humanCrypto(cryptoAmount?: string, symbol?: string): string {
+  if (!cryptoAmount) return "?";
+  const decimals = symbol === "QUAI" ? 18 : 6;
+  const n = Number(cryptoAmount) / Math.pow(10, decimals);
+  return `${n.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol ?? ""}`.trim();
+}
 
 const log = logger("whatsapp-service");
 
@@ -30,7 +39,9 @@ export class WhatsAppService {
     private transport: NotificationTransport,
     private commerce: CommerceService,
     private payments: PaymentsOrchestrator,
+    private ledger: LedgerService,
     private repos: Repositories,
+    private publicBaseUrl: string,
   ) {}
 
   async handleInbound(msg: InboundMessage): Promise<string> {
@@ -53,6 +64,12 @@ export class WhatsAppService {
           break;
         case "list":
           reply = await this.listProducts(merchant.id);
+          break;
+        case "ledger":
+        case "sales":
+        case "balance":
+        case "books":
+          reply = await this.salesLedger(merchant.id, merchant.phone);
           break;
         case "add":
           reply = await this.addProduct(merchant.id, rest);
@@ -79,6 +96,7 @@ export class WhatsAppService {
       "• add <name> <price> — e.g. add Lipstick 5000",
       "• sell <productId> <qty> <buyerPhone> — request bank-transfer payment",
       "• sell <productId> <qty> <buyerPhone> crypto — request BlipPay/Quai payment",
+      "• ledger — your sales + running balance",
     ].join("\n");
   }
 
@@ -125,9 +143,8 @@ export class WhatsAppService {
     if (isCrypto) {
       // Send this link to the buyer in WhatsApp — it opens in BlipPay.
       return [
-        `🪙 Crypto payment request for order ${ref}`,
-        `Amount: ${formatNaira(order.amount)} (~${instruction.cryptoAmount &&
-          (Number(instruction.cryptoAmount) / 1e6).toFixed(2)} ${instruction.tokenSymbol})`,
+        `Crypto payment request — order ${ref}`,
+        `Amount: ${formatNaira(order.amount)} (≈ ${humanCrypto(instruction.cryptoAmount, instruction.tokenSymbol)})`,
         "",
         "Send your buyer this link — it opens in BlipPay to pay:",
         `${instruction.checkoutUrl}`,
@@ -148,6 +165,31 @@ export class WhatsAppService {
       `👤 ${instruction.accountName}`,
       "",
       "You'll be auto-notified the moment it lands — no screenshot needed.",
+    ].join("\n");
+  }
+
+  /** Amaka's books, right in WhatsApp — the "records tool" value. */
+  private async salesLedger(merchantId: string, _merchantPhone: string): Promise<string> {
+    const balance = await this.ledger.balance(merchantId);
+    const entries = await this.ledger.entries(merchantId);
+    if (entries.length === 0) {
+      return "No sales yet. Once a buyer pays, every sale lands here automatically.";
+    }
+    const recent = entries
+      .slice(-5)
+      .reverse()
+      .map((e) => {
+        const when = e.createdAt.toISOString().slice(5, 16).replace("T", " ");
+        return `• ${formatNaira(e.amount)}  ·  ${when} UTC`;
+      });
+    return [
+      "Your sales ledger",
+      `Balance: ${formatNaira(balance)} across ${entries.length} sale${entries.length === 1 ? "" : "s"}`,
+      "",
+      "Recent:",
+      ...recent,
+      "",
+      `Full books + CSV export: ${this.publicBaseUrl} (sign in with this number)`,
     ].join("\n");
   }
 
