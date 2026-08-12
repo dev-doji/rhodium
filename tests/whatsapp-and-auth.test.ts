@@ -1,12 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { makeApp, seedMerchant } from "./helpers/harness.js";
+import { makeApp, seedMerchant, seedProduct } from "./helpers/harness.js";
 import { UnauthorizedError } from "../src/lib/errors.js";
 
 describe("WhatsApp merchant flow", () => {
-  it("guides an unregistered number to sign in", async () => {
+  it("greets an unknown sender and starts onboarding", async () => {
     const app = makeApp();
     const reply = await app.whatsapp.handleInbound({ from: "+2340000000000", text: "hi" });
-    expect(reply).toMatch(/isn't registered/i);
+    expect(reply).toMatch(/Rhodium/);
+    expect(reply).toMatch(/business name/i);
+  });
+
+  it("onboards a new vendor end-to-end (name → account → bank)", async () => {
+    const app = makeApp();
+    const phone = "+2348011122233";
+    await app.whatsapp.handleInbound({ from: phone, text: "Hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Amaka Beauty" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    const done = await app.whatsapp.handleInbound({ from: phone, text: "2" }); // GTBank
+    expect(done).toMatch(/all set up/i);
+    const merchant = await app.repos.merchants.byPhone(phone);
+    expect(merchant).not.toBeNull();
+    expect(merchant!.businessName).toBe("Amaka Beauty");
+    expect(merchant!.settlementAccountNumber).toBe("0123456789");
+    expect(merchant!.status).toBe("active");
+  });
+
+  it("rejects a bad account number during onboarding", async () => {
+    const app = makeApp();
+    const phone = "+2348011122244";
+    await app.whatsapp.handleInbound({ from: phone, text: "hello" });
+    await app.whatsapp.handleInbound({ from: phone, text: "My Shop" });
+    const bad = await app.whatsapp.handleInbound({ from: phone, text: "12345" });
+    expect(bad).toMatch(/10-digit/i);
   });
 
   it("adds a product, lists it, and sells it (issuing a DVA)", async () => {
@@ -14,7 +39,7 @@ describe("WhatsApp merchant flow", () => {
     const merchant = await seedMerchant(app);
 
     const added = await app.whatsapp.handleInbound({ from: merchant.phone, text: "add Lipstick 5000" });
-    expect(added).toMatch(/Added Lipstick/);
+    expect(added).toMatch(/Added \*?Lipstick/);
 
     const list = await app.whatsapp.handleInbound({ from: merchant.phone, text: "list" });
     expect(list).toMatch(/Lipstick/);
@@ -37,6 +62,50 @@ describe("WhatsApp merchant flow", () => {
     const merchant = await seedMerchant(app);
     const reply = await app.whatsapp.handleInbound({ from: merchant.phone, text: "asdf" });
     expect(reply).toMatch(/commands/i);
+  });
+
+  it("gives the vendor a shareable shop link", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const reply = await app.whatsapp.handleInbound({ from: merchant.phone, text: "link" });
+    expect(reply).toContain(`shop-${merchant.id}`);
+  });
+});
+
+describe("WhatsApp buyer storefront", () => {
+  it("buyer opens a shop link, picks a product, and gets a crypto pay link", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app, { quaiAddress: "0xMerchantWallet" });
+    await seedProduct(app, merchant.id, 500_000);
+    const buyer = "+2348090005555";
+
+    const catalogue = await app.whatsapp.handleInbound({ from: buyer, text: `shop-${merchant.id}` });
+    expect(catalogue).toContain(merchant.businessName);
+    expect(catalogue).toMatch(/Red Lipstick/);
+
+    const method = await app.whatsapp.handleInbound({ from: buyer, text: "1" });
+    expect(method).toMatch(/how would you like to pay/i);
+
+    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "2" }); // crypto
+    expect(pay).toMatch(/\/checkout\//);
+
+    const orders = await app.repos.orders.listByMerchant(merchant.id);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]!.rail).toBe("crypto");
+  });
+
+  it("buyer can choose bank transfer and gets account details", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    await seedProduct(app, merchant.id, 300_000);
+    const buyer = "+2348090006666";
+    await app.whatsapp.handleInbound({ from: buyer, text: `shop-${merchant.id}` });
+    await app.whatsapp.handleInbound({ from: buyer, text: "1" });
+    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "1" }); // bank
+    expect(pay).toMatch(/Transfer to/i);
+    expect(pay).toMatch(/\d{10}/);
+    const orders = await app.repos.orders.listByMerchant(merchant.id);
+    expect(orders[0]!.rail).toBe("fiat");
   });
 });
 

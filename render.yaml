@@ -38,6 +38,8 @@ services:
         value: live
       - key: WHATSAPP_VERIFY_TOKEN
         value: rhodium-verify
+      - key: WHATSAPP_WA_NUMBER   # bot's wa.me digits, for buyer shop links
+        value: "15551405536"
       - key: FIAT_ADAPTER_MODE
         value: mock
       - key: FEATURE_QUAI_ENABLED

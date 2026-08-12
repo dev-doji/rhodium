@@ -53,6 +53,8 @@ const schema = z.object({
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(""),
   WHATSAPP_VERIFY_TOKEN: z.string().default("rhodium-verify"),
   WHATSAPP_APP_SECRET: z.string().optional().default(""),
+  // Bot's own number in wa.me digit form (e.g. 15551405536) for buyer shop links.
+  WHATSAPP_WA_NUMBER: z.string().optional().default(""),
 
   OBJECT_STORE_MODE: z.enum(["local", "s3"]).default("local"),
   OBJECT_STORE_BUCKET: z.string().default("rhodium-media"),
