@@ -7,6 +7,11 @@
   "engines": {
     "node": ">=22"
   },
+  "workspaces": [
+    "apps/*",
+    "dashboard",
+    "chain"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:prod": "tsc -p tsconfig.build.json",
@@ -30,6 +35,10 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "dashboard:install": "npm --prefix dashboard install",
     "dashboard:build": "npm --prefix dashboard run build",
+    "landing:install": "npm --prefix apps/landing install",
+    "landing:dev": "npm --prefix apps/landing run dev",
+    "landing:build": "npm --prefix apps/landing run build",
+    "landing:start": "npm --prefix apps/landing run start",
     "setup": "npm install && npm run db:up && npm run prisma:generate && npm run prisma:migrate && npm run dashboard:install && npm run dashboard:build",
     "lint": "tsc -p tsconfig.json --noEmit"
   },

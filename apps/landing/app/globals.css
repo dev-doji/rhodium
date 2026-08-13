@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Rhodium design system.
+   The whole palette is derived from the two logo colours:
+     #0033e7 (blue, primary)   #ff3131 (red, accent)
+   --------------------------------------------------------------------------- */
+@theme {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #eef2fe;
+  --color-brand-100: #d9e2fd;
+  --color-brand-200: #b6c6fb;
+  --color-brand-300: #8aa3f7;
+  --color-brand-400: #5478f2;
+  --color-brand-500: #0033e7;
+  --color-brand-600: #002bc4;
+  --color-brand-700: #00229c;
+  --color-brand-800: #001a76;
+  --color-brand-900: #001148;
+  --color-brand-950: #000a2b;
+
+  --color-accent-100: #ffe2e2;
+  --color-accent-300: #ff8a8a;
+  --color-accent-400: #ff5b5b;
+  --color-accent-500: #ff3131;
+  --color-accent-600: #e01a1a;
+
+  /* Section canvases */
+  --color-ink: #05061a; /* near-black band (pricing) */
+  --color-panel: #04123f; /* deep blue band (features, CTA, footer) */
+  --color-panel-soft: #0a2160; /* cards inside the deep blue band */
+  --color-canvas: #eceef2; /* page gutter behind the rounded shell */
+
+  --radius-4xl: 2rem;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Headings in the reference design are tightly tracked and optically balanced. */
+@utility display {
+  letter-spacing: -0.035em;
+  line-height: 1.06;
+  text-wrap: balance;
+}
+
+@utility measure {
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

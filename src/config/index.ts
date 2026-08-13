@@ -36,8 +36,10 @@ const schema = z.object({
   ONSWITCH_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
   ONSWITCH_SERVICE_KEY: z.string().optional().default(""),
   ONSWITCH_BASE_URL: z.string().default("https://api.onswitch.xyz"),
-  // Asset buyers pay in — "chain:token", e.g. base:usdc, ethereum:usdt, tron:usdt.
-  ONSWITCH_ASSET: z.string().default("base:usdc"),
+  // Asset buyers pay in — "chain:token". OnSwitch off-ramp supports USDT on
+  // tron/ethereum/polygon (not base). tron:usdt (USDT-TRC20) is cheapest + most
+  // popular in Nigeria. NOTE: this is USDT on those chains — NOT Quai's USDT.
+  ONSWITCH_ASSET: z.string().default("tron:usdt"),
 
   FEATURE_STABLECOIN_ENABLED: bool(false),
 
