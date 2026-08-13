@@ -246,6 +246,11 @@ export function buildApi(app: App): Express {
       }
       out.whatsappMode = app.config.WHATSAPP_MODE;
       out.quaiMode = app.config.QUAI_ADAPTER_MODE;
+      out.fiatProvider = app.config.FIAT_PROVIDER;
+      out.fiatMode = app.config.FIAT_ADAPTER_MODE;
+      out.activeFiatRail = app.rails.fiat().id;
+      out.monnifyKeySet = !!app.config.MONNIFY_SECRET_KEY;
+      out.monnifyContractSet = !!app.config.MONNIFY_CONTRACT_CODE;
       res.json(out);
     }),
   );
