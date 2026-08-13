@@ -48,15 +48,46 @@ async function main() {
   const wallet = new quais.Wallet(PK, provider);
   console.log("Deployer:", wallet.address);
 
+  // Log each step so we can see where a hang happens.
+  const step = (m) => console.log(`  … ${m}`);
+
+  step("fetching network");
+  const net = await withTimeout(provider.getNetwork(), 20000, "getNetwork");
+  console.log("  chainId:", net.chainId.toString());
+
+  step("fetching fee data");
+  const fee = await withTimeout(provider.getFeeData(), 20000, "getFeeData").catch((e) => {
+    console.log("  (feeData failed, using manual gas):", e.message);
+    return null;
+  });
+
   const factory = new quais.ContractFactory(artifact.abi, artifact.bytecode, wallet, ipfsHash);
-  console.log("Deploying RhodiumPay to Orchard…");
-  const contract = await factory.deploy();
-  await contract.waitForDeployment();
+  step("building + broadcasting deploy tx (explicit gasLimit)");
+  const overrides = { gasLimit: 3_000_000n };
+  if (fee && fee.maxFeePerGas) {
+    overrides.maxFeePerGas = fee.maxFeePerGas;
+    overrides.maxPriorityFeePerGas = fee.maxPriorityFeePerGas ?? fee.maxFeePerGas;
+  } else if (fee && fee.gasPrice) {
+    overrides.gasPrice = fee.gasPrice;
+  }
+  const contract = await factory.deploy(overrides);
+
+  const tx = contract.deploymentTransaction();
+  console.log("  ✔ broadcast tx:", tx && tx.hash);
+  step("waiting for it to be mined…");
+  await withTimeout(contract.waitForDeployment(), 180000, "waitForDeployment");
   const address = await contract.getAddress();
 
   console.log("\n✅ RhodiumPay deployed:", address);
   console.log("→ set QUAI_CONTRACT_ADDRESS=%s in .env", address);
   console.log("→ verify: https://orchard.quaiscan.io/address/%s", address);
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
 }
 
 main().catch((e) => {
