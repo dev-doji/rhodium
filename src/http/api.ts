@@ -258,6 +258,21 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // Backfill an embedded Quai wallet for an existing merchant (e.g. one seeded
+  // before the wallet feature). Returns the address only — secrets stay in the vault.
+  server.post(
+    "/admin/merchants/:id/wallet",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const merchant = await app.repos.merchants.byId(req.params.id!);
+      if (!merchant) throw new NotFoundError("merchant", { id: req.params.id });
+      const wallet = await app.wallets.generateCyprus1();
+      await app.repos.merchants.setWalletSecrets(merchant.id, wallet.mnemonic, wallet.privateKey);
+      await app.repos.merchants.update(merchant.id, { quaiAddress: wallet.address });
+      res.json({ merchantId: merchant.id, quaiAddress: wallet.address });
+    }),
+  );
+
   server.get(
     "/admin/merchants",
     asyncRoute(async (req, res) => {
