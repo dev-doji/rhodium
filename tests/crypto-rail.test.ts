@@ -126,8 +126,8 @@ describe("Quai/BlipPay crypto rail — WhatsApp merchant accepts crypto, books i
     });
     const inst = await app.payments.requestPayment(fiatOrder.id);
     const signed = app.fiat.mock!.simulateTransfer(inst.providerRef);
-    await app.payments.handleRailWebhook("paystack", {
-      headers: { "x-paystack-signature": signed.signature }, rawBody: signed.rawBody,
+    await app.payments.handleRailWebhook("monnify", {
+      headers: { "monnify-signature": signed.signature }, rawBody: signed.rawBody,
     });
 
     expect(await app.ledger.entries(merchant.id)).toHaveLength(2);

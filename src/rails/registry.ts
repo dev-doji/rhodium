@@ -1,6 +1,5 @@
 import type { PaymentRail } from "./types.js";
 import type { RailId, RailKind } from "../domain/types.js";
-import { PaystackFiatRail } from "./paystack-fiat-rail.js";
 import { MonnifyFiatRail } from "./monnify-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
 import { QuaiRail } from "./quai-rail.js";
@@ -51,28 +50,18 @@ export class RailRegistry {
 }
 
 export function buildRegistry(cfg: AppConfig): RailRegistry {
-  // Select the bank rail by provider; only build the one in use.
-  const fiatId = cfg.FIAT_PROVIDER; // 'paystack' | 'monnify'
-  const registry = new RailRegistry(fiatId);
-  if (fiatId === "monnify") {
-    registry.register(
-      new MonnifyFiatRail({
-        mode: cfg.FIAT_ADAPTER_MODE,
-        apiKey: cfg.MONNIFY_API_KEY,
-        secretKey: cfg.MONNIFY_SECRET_KEY,
-        contractCode: cfg.MONNIFY_CONTRACT_CODE,
-        baseUrl: cfg.MONNIFY_BASE_URL,
-        walletAccountNumber: cfg.MONNIFY_WALLET_ACCOUNT_NUMBER,
-      }),
-    );
-  } else {
-    registry.register(
-      new PaystackFiatRail({
-        mode: cfg.FIAT_ADAPTER_MODE,
-        secretKey: cfg.PAYSTACK_SECRET_KEY, // also the webhook-signing secret
-      }),
-    );
-  }
+  // Bank rail: Monnify (reserved accounts → naira settlement, no custody by us).
+  const registry = new RailRegistry("monnify");
+  registry.register(
+    new MonnifyFiatRail({
+      mode: cfg.FIAT_ADAPTER_MODE,
+      apiKey: cfg.MONNIFY_API_KEY,
+      secretKey: cfg.MONNIFY_SECRET_KEY,
+      contractCode: cfg.MONNIFY_CONTRACT_CODE,
+      baseUrl: cfg.MONNIFY_BASE_URL,
+      walletAccountNumber: cfg.MONNIFY_WALLET_ACCOUNT_NUMBER,
+    }),
+  );
 
   // Crypto rail: the fleshed-out Quai/BlipPay adapter when enabled; otherwise
   // the dark stablecoin stub keeps the seam present but refusing.

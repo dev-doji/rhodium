@@ -11,7 +11,7 @@ loadEnv();
 import { buildApp } from "../app.js";
 import { loadConfig } from "../config/index.js";
 import { CaptureTransport } from "../modules/notification/transport.js";
-import { PaystackFiatRail } from "../rails/paystack-fiat-rail.js";
+import { MonnifyFiatRail } from "../rails/monnify-fiat-rail.js";
 import { formatNaira } from "../lib/money.js";
 
 async function main(): Promise<void> {
@@ -56,16 +56,16 @@ async function main(): Promise<void> {
   });
   line("[bot → merchant]\n" + indent(reply));
 
-  // 4) Buyer transfers to the DVA → Paystack posts a signed webhook.
+  // 4) Buyer transfers to the reserved account → Monnify posts a signed webhook.
   const order = (await app.repos.orders.listByMerchant(merchant.id))[0]!;
   const payment = (await app.repos.payments.byOrderId(order.id))!;
-  const fiat = app.rails.fiat() as PaystackFiatRail;
-  line("\n💸 Buyer transfers to the DVA… (Paystack fires charge.success)");
+  const fiat = app.rails.fiat() as MonnifyFiatRail;
+  line("\n💸 Buyer transfers to the reserved account… (Monnify fires SUCCESSFUL_TRANSACTION)");
   const webhook = fiat.mock!.simulateTransfer(payment.providerRef);
 
   const t0 = Date.now();
-  await app.payments.handleRailWebhook("paystack", {
-    headers: { "x-paystack-signature": webhook.signature },
+  await app.payments.handleRailWebhook("monnify", {
+    headers: { "monnify-signature": webhook.signature },
     rawBody: webhook.rawBody,
   });
   const ms = Date.now() - t0;
@@ -86,8 +86,8 @@ async function main(): Promise<void> {
 
   // 6) Prove idempotency: a duplicate webhook must NOT double-count.
   const replay = fiat.mock!.replayLastTransfer(payment.providerRef);
-  await app.payments.handleRailWebhook("paystack", {
-    headers: { "x-paystack-signature": replay.signature },
+  await app.payments.handleRailWebhook("monnify", {
+    headers: { "monnify-signature": replay.signature },
     rawBody: replay.rawBody,
   });
   const afterReplay = await app.ledger.entries(merchant.id);

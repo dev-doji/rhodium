@@ -18,7 +18,6 @@
     "test:watch": "vitest",
     "demo": "tsx src/demo/magic-moment.ts",
     "demo:crypto": "tsx src/demo/crypto-moment.ts",
-    "smoke:paystack": "tsx src/smoke/paystack-check.ts",
     "smoke:whatsapp": "tsx src/smoke/whatsapp-check.ts",
     "seed:merchant": "tsx src/smoke/seed-merchant.ts",
     "contracts:install": "npm --prefix chain install",

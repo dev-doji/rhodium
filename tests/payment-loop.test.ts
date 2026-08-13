@@ -60,8 +60,8 @@ describe("the magic moment — sell → pay → confirm → receipt → ledger",
     const signed = app.fiat.mock!.simulateTransfer(providerRef);
 
     await expect(
-      app.payments.handleRailWebhook("paystack", {
-        headers: { "x-paystack-signature": "deadbeef" },
+      app.payments.handleRailWebhook("monnify", {
+        headers: { "monnify-signature": "deadbeef" },
         rawBody: signed.rawBody,
       }),
     ).rejects.toThrow(/signature/);

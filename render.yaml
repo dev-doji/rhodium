@@ -33,6 +33,15 @@ services:
         sync: false
       - key: WHATSAPP_APP_SECRET
         sync: false
+      # --- Monnify bank rail (sensitive) ---
+      - key: MONNIFY_API_KEY
+        sync: false
+      - key: MONNIFY_SECRET_KEY
+        sync: false
+      - key: MONNIFY_CONTRACT_CODE
+        sync: false
+      - key: MONNIFY_WALLET_ACCOUNT_NUMBER
+        sync: false
       # --- non-secret config ---
       - key: WHATSAPP_MODE
         value: live
@@ -40,8 +49,10 @@ services:
         value: rhodium-verify
       - key: WHATSAPP_WA_NUMBER   # bot's wa.me digits, for buyer shop links
         value: "15551405536"
+      - key: MONNIFY_BASE_URL
+        value: https://sandbox.monnify.com
       - key: FIAT_ADAPTER_MODE
-        value: mock
+        value: live
       - key: FEATURE_QUAI_ENABLED
         value: "true"
       - key: QUAI_ADAPTER_MODE

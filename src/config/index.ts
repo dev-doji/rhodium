@@ -23,14 +23,9 @@ const schema = z.object({
     .default("0".repeat(64)),
   APP_SECRET: z.string().default("dev-secret-change-me"),
 
-  // Paystack signs webhooks with the secret key — there is NO separate webhook
-  // secret. Set just this (sk_test_… in sandbox, sk_live_… in prod).
-  PAYSTACK_SECRET_KEY: z.string().optional().default(""),
   FIAT_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
-  // Which fiat processor backs the bank rail.
-  FIAT_PROVIDER: z.enum(["paystack", "monnify"]).default("paystack"),
 
-  // --- Monnify (bank rail alternative) ---
+  // --- Monnify (bank rail) ---
   MONNIFY_API_KEY: z.string().optional().default(""),
   MONNIFY_SECRET_KEY: z.string().optional().default(""),
   MONNIFY_CONTRACT_CODE: z.string().optional().default(""),
@@ -95,13 +90,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   // Guardrails: in production, live external calls must have real credentials.
   if (cfg.NODE_ENV === "production") {
-    if (cfg.FIAT_ADAPTER_MODE === "live") {
-      if (cfg.FIAT_PROVIDER === "paystack" && !cfg.PAYSTACK_SECRET_KEY) {
-        throw new Error("FIAT_ADAPTER_MODE=live (paystack) requires PAYSTACK_SECRET_KEY");
-      }
-      if (cfg.FIAT_PROVIDER === "monnify" && (!cfg.MONNIFY_API_KEY || !cfg.MONNIFY_SECRET_KEY)) {
-        throw new Error("FIAT_ADAPTER_MODE=live (monnify) requires MONNIFY_API_KEY + MONNIFY_SECRET_KEY");
-      }
+    if (cfg.FIAT_ADAPTER_MODE === "live" && (!cfg.MONNIFY_API_KEY || !cfg.MONNIFY_SECRET_KEY)) {
+      throw new Error("FIAT_ADAPTER_MODE=live requires MONNIFY_API_KEY + MONNIFY_SECRET_KEY");
     }
     if (cfg.WHATSAPP_MODE === "live" && !cfg.WHATSAPP_ACCESS_TOKEN) {
       throw new Error("WHATSAPP_MODE=live requires WHATSAPP_ACCESS_TOKEN");

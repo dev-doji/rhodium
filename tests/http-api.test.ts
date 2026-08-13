@@ -4,7 +4,7 @@ import { buildApp } from "../src/app.js";
 import { loadConfig, resetConfigCache } from "../src/config/index.js";
 import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { buildApi } from "../src/http/api.js";
-import { PaystackFiatRail } from "../src/rails/paystack-fiat-rail.js";
+import { MonnifyFiatRail } from "../src/rails/monnify-fiat-rail.js";
 
 let server: Server;
 let base: string;
@@ -89,11 +89,11 @@ describe("HTTP API — end-to-end over the wire", () => {
 
     // Buyer transfers → provider posts the signed webhook to our endpoint.
     const payment = await app.repos.payments.byOrderId(order.id);
-    const fiat = app.rails.fiat() as PaystackFiatRail;
+    const fiat = app.rails.fiat() as MonnifyFiatRail;
     const signed = fiat.mock!.simulateTransfer(payment!.providerRef);
-    const wh = await fetch(`${base}/webhooks/rails/paystack`, {
+    const wh = await fetch(`${base}/webhooks/rails/monnify`, {
       method: "POST",
-      headers: { "x-paystack-signature": signed.signature, "content-type": "application/json" },
+      headers: { "monnify-signature": signed.signature, "content-type": "application/json" },
       body: signed.rawBody,
     });
     expect(wh.status).toBe(200);
@@ -119,9 +119,9 @@ describe("HTTP API — end-to-end over the wire", () => {
   });
 
   it("rejects a forged rail webhook signature (401)", async () => {
-    const res = await fetch(`${base}/webhooks/rails/paystack`, {
+    const res = await fetch(`${base}/webhooks/rails/monnify`, {
       method: "POST",
-      headers: { "x-paystack-signature": "bad", "content-type": "application/json" },
+      headers: { "monnify-signature": "bad", "content-type": "application/json" },
       body: JSON.stringify({ event: "charge.success", data: {} }),
     });
     expect(res.status).toBe(401);

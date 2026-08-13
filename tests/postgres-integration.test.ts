@@ -5,7 +5,7 @@ import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { createPrismaRepositories } from "../src/db/prisma/prisma-repositories.js";
 import { PrismaIdempotencyStore } from "../src/db/prisma/prisma-idempotency.js";
 import { prisma, disconnectPrisma } from "../src/db/prisma/client.js";
-import { PaystackFiatRail } from "../src/rails/paystack-fiat-rail.js";
+import { MonnifyFiatRail } from "../src/rails/monnify-fiat-rail.js";
 import { ref } from "../src/lib/ids.js";
 
 /**
@@ -66,19 +66,19 @@ d("magic moment against live Postgres", () => {
     expect(instruction.accountNumber).toMatch(/^\d{10}$/);
 
     const payment = await app.repos.payments.byProviderRef(instruction.providerRef);
-    const fiat = app.rails.fiat() as PaystackFiatRail;
+    const fiat = app.rails.fiat() as MonnifyFiatRail;
 
     const before = await app.ledger.balance(merchantId);
     const signed = fiat.mock!.simulateTransfer(payment!.providerRef);
-    await app.payments.handleRailWebhook("paystack", {
-      headers: { "x-paystack-signature": signed.signature },
+    await app.payments.handleRailWebhook("monnify", {
+      headers: { "monnify-signature": signed.signature },
       rawBody: signed.rawBody,
     });
 
     // Replay the identical webhook — DB-backed idempotency must dedupe it.
     const replay = fiat.mock!.replayLastTransfer(payment!.providerRef);
-    await app.payments.handleRailWebhook("paystack", {
-      headers: { "x-paystack-signature": replay.signature },
+    await app.payments.handleRailWebhook("monnify", {
+      headers: { "monnify-signature": replay.signature },
       rawBody: replay.rawBody,
     });
 
