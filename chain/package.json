@@ -5,13 +5,14 @@
   "description": "RhodiumPay contract — Hardhat project for Quai Orchard testnet.",
   "scripts": {
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.cjs --network orchard"
+    "deploy": "node scripts/deploy.cjs"
   },
   "devDependencies": {
     "hardhat": "^2.22.0"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "ipfs-only-hash": "^4.0.0",
     "quais": "1.0.0-alpha.56"
   }
 }

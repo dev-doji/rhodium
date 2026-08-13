@@ -16,10 +16,10 @@ const path = require("node:path");
 const quais = require("quais");
 
 const RPC = process.env.QUAI_RPC_URL || "https://orchard.rpc.quai.network/cyprus1";
-const PK = process.env.CYPRUS1_PK;
+const PK = process.env.QUAI_PRIVATE_KEY || process.env.CYPRUS1_PK;
 
 async function main() {
-  if (!PK) throw new Error("set CYPRUS1_PK in .env (a faucet-funded Cyprus1 key)");
+  if (!PK) throw new Error("set QUAI_PRIVATE_KEY in .env (a faucet-funded Cyprus1 key)");
 
   const artifactPath = path.join(
     __dirname,
@@ -34,11 +34,21 @@ async function main() {
   }
   const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 
+  // Quai requires an IPFS hash of the contract metadata on deploy. Compute the
+  // CID of the Solidity metadata (from the build-info) — no pinning needed to deploy.
+  const Hash = require("ipfs-only-hash");
+  const biDir = path.join(__dirname, "..", "artifacts", "build-info");
+  const biFile = path.join(biDir, fs.readdirSync(biDir).find((f) => f.endsWith(".json")));
+  const bi = JSON.parse(fs.readFileSync(biFile, "utf8"));
+  const metadata = bi.output.contracts["contracts/RhodiumPay.sol"]["RhodiumPay"].metadata;
+  const ipfsHash = await Hash.of(Buffer.from(metadata));
+  console.log("IPFS metadata hash:", ipfsHash, `(${ipfsHash.length} chars)`);
+
   const provider = new quais.JsonRpcProvider(RPC, undefined, { usePathing: true });
   const wallet = new quais.Wallet(PK, provider);
   console.log("Deployer:", wallet.address);
 
-  const factory = new quais.ContractFactory(artifact.abi, artifact.bytecode, wallet);
+  const factory = new quais.ContractFactory(artifact.abi, artifact.bytecode, wallet, ipfsHash);
   console.log("Deploying RhodiumPay to Orchard…");
   const contract = await factory.deploy();
   await contract.waitForDeployment();
