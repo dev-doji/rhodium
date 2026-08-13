@@ -44,25 +44,29 @@ async function main() {
   const ipfsHash = await Hash.of(Buffer.from(metadata));
   console.log("IPFS metadata hash:", ipfsHash, `(${ipfsHash.length} chars)`);
 
-  const provider = new quais.JsonRpcProvider(RPC, undefined, { usePathing: true });
+  // The Orchard RPC URL already targets the Cyprus1 shard (…/cyprus1), so
+  // usePathing:true would append the shard AGAIN → dead URL → every call hangs.
+  // Use a STATIC network (skips the hanging auto-detect) and no pathing.
+  const CHAIN_ID = Number(process.env.QUAI_CHAIN_ID || 15000);
+  const net = quais.Network.from(CHAIN_ID);
+  const provider = new quais.JsonRpcProvider(RPC, net, { staticNetwork: net });
   const wallet = new quais.Wallet(PK, provider);
   console.log("Deployer:", wallet.address);
 
-  // Log each step so we can see where a hang happens.
   const step = (m) => console.log(`  … ${m}`);
 
-  step("fetching network");
-  const net = await withTimeout(provider.getNetwork(), 20000, "getNetwork");
-  console.log("  chainId:", net.chainId.toString());
+  step("sanity: block number");
+  const bn = await withTimeout(provider.getBlockNumber(), 25000, "getBlockNumber");
+  console.log("  block:", bn);
 
-  step("fetching fee data");
-  const fee = await withTimeout(provider.getFeeData(), 20000, "getFeeData").catch((e) => {
+  step("fee data");
+  const fee = await withTimeout(provider.getFeeData(), 25000, "getFeeData").catch((e) => {
     console.log("  (feeData failed, using manual gas):", e.message);
     return null;
   });
 
   const factory = new quais.ContractFactory(artifact.abi, artifact.bytecode, wallet, ipfsHash);
-  step("building + broadcasting deploy tx (explicit gasLimit)");
+  step("building + broadcasting deploy tx");
   const overrides = { gasLimit: 3_000_000n };
   if (fee && fee.maxFeePerGas) {
     overrides.maxFeePerGas = fee.maxFeePerGas;
