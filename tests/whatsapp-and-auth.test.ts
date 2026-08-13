@@ -86,12 +86,25 @@ describe("WhatsApp buyer storefront", () => {
     const method = await app.whatsapp.handleInbound({ from: buyer, text: "1" });
     expect(method).toMatch(/how would you like to pay/i);
 
-    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "2" }); // crypto
+    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "3" }); // QUAI (BlipPay)
     expect(pay).toMatch(/\/checkout\//);
 
     const orders = await app.repos.orders.listByMerchant(merchant.id);
     expect(orders).toHaveLength(1);
     expect(orders[0]!.rail).toBe("crypto");
+  });
+
+  it("buyer can pay with stablecoin (OnSwitch) — seller receives naira", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    await seedProduct(app, merchant.id, 500_000);
+    const buyer = "+2348090007788";
+    await app.whatsapp.handleInbound({ from: buyer, text: `shop-${merchant.id}` });
+    await app.whatsapp.handleInbound({ from: buyer, text: "1" });
+    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "2" }); // stablecoin off-ramp
+    expect(pay).toMatch(/USDC|USDT/);
+    expect(pay).toMatch(/0x[0-9a-fA-F]{40}/); // deposit address
+    expect(pay).toMatch(/in their bank/i); // seller settled in naira
   });
 
   it("buyer can choose bank transfer and gets account details", async () => {

@@ -33,8 +33,12 @@ export class PaymentsOrchestrator {
     private audit: AuditService,
   ) {}
 
-  /** Issue a payment instruction (DVA) for an order and present it in-chat. */
-  async requestPayment(orderId: string): Promise<PaymentInstruction> {
+  /**
+   * Issue a payment instruction for an order. `railId` picks a specific rail
+   * (e.g. 'onswitch' for crypto→naira, 'quai' for crypto→wallet); otherwise the
+   * order's kind decides (fiat → Monnify, crypto → Quai).
+   */
+  async requestPayment(orderId: string, railId?: RailId): Promise<PaymentInstruction> {
     const order = await this.repos.orders.byId(orderId);
     if (!order) throw new NotFoundError("order", { id: orderId });
     const merchant = await this.repos.merchants.byId(order.merchantId);
@@ -43,12 +47,12 @@ export class PaymentsOrchestrator {
     const existing = await this.repos.payments.byOrderId(orderId);
     if (existing) {
       const rail = this.rails.get(existing.railId);
-      // Crypto instructions are deterministic + side-effect-free, so recompute
-      // the FULL instruction (contract, amount, orderId hash) the checkout needs.
-      if (rail.kind === "crypto") {
+      // Only the Quai rail's instruction is deterministic + side-effect-free, so
+      // it's safe to recompute for the checkout page. Others (DVA, off-ramp) have
+      // side effects on create — return the stored view instead of re-issuing.
+      if (rail.id === "quai") {
         return rail.createPaymentInstruction(order, merchant);
       }
-      // Fiat: return the stored DVA view — never mint a 2nd DVA.
       return {
         railId: existing.railId,
         instructionType: existing.instructionType,
@@ -58,8 +62,8 @@ export class PaymentsOrchestrator {
       };
     }
 
-    // Route by the order's rail: bank transfer → fiat, crypto → Quai/BlipPay.
-    const rail = this.rails.forKind(order.rail);
+    // Route: explicit railId wins; else the order's kind (fiat → Monnify, crypto → Quai).
+    const rail = railId ? this.rails.get(railId) : this.rails.forKind(order.rail);
     const instruction = await rail.createPaymentInstruction(order, merchant);
 
     await this.repos.payments.create({

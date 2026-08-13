@@ -32,6 +32,13 @@ const schema = z.object({
   MONNIFY_BASE_URL: z.string().default("https://sandbox.monnify.com"),
   MONNIFY_WALLET_ACCOUNT_NUMBER: z.string().optional().default(""),
 
+  // --- OnSwitch (crypto→naira off-ramp): buyer pays USDT/USDC, vendor gets naira ---
+  ONSWITCH_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
+  ONSWITCH_SERVICE_KEY: z.string().optional().default(""),
+  ONSWITCH_BASE_URL: z.string().default("https://api.onswitch.xyz"),
+  // Asset buyers pay in — "chain:token", e.g. base:usdc, ethereum:usdt, tron:usdt.
+  ONSWITCH_ASSET: z.string().default("base:usdc"),
+
   FEATURE_STABLECOIN_ENABLED: bool(false),
 
   // --- Quai Network + BlipPay crypto rail (buildathon) ---

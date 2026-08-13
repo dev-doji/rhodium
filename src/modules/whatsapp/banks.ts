@@ -1,7 +1,7 @@
 /**
- * Common Nigerian banks + NIP/Paystack bank codes, for the onboarding flow.
- * [VALIDATE] the codes against Paystack's GET /bank before going live — they
- * are used to create the merchant's settlement subaccount.
+ * Common Nigerian banks + NIBSS institution codes (as returned by OnSwitch's
+ * GET /institution?country=NG). These are the codes used to settle the crypto→
+ * naira off-ramp to the merchant's bank, so they must match the provider's list.
  */
 export interface Bank {
   name: string;
@@ -9,16 +9,16 @@ export interface Bank {
 }
 
 export const BANKS: Bank[] = [
-  { name: "Access Bank", code: "044" },
-  { name: "GTBank", code: "058" },
-  { name: "Zenith Bank", code: "057" },
-  { name: "First Bank", code: "011" },
-  { name: "UBA", code: "033" },
-  { name: "Opay", code: "999992" },
-  { name: "PalmPay", code: "999991" },
-  { name: "Kuda", code: "50211" },
-  { name: "Moniepoint", code: "50515" },
-  { name: "Wema Bank", code: "035" },
+  { name: "Access Bank", code: "000014" },
+  { name: "GTBank", code: "000013" },
+  { name: "Zenith Bank", code: "000015" },
+  { name: "First Bank", code: "000016" },
+  { name: "UBA", code: "000004" },
+  { name: "Opay", code: "100004" },
+  { name: "PalmPay", code: "100033" },
+  { name: "Kuda", code: "090267" },
+  { name: "Moniepoint", code: "090405" },
+  { name: "Wema Bank", code: "000017" },
 ];
 
 export function bankMenu(): string {

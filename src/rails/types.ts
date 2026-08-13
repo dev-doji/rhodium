@@ -40,6 +40,11 @@ export interface PaymentInstruction {
   merchantAddress?: string;
   orderIdBytes32?: string; // keccak(orderId) — the contract call arg + event match key
   deepLink?: string; // blip://browser?url=... to open checkout inside BlipPay
+  // off-ramp specifics (OnSwitch): buyer sends stablecoin to a deposit address,
+  // merchant is paid naira to their bank.
+  depositAddress?: string;
+  network?: string; // e.g. "base", "tron"
+  settlesToNaira?: boolean;
 }
 
 /** Normalised result of interpreting a provider webhook. */

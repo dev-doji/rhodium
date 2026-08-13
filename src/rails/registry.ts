@@ -3,6 +3,7 @@ import type { RailId, RailKind } from "../domain/types.js";
 import { MonnifyFiatRail } from "./monnify-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
 import { QuaiRail } from "./quai-rail.js";
+import { OnSwitchRail } from "./onswitch-rail.js";
 import { NotFoundError } from "../lib/errors.js";
 import type { AppConfig } from "../config/index.js";
 
@@ -80,6 +81,17 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
   } else {
     registry.register(new StablecoinRail(cfg.FEATURE_STABLECOIN_ENABLED));
   }
+
+  // Off-ramp rail: OnSwitch (buyer pays stablecoin → merchant paid in naira).
+  registry.register(
+    new OnSwitchRail({
+      mode: cfg.ONSWITCH_ADAPTER_MODE,
+      serviceKey: cfg.ONSWITCH_SERVICE_KEY,
+      baseUrl: cfg.ONSWITCH_BASE_URL,
+      asset: cfg.ONSWITCH_ASSET,
+      callbackUrl: `${cfg.PUBLIC_BASE_URL}/webhooks/rails/onswitch`,
+    }),
+  );
 
   return registry;
 }

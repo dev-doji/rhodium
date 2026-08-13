@@ -168,10 +168,22 @@ export class WhatsAppService {
         const product = await this.repos.products.byId(ids[idx]!);
         data.productId = ids[idx];
         this.convo.set(from, "buy:select_method", data);
-        return `You picked *${product?.name}* (${formatNaira(product?.price ?? 0)}).\n\nHow would you like to pay?\n1) Bank transfer\n2) Crypto (BlipPay)`;
+        return [
+          `You picked *${product?.name}* (${formatNaira(product?.price ?? 0)}).`,
+          "",
+          "How would you like to pay?",
+          "1) Bank transfer",
+          "2) Pay with stablecoin (USDT) — seller receives naira",
+          "3) Pay with QUAI (BlipPay wallet)",
+        ].join("\n");
       }
       case "buy:select_method": {
-        const rail = /^2|crypto|blip/i.test(text.trim()) ? "crypto" : "fiat";
+        const c = text.trim();
+        const orderRef = () => order.id.slice(-6).toUpperCase();
+        // 2 = OnSwitch off-ramp (crypto → naira), 3 = Quai wallet, else bank.
+        const isOfframp = /^2|usdt|usdc|stable|naira/i.test(c);
+        const isQuai = /^3|quai|blip/i.test(c);
+        const rail = isOfframp || isQuai ? "crypto" : "fiat";
         const order = await this.commerce.createOrder({
           merchantId: String(data.merchantId),
           buyerRef: from,
@@ -179,28 +191,40 @@ export class WhatsAppService {
           ttlMs: 60 * 60 * 1000,
           rail,
         });
-        const instruction = await this.payments.requestPayment(order.id);
         this.convo.clear(from);
-        const orderRef = order.id.slice(-6).toUpperCase();
-        if (rail === "crypto") {
+
+        if (isOfframp) {
+          const inst = await this.payments.requestPayment(order.id, "onswitch");
           return [
-            `Pay for order ${orderRef}`,
-            `Amount: ${formatNaira(order.amount)} (≈ ${humanCrypto(instruction.cryptoAmount, instruction.tokenSymbol)})`,
+            `Pay for order ${orderRef()}`,
+            `Send *${inst.cryptoAmount} ${inst.tokenSymbol}* on *${inst.network}* to:`,
+            `${inst.depositAddress}`,
+            "",
+            `The seller receives ${formatNaira(order.amount)} in their bank automatically.`,
+            "You'll get a receipt here once it settles.",
+          ].join("\n");
+        }
+        if (isQuai) {
+          const inst = await this.payments.requestPayment(order.id);
+          return [
+            `Pay for order ${orderRef()}`,
+            `Amount: ${formatNaira(order.amount)} (≈ ${humanCrypto(inst.cryptoAmount, inst.tokenSymbol)})`,
             "",
             "Tap to pay (opens BlipPay):",
-            `${instruction.checkoutUrl}`,
+            `${inst.checkoutUrl}`,
             "",
             "You'll get a receipt here once it confirms on-chain.",
           ].join("\n");
         }
+        const inst = await this.payments.requestPayment(order.id);
         return [
-          `Pay for order ${orderRef}`,
+          `Pay for order ${orderRef()}`,
           `Amount: ${formatNaira(order.amount)}`,
           "",
           "Transfer to:",
-          `🏦 ${instruction.bankName}`,
-          `#️⃣ ${instruction.accountNumber}`,
-          `👤 ${instruction.accountName}`,
+          `🏦 ${inst.bankName}`,
+          `#️⃣ ${inst.accountNumber}`,
+          `👤 ${inst.accountName}`,
           "",
           "You'll get a receipt here the moment it lands.",
         ].join("\n");
