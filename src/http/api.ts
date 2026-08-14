@@ -13,6 +13,9 @@ import type { RailId } from "../domain/types.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
 
+/** Process start time — lets /health show whether a deploy actually restarted. */
+const STARTED_AT = new Date().toISOString();
+
 /**
  * HTTP surface (§2.1): the two ingress points are (a) provider + WhatsApp
  * webhooks and (b) the merchant dashboard API. Auth is phone-OTP → bearer token.
@@ -30,8 +33,16 @@ export function buildApi(app: App): Express {
     withTrace(traceId, () => next());
   });
 
+  // `commit` answers "did my deploy actually go out?" without needing the admin
+  // token — Render injects RENDER_GIT_COMMIT, and a zero-downtime rollout is
+  // otherwise invisible from the outside (health stays 200 the whole time).
   server.get("/health", (_req, res) => {
-    res.json({ ok: true, ts: new Date().toISOString() });
+    res.json({
+      ok: true,
+      ts: new Date().toISOString(),
+      commit: (process.env.RENDER_GIT_COMMIT ?? "local").slice(0, 7),
+      startedAt: STARTED_AT,
+    });
   });
 
   // Prometheus-ish metrics incl. WhatsApp conversation cost (§2.5, §4).
