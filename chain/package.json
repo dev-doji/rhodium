@@ -5,7 +5,8 @@
   "description": "RhodiumPay contract — Hardhat project for Quai Orchard testnet.",
   "scripts": {
     "compile": "hardhat compile",
-    "deploy": "node scripts/deploy.cjs"
+    "deploy": "node scripts/deploy.cjs",
+    "pay": "node scripts/pay.cjs"
   },
   "devDependencies": {
     "hardhat": "^2.22.0"

@@ -25,6 +25,31 @@ describe("WhatsApp merchant flow", () => {
     expect(merchant!.status).toBe("active");
   });
 
+  it("greets a first-time sender with the services, then asks for the business name", async () => {
+    const app = makeApp();
+    const greeting = await app.whatsapp.handleInbound({ from: "+2348011122255", text: "hello" });
+    expect(greeting).toMatch(/we're \*rhodium\*/i);
+    for (const command of ["list", "add", "link", "sell", "ledger"]) {
+      expect(greeting).toContain(command);
+    }
+    // The sign-up question must come last — it's what they reply to.
+    expect(greeting.trimEnd().endsWith("What's your *business name*?")).toBe(true);
+  });
+
+  it("does not let a command word become the business name", async () => {
+    const app = makeApp();
+    const phone = "+2348011122266";
+    await app.whatsapp.handleInbound({ from: phone, text: "hello" });
+    // The greeting lists the commands, so people type one back reflexively.
+    const bounced = await app.whatsapp.handleInbound({ from: phone, text: "menu" });
+    expect(bounced).toMatch(/business name/i);
+    expect(await app.repos.merchants.byPhone(phone)).toBeNull();
+    // …and a real name still works straight after.
+    await app.whatsapp.handleInbound({ from: phone, text: "Menu Masters" });
+    const acct = await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    expect(acct).toMatch(/which bank/i);
+  });
+
   it("rejects a bad account number during onboarding", async () => {
     const app = makeApp();
     const phone = "+2348011122244";
@@ -61,7 +86,12 @@ describe("WhatsApp merchant flow", () => {
     const app = makeApp();
     const merchant = await seedMerchant(app);
     const reply = await app.whatsapp.handleInbound({ from: merchant.phone, text: "asdf" });
-    expect(reply).toMatch(/commands/i);
+    // Assert the *behaviour* — it admits it didn't understand and offers the menu —
+    // rather than a word in the copy, which made this fail on every reword.
+    expect(reply).toMatch(/didn't get that/i);
+    for (const command of ["list", "add", "link", "sell", "ledger"]) {
+      expect(reply).toContain(command);
+    }
   });
 
   it("gives the vendor a shareable shop link", async () => {

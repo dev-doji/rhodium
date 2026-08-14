@@ -9,4 +9,6 @@ dashboard/dist
 chain/node_modules
 chain/artifacts
 chain/cache
+# The landing site is a separate deploy — it never belongs in the API image.
+apps
 *.log

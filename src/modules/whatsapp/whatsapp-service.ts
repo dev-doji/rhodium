@@ -13,6 +13,24 @@ import { AppError } from "../../lib/errors.js";
 
 const log = logger("whatsapp-service");
 
+/** Every word `vendorCommand` dispatches on — kept in sync with that switch. */
+const COMMAND_WORDS = new Set([
+  "help",
+  "hi",
+  "hello",
+  "menu",
+  "list",
+  "add",
+  "sell",
+  "link",
+  "myshop",
+  "shop",
+  "ledger",
+  "sales",
+  "balance",
+  "books",
+]);
+
 export interface InboundMessage {
   from: string; // sender WA id (phone, E.164)
   text: string;
@@ -89,15 +107,27 @@ export class WhatsAppService {
   // ---------------------------------------------------------------------------
   // Vendor onboarding (guided)
   // ---------------------------------------------------------------------------
+  /**
+   * First contact (e.g. someone opening the wa.me link from the landing page).
+   * Greeting → what they get → the ask. The service list is shown up front so a
+   * brand-new vendor can see what they're signing up for before answering, but
+   * the sign-up question stays last so it's the thing they reply to.
+   */
   private startOnboarding(from: string): string {
     this.convo.set(from, "onboard:business_name", {});
     return [
       "Hello 👋 We're *Rhodium*.",
       "We help you sell and collect payments right here in WhatsApp — by bank transfer or crypto — and keep your sales records automatically.",
       "",
+      "*Here's what you'll be able to do:*",
+      "• *list* / *add* — build your product catalogue",
+      "• *link* — share a shop link buyers can order from",
+      "• *sell* — charge a buyer by bank transfer or crypto",
+      "• *ledger* — every sale, with a running balance",
+      "",
       "Let's set up your business (takes 30 seconds).",
       "",
-      "What's your *business name*?",
+      "👉 What's your *business name*?",
     ].join("\n");
   }
 
@@ -110,6 +140,15 @@ export class WhatsAppService {
     switch (step) {
       case "onboard:business_name": {
         if (text.length < 2) return "Please tell me your business name.";
+        // The greeting lists the commands, so people reflexively type one back.
+        // Without this, "menu" would silently become their business name.
+        if (COMMAND_WORDS.has(text.toLowerCase())) {
+          return [
+            `*${text}* is one of my commands — you'll be able to use it once you're set up.`,
+            "",
+            "👉 First, what's your *business name*?",
+          ].join("\n");
+        }
         data.businessName = text;
         this.convo.set(from, "onboard:account_number", data);
         return `Nice to meet you, *${text}*! 🎉\n\nWhich bank account should we settle your money into?\nSend your *10-digit account number*.`;
@@ -292,15 +331,31 @@ export class WhatsAppService {
     }
   }
 
+  /**
+   * WhatsApp only understands *bold*, _italic_, ~strike~ and ```mono``` — single
+   * backticks render literally, so commands are bolded rather than code-quoted.
+   * Grouped under headings because a flat six-line list reads as a wall of text
+   * on a phone.
+   */
   private menu(): string {
     return [
-      "🛍️ *Rhodium commands:*",
-      "• *list* — see your products",
-      "• *add <name> <price>* — e.g. add Lipstick 5000",
-      "• *link* — your shareable shop link for buyers",
-      "• *sell <productId> <qty> <buyerPhone>* — bank-transfer payment",
-      "• *sell <productId> <qty> <buyerPhone> crypto* — BlipPay/Quai payment",
-      "• *ledger* — your sales + running balance",
+      "🛍️ *Rhodium* — here's what I can do 👇",
+      "",
+      "*📦 Your products*",
+      "• *list* — everything you're selling",
+      "• *add <name> <price>* — _add Lipstick 5000_",
+      "",
+      "*🔗 Get buyers*",
+      "• *link* — your shareable shop link",
+      "",
+      "*💳 Take a payment*",
+      "• *sell <productId> <qty> <buyerPhone>*",
+      "   ↳ add *crypto* on the end for BlipPay/Quai",
+      "",
+      "*📒 Your money*",
+      "• *ledger* — sales + running balance",
+      "",
+      "_Send *menu* anytime to see this again._",
     ].join("\n");
   }
 

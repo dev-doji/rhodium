@@ -19,6 +19,30 @@ thin React dashboard, reconciliation, and a full test suite.
 
 ---
 
+## Repo layout (npm workspaces)
+
+The repo is a monorepo. The API stays at the root — every deploy path
+(`Dockerfile`, `render.yaml`, CI) is unchanged — and the other packages are
+declared as workspaces alongside it:
+
+| Package | Path | What it is |
+|---------|------|------------|
+| `rhodium` | `.` (root) | the API / modular monolith |
+| `rhodium-dashboard` | `dashboard/` | merchant React SPA (Vite) |
+| `rhodium-chain` | `chain/` | `RhodiumPay` contract (Hardhat) |
+| `rhodium-landing` | `apps/landing/` | public landing page (Next.js + Tailwind) |
+
+Each package installs and builds independently — add new ones under `apps/`:
+
+```bash
+npm run landing:install && npm run landing:dev    # landing page on :3001
+npm run dashboard:install && npm run dashboard:build
+```
+
+> **Note:** the API's own installs pin `--workspaces=false` (see `Dockerfile`,
+> `render.yaml`, `.github/workflows/ci.yml`) so the server image and CI never
+> pull in Next.js or Hardhat. Keep that flag if you touch those commands.
+
 ## Quick start
 
 ```bash

@@ -39,8 +39,20 @@ async function main(): Promise<void> {
         "approved template instead of a free-form text.",
     );
   }
-  console.log(`✓ Sent. WhatsApp message id: ${res.ref}`);
-  console.log("Check the recipient's phone — the message should arrive within seconds.");
+  // A message id means Meta ACCEPTED the send, NOT that it was delivered. The
+  // most common silent failure: WhatsApp only allows free-form text inside the
+  // 24-hour customer service window, which opens when the CUSTOMER messages the
+  // business. Outside it you need an approved template. Meta still returns HTTP
+  // 200 + a wamid, then drops the message asynchronously (error 131047) — the
+  // failure only ever shows up on the status webhook, never in this response.
+  // So don't claim delivery here; say what we actually know.
+  console.log(`✓ Accepted by Meta. Message id: ${res.ref}`);
+  console.log(
+    "\nNOTE: 'accepted' is not 'delivered'. If it never arrives, the 24-hour\n" +
+      "session window is almost certainly closed. Message the bot from that\n" +
+      `phone first (that opens the window), then re-run this. Business-initiated\n` +
+      "sends outside the window need an approved template.",
+  );
 }
 
 main().catch((err) => {

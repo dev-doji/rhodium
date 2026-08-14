@@ -30,7 +30,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --workspaces=false: this job only tests the API. Without it npm would
+      # also install the dashboard, chain and landing workspaces.
+      - run: npm ci --workspaces=false
       - run: npm run prisma:generate
       - run: npm run prisma:migrate
       - run: npm run typecheck

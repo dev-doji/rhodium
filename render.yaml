@@ -7,8 +7,10 @@ services:
     plan: free
     # NODE_ENV=production is set during build, so force dev deps (tsc, vite) with
     # --include=dev on BOTH installs, else the builds can't find their tools.
+    # --workspaces=false: this service is the API only; the landing site and
+    # chain workspaces are deployed separately.
     buildCommand: >-
-      npm install --include=dev &&
+      npm install --include=dev --workspaces=false &&
       npm run prisma:generate &&
       npm --prefix dashboard install --include=dev &&
       npm --prefix dashboard run build &&
@@ -48,7 +50,10 @@ services:
       - key: WHATSAPP_VERIFY_TOKEN
         value: rhodium-verify
       - key: WHATSAPP_WA_NUMBER   # bot's wa.me digits, for buyer shop links
-        value: "15551405536"
+        # Real Fonio Labs number (+234 803 680 3974). Was the Meta test number
+        # 15551405536, which is no longer attached to the WABA — buyer shop
+        # links pointing at it go nowhere.
+        value: "2348036803974"
       - key: MONNIFY_BASE_URL
         value: https://sandbox.monnify.com
       - key: FIAT_ADAPTER_MODE

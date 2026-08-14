@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y openssl ca-certificates \
 WORKDIR /app
 
 # Install root deps (incl dev, needed to build + run migrations).
+# --workspaces=false keeps the landing/chain workspaces out of the server image.
 COPY package*.json ./
-RUN npm install --include=dev
+RUN npm install --include=dev --workspaces=false
 
 # Dashboard deps (separate workspace).
 COPY dashboard/package*.json ./dashboard/

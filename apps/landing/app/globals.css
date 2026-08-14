@@ -30,7 +30,6 @@
   --color-ink: #05061a; /* near-black band (pricing) */
   --color-panel: #04123f; /* deep blue band (features, CTA, footer) */
   --color-panel-soft: #0a2160; /* cards inside the deep blue band */
-  --color-canvas: #eceef2; /* page gutter behind the rounded shell */
 
   --radius-4xl: 2rem;
 }
@@ -40,7 +39,7 @@ html {
 }
 
 body {
-  background-color: var(--color-canvas);
+  background-color: #fff;
   -webkit-font-smoothing: antialiased;
 }
 

@@ -7,7 +7,7 @@
 
 /** wa.me digits for the Rhodium bot. Mirrors WHATSAPP_WA_NUMBER in render.yaml. */
 const WHATSAPP_NUMBER =
-  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "15551405536";
+  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "2348036803974";
 
 const WHATSAPP_GREETING = "Hi Rhodium — I want to start selling on WhatsApp.";
 
@@ -165,16 +165,14 @@ export const enterprisePlan = {
   cta: "Talk to us on WhatsApp",
 } as const;
 
+/** `mark` keys map to the logo marks in `components/logos.tsx`. */
 export const integrations = [
-  { name: "WhatsApp", note: "Cloud API" },
-  { name: "Quai", note: "Network" },
-  { name: "BlipPay", note: "Wallet" },
-  { name: "Monnify", note: "Bank rail" },
-  { name: "USDT", note: "Stable value" },
-  { name: "Postgres", note: "Ledger" },
-  { name: "Prisma", note: "Data layer" },
-  { name: "NDPR", note: "Compliance" },
-  { name: "CSV", note: "Export" },
+  { name: "WhatsApp", note: "Cloud API", mark: "whatsapp" },
+  { name: "Quai", note: "Network", mark: "quai" },
+  { name: "BlipPay", note: "Wallet", mark: "blippay" },
+  { name: "Monnify", note: "Bank rail", mark: "monnify" },
+  { name: "USDT", note: "Stable value", mark: "usdt" },
+  { name: "NDPR", note: "Compliance", mark: "ndpr" },
 ] as const;
 
 export const footerColumns = [
