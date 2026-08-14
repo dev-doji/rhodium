@@ -5,60 +5,125 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Rhodium · Live Traction</title>
   <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, sans-serif; background:#0b0e13; color:#e8eaed; padding:28px; }
-    h1 { font-size:22px; margin:0 0 2px; }
-    .sub { color:#7c8798; margin-bottom:24px; font-size:14px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:26px; }
-    .tile { background:#141a23; border:1px solid #232b38; border-radius:14px; padding:18px; }
-    .tile .label { color:#8b95a5; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
-    .tile .value { font-size:30px; font-weight:800; margin-top:8px; letter-spacing:-.02em; }
-    .split { display:flex; gap:8px; margin-top:10px; }
-    .pill { font-size:12px; padding:3px 10px; border-radius:999px; }
-    .pill.fiat { background:#1b2a4a; color:#8fb6ff; }
-    .pill.crypto { background:#14351f; color:#7ee6a6; }
+    /* Matches the merchant dashboard: cream canvas, Rhodium blue + coral, icon
+       tiles. Kept as one self-contained file — this page is served straight from
+       /public and has no build step. */
+    :root {
+      --brand:#0033e7; --coral:#ff3131; --ink:#14150f; --muted:#5c5f55; --faint:#8b8e83;
+      --paper:#f6f4ef; --card:#eae7dc; --line:#e2ded2; --white:#fff;
+      --ok:#2f6b46; --ok-bg:#dbeee1; --blue-bg:#e2e8fd; --blue-fg:#1d3fbe;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; background:var(--paper); color:var(--ink);
+      font-family:"Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+    .num { font-variant-numeric:tabular-nums; }
+    .nav { display:flex; align-items:center; gap:10px; padding:18px 32px; }
+    .nav a.home { display:flex; align-items:center; gap:9px; text-decoration:none; color:inherit; }
+    .nav svg.mark { width:22px; height:22px; color:var(--brand); }
+    .nav .name { font-size:17px; font-weight:800; letter-spacing:-.03em; }
+    .spacer { flex:1; }
+    .live { display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--ok); }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); animation:pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    .head { padding:8px 32px 24px; }
+    h1 { font-size:30px; font-weight:700; letter-spacing:-.035em; margin:0; }
+    .sub { color:var(--faint); font-size:13px; margin-top:4px; }
+
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:16px; padding:0 32px 26px; }
+    .tile { background:var(--card); border-radius:14px; padding:18px; }
+    .tile .top { display:flex; align-items:flex-start; }
+    .ico { width:38px; height:38px; border-radius:10px; display:grid; place-items:center; color:#fff; }
+    .ico.dark{background:var(--ink)} .ico.brand{background:var(--brand)}
+    .ico.green{background:#6f8f70} .ico.coral{background:var(--coral)}
+    .tile .label { font-size:13px; color:var(--muted); margin-top:22px; }
+    .tile .value { font-size:27px; font-weight:700; letter-spacing:-.03em; margin-top:3px; }
+
+    .panel { background:var(--white); border-radius:18px 18px 0 0; padding:22px 32px 40px; min-height:50vh; }
+    .panel h2 { font-size:15px; font-weight:700; margin:0 0 14px; }
     table { width:100%; border-collapse:collapse; }
-    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #1e2530; font-size:14px; }
-    th { color:#8b95a5; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
-    .rail { font-size:12px; padding:2px 8px; border-radius:999px; }
-    .rail.crypto { background:#14351f; color:#7ee6a6; }
-    .rail.fiat { background:#1b2a4a; color:#8fb6ff; }
-    .live { display:inline-flex; align-items:center; gap:6px; color:#57d38c; font-size:12px; }
-    .dot { width:8px; height:8px; border-radius:50%; background:#57d38c; animation:pulse 1.4s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    th { text-align:left; font-size:12px; font-weight:600; color:var(--faint); padding:10px 12px; border-bottom:1px solid #eee9df; }
+    td { padding:13px 12px; border-bottom:1px solid #f2eee5; font-size:14px; }
+    .right { text-align:right; }
+    .pill { display:inline-block; font-size:12px; font-weight:600; padding:4px 11px; border-radius:999px; }
+    .pill.crypto { background:var(--ok-bg); color:var(--ok); }
+    .pill.fiat { background:var(--blue-bg); color:var(--blue-fg); }
+    .avatar { width:32px;height:32px;border-radius:50%;background:linear-gradient(140deg,var(--brand),#4f74f4);
+              color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800; }
+    .who { display:flex; align-items:center; gap:10px; }
+    .empty { padding:50px 0; text-align:center; color:var(--faint); font-size:14px; }
+    @media (max-width:620px){ .nav,.head,.grid{padding-left:16px;padding-right:16px} .panel{padding:18px 16px 30px} }
   </style>
 </head>
 <body>
-  <h1>Rhodium — Live Sales Traction</h1>
-  <div class="sub">WhatsApp merchant commerce · bank transfer + Quai/BlipPay crypto · <span class="live"><span class="dot"></span>updating live</span></div>
+  <nav class="nav">
+    <a class="home" href="/">
+      <svg class="mark" viewBox="82 83 211 211" role="img" aria-label="Rhodium">
+        <path fill="currentColor" d="M207.7 209.9v-41.4h-41.4v-41.4h-41.4v124.2h124.2v-41.4z"/>
+        <path fill="currentColor" d="M84.8 85.7h41.3v41.3H84.8z"/>
+        <path fill="currentColor" d="M248.9 248h41.3v41.3h-41.3z"/>
+        <path fill="#ff3131" d="M248.9 85.7h41.3v41.3h-41.3z"/>
+      </svg>
+      <span class="name">Rhodium</span>
+    </a>
+    <div class="spacer"></div>
+    <span class="live"><span class="dot"></span>Updating live</span>
+  </nav>
+
+  <div class="head">
+    <h1>Live traction</h1>
+    <div class="sub">WhatsApp merchant commerce · bank transfer + Quai/BlipPay crypto</div>
+  </div>
 
   <div class="grid" id="tiles"></div>
 
-  <h2 style="font-size:16px;">Recent purchases</h2>
-  <table>
-    <thead><tr><th>Time</th><th>Order</th><th>Rail</th><th>Amount</th></tr></thead>
-    <tbody id="recent"></tbody>
-  </table>
+  <div class="panel">
+    <h2>Recent purchases</h2>
+    <table>
+      <thead><tr><th>Order</th><th>Time</th><th>Rail</th><th class="right">Amount</th></tr></thead>
+      <tbody id="recent"></tbody>
+    </table>
+  </div>
 
   <script>
+    const ICONS = {
+      gmv:  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/><circle cx="16.5" cy="13" r="1.2" fill="currentColor" stroke="none"/></svg>',
+      sales:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg>',
+      buyers:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3.5"/><path d="M21 20v-2a4 4 0 0 0-3-3.9"/></svg>',
+      shops:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 9l1.5-5h13L20 9"/><path d="M9 21v-6h6v6"/></svg>',
+    };
+    const initials = (s) => (s || "").slice(-2).toUpperCase();
+
     async function tick() {
       try {
         const t = await (await fetch("/api/traction")).json();
         document.getElementById("tiles").innerHTML = `
-          <div class="tile"><div class="label">GMV</div><div class="value">${t.gmvFormatted}</div></div>
-          <div class="tile"><div class="label">Sales</div><div class="value">${t.salesCount}</div></div>
-          <div class="tile"><div class="label">Unique buyers</div><div class="value">${t.uniqueBuyers}</div></div>
-          <div class="tile"><div class="label">Merchants</div><div class="value">${t.merchantsTransacting}</div></div>
-          <div class="tile"><div class="label">Rail split</div><div class="value" style="font-size:18px">
-            <div class="split"><span class="pill fiat">bank ${t.railSplit.fiat}</span><span class="pill crypto">crypto ${t.railSplit.crypto}</span></div>
-          </div></div>`;
+          <div class="tile"><div class="top"><div class="ico dark">${ICONS.gmv}</div></div>
+            <div class="label">Gross merchandise value</div><div class="value num">${t.gmvFormatted}</div></div>
+          <div class="tile"><div class="top"><div class="ico green">${ICONS.sales}</div></div>
+            <div class="label">Sales</div><div class="value num">${t.salesCount}</div></div>
+          <div class="tile"><div class="top"><div class="ico brand">${ICONS.buyers}</div></div>
+            <div class="label">Unique buyers</div><div class="value num">${t.uniqueBuyers}</div></div>
+          <div class="tile"><div class="top"><div class="ico coral">${ICONS.shops}</div></div>
+            <div class="label">Merchants transacting</div><div class="value num">${t.merchantsTransacting}</div></div>
+          <div class="tile"><div class="top"><div class="ico dark">${ICONS.sales}</div></div>
+            <div class="label">Rail split</div>
+            <div class="value" style="font-size:15px;display:flex;gap:7px;margin-top:8px">
+              <span class="pill fiat">bank ${t.railSplit.fiat}</span>
+              <span class="pill crypto">crypto ${t.railSplit.crypto}</span>
+            </div></div>`;
         document.getElementById("recent").innerHTML = t.recent.map((r) => `
-          <tr><td>${new Date(r.at).toLocaleTimeString()}</td>
-              <td>${r.orderId.slice(-6).toUpperCase()}</td>
-              <td><span class="rail ${r.rail}">${r.rail}</span></td>
-              <td>${r.amountFormatted}</td></tr>`).join("") ||
-          `<tr><td colspan="4" style="color:#7c8798">No sales yet — make a purchase to see it here.</td></tr>`;
+          <tr>
+            <td><div class="who"><div class="avatar">${initials(r.orderId)}</div>
+              <span style="font-weight:600">#${r.orderId.slice(-6).toUpperCase()}</span></div></td>
+            <td class="num" style="color:var(--muted)">${new Date(r.at).toLocaleTimeString()}</td>
+            <td><span class="pill ${r.rail}">${r.rail === "crypto" ? "Crypto" : "Bank transfer"}</span></td>
+            <td class="right num" style="font-weight:600">${r.amountFormatted}</td>
+          </tr>`).join("") ||
+          `<tr><td colspan="4"><div class="empty">No sales yet — make a purchase to see it here.</div></td></tr>`;
       } catch (e) { /* keep polling */ }
     }
     tick();
