@@ -50,9 +50,12 @@
     .acct { border:1px dashed #9fd8b6; background:#f1faf4; border-radius:14px;
             padding:18px; text-align:center; margin-bottom:14px; }
     .acct-bank { font-size:12px; font-weight:700; color:#2f6b46; text-transform:uppercase; letter-spacing:.05em; }
+    /* This card is a LIGHT panel on a dark page, so it must set its own text
+       colour — inheriting the page's near-white made the account number, the
+       one thing the buyer needs, almost invisible against the mint background. */
     .acct-no { font-size:32px; font-weight:800; letter-spacing:.08em; margin:8px 0 4px;
-               font-variant-numeric:tabular-nums; }
-    .acct-name { font-size:13px; opacity:.75; }
+               font-variant-numeric:tabular-nums; color:#0b1a12; }
+    .acct-name { font-size:13px; color:#3c5346; }
     .copybtn { margin-top:12px; width:100%; padding:11px; border:0; border-radius:10px;
                background:#0033e7; color:#fff; font:inherit; font-size:14px; font-weight:600;
                cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; }
