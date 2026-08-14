@@ -78,6 +78,39 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
    Needs `ADMIN_SECRET` = the **`APP_SECRET` from the Render dashboard** — the local
    `.env` one is different and returns 401 (verified).
 
+## NEXT UP — multi-tenant WhatsApp (vendors on their own number)
+
+**Goal.** A buyer messages the *vendor's* WhatsApp Business number, says anything,
+and immediately gets that vendor's catalogue → picks a product → gets a payment
+link → pays → the vendor is notified. Rhodium's own number becomes
+vendor-onboarding only.
+
+**Embedded Signup is configured** (application under review as of 2026-08-14):
+- app_id `1534245258196461` · config_id `2976386586040947`
+- redirect_uri `https://rhodium-8ocg.onrender.com/oauth/whatsapp/callback`
+- Onboarding type: **Independent Tech Provider** (not Solution Partner — that
+  needs someone else's app id and builds under their umbrella).
+- Blocked on Meta review + Business Verification. Code can be built meanwhile;
+  for the demo, add the vendor number to the existing WABA by hand instead.
+
+**Build order** (start here, cold):
+0. `GET /oauth/whatsapp/callback` — exchange `code` → vendor token, read their
+   WABA id + `phone_number_id`. This supplies the value everything else keys off.
+   Route does not exist yet; the URI 404s today, which is fine for review.
+1. `Merchant.waPhoneNumberId` — Prisma schema + migration + repo lookup by it.
+2. Webhook resolves the merchant from `value.metadata.phone_number_id` —
+   `src/http/api.ts` (~line 85) currently ignores that field entirely.
+3. Routing in `whatsapp-service.ts` `route()`: unknown sender on a vendor's
+   number → THAT vendor's catalogue (today it falls through to vendor
+   onboarding); sender is the vendor → vendor commands.
+4. Transport sends **from** the merchant's `phone_number_id`, falling back to the
+   global one. `cloud-transport.ts` takes a single id from config today — this is
+   the step that touches the most code.
+5. Tests for both paths, then verify with `npm run demo:whatsapp`.
+
+**Watch out.** There is no phone normalisation anywhere in the codebase, so key
+tenancy off `phone_number_id` (a Meta id), never off a phone string.
+
 ## Gotchas learned (so they don't bite again)
 - **Quai deploy hang:** `quais` `usePathing` defaults **true** and appends `/prime` for shard discovery; a URL already ending in `/cyprus1` becomes `…/cyprus1/prime` → 404 → every call hangs. Fix: pass the **base** RPC (strip the shard) + a **static network**; pin reads to `Shard.Cyprus1`. Deploy also needs an **IPFS metadata hash** (`ipfs-only-hash`) as the 4th `ContractFactory` arg.
 - **~~Agent sandbox blocks the `quais` HTTP client~~ — WRONG, ignore this.** The SDK
