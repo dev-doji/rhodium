@@ -66,6 +66,22 @@ services:
         value: native
       # PUBLIC_BASE_URL auto-resolves from RENDER_EXTERNAL_URL (see config).
 
+  # Marketing site. next.config.ts sets output:"export", so this is plain static
+  # HTML — a free Render static site, no Node runtime. Every CTA on it is a
+  # wa.me deep link to the bot, so the number below is the whole point of it.
+  - type: web
+    name: rhodium-landing
+    runtime: static
+    rootDir: apps/landing
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./out
+    envVars:
+      # Read at BUILD time by lib/site.ts. It falls back to the same number in
+      # code, so a missing var degrades to correct rather than broken — but set
+      # it explicitly so changing the bot number is a one-line config change.
+      - key: NEXT_PUBLIC_WHATSAPP_NUMBER
+        value: "2348036803974"
+
 databases:
   - name: rhodium-db
     plan: free
