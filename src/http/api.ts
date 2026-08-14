@@ -262,6 +262,47 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // Cleanup test data: purge whole merchants (cascade) and/or specific orders /
+  // products. Postgres-backed (prod). Body: { merchantIds?, orderIds?, productIds? }.
+  server.post(
+    "/admin/cleanup",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      if (!app.config.DATABASE_URL) throw new ValidationError("cleanup requires Postgres");
+      const { merchantIds = [], orderIds = [], productIds = [] } = req.body ?? {};
+      const { prisma } = await import("../db/prisma/client.js");
+      const db = prisma();
+      const summary: Record<string, number> = {};
+
+      if (orderIds.length) {
+        await db.$transaction([
+          db.ledgerEntry.deleteMany({ where: { orderId: { in: orderIds } } }),
+          db.payment.deleteMany({ where: { orderId: { in: orderIds } } }),
+          db.order.deleteMany({ where: { id: { in: orderIds } } }),
+        ]);
+        summary.orders = orderIds.length;
+      }
+      if (productIds.length) {
+        await db.product.deleteMany({ where: { id: { in: productIds } } });
+        summary.products = productIds.length;
+      }
+      for (const mid of merchantIds) {
+        const os = await db.order.findMany({ where: { merchantId: mid }, select: { id: true } });
+        const oids = os.map((o) => o.id);
+        await db.$transaction([
+          db.ledgerEntry.deleteMany({ where: { merchantId: mid } }),
+          db.payment.deleteMany({ where: { orderId: { in: oids } } }),
+          db.order.deleteMany({ where: { merchantId: mid } }),
+          db.product.deleteMany({ where: { merchantId: mid } }),
+          db.buyer.deleteMany({ where: { merchantId: mid } }),
+          db.merchant.delete({ where: { id: mid } }),
+        ]);
+      }
+      summary.merchants = merchantIds.length;
+      res.json({ ok: true, ...summary });
+    }),
+  );
+
   // Backfill an embedded Quai wallet for an existing merchant (e.g. one seeded
   // before the wallet feature). Returns the address only — secrets stay in the vault.
   server.post(
@@ -360,14 +401,18 @@ export function buildApi(app: App): Express {
     "/api/orders",
     guard,
     asyncRoute(async (req: AuthedRequest, res) => {
-      const { buyerPhone, lines } = req.body ?? {};
+      const { buyerPhone, lines, rail, railId } = req.body ?? {};
       const order = await app.commerce.createOrder({
         merchantId: req.merchantId!,
         buyerRef: String(buyerPhone),
         lines,
         ttlMs: 60 * 60 * 1000,
+        rail: rail === "crypto" ? "crypto" : "fiat",
       });
-      const instruction = await app.payments.requestPayment(order.id);
+      const instruction = await app.payments.requestPayment(
+        order.id,
+        railId as RailId | undefined,
+      );
       res.status(201).json({ order, instruction });
     }),
   );
