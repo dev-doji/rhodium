@@ -27,9 +27,21 @@ export class NotificationService {
   }): Promise<void> {
     const merchant = await this.repos.merchants.byId(input.merchantId);
     if (!merchant) return;
-    const msg =
-      `✅ Payment received: ${formatNaira(input.amount)} for order ` +
-      `${short(input.orderId)}. It's in your ledger.`;
+    // A bare "payment received for order 804DC5" makes the vendor go and look
+    // up what they just sold. Name the item and the buyer so the message is
+    // the whole story.
+    const { lines, buyer } = await this.describeOrder(input.orderId);
+    const balance = await this.repos.ledger.balance(input.merchantId).catch(() => null);
+    const msg = [
+      `✅ *You've been paid ${formatNaira(input.amount)}*`,
+      ...(lines.length ? ["", ...lines.map((l) => `• ${l}`)] : []),
+      ...(buyer ? [`Buyer: ${buyer}`] : []),
+      "",
+      `Order ${short(input.orderId)} · settled to your account`,
+      ...(balance != null ? [`Balance: *${formatNaira(balance)}*`] : []),
+      "",
+      "Type *ledger* to see your books.",
+    ].join("\n");
     await this.deliver(merchant.phone, msg, "merchant_confirmation");
   }
 
@@ -43,10 +55,52 @@ export class NotificationService {
     const buyer = await this.repos.buyers.byId(input.buyerRef);
     const to = buyer?.phoneOrRef ?? input.buyerRef;
     const biz = merchant?.businessName ?? "the merchant";
-    const msg =
-      `🧾 Receipt from ${biz}\nOrder ${short(input.orderId)}\n` +
-      `Amount paid: ${formatNaira(input.amount)}\nThank you!`;
+    const { lines } = await this.describeOrder(input.orderId);
+    const msg = [
+      `🧾 *Receipt from ${biz}*`,
+      ...(lines.length ? ["", ...lines.map((l) => `• ${l}`)] : []),
+      "",
+      `Total paid: *${formatNaira(input.amount)}*`,
+      `Order ${short(input.orderId)}`,
+      "",
+      "Thank you for shopping with us! 💚",
+    ].join("\n");
     await this.deliver(to, msg, "buyer_receipt");
+  }
+
+  /**
+   * Resolve an order into human line items ("2 × Red Lipstick — ₦10,000.00").
+   * Best-effort: a missing product must never stop a receipt going out, so
+   * every lookup degrades to an empty list rather than throwing.
+   */
+  private async describeOrder(
+    orderId: string,
+  ): Promise<{ lines: string[]; buyer: string | null }> {
+    try {
+      const order = await this.repos.orders.byId(orderId);
+      if (!order) return { lines: [], buyer: null };
+      const lines: string[] = [];
+      for (const item of order.items) {
+        const product = await this.repos.products.byId(item.productId).catch(() => null);
+        const name = product?.name ?? "Item";
+        lines.push(
+          item.qty > 1
+            ? `${item.qty} × ${name} — ${formatNaira(item.qty * (product?.price ?? 0))}`
+            : `${name} — ${formatNaira(product?.price ?? 0)}`,
+        );
+      }
+      // buyerRef may be a buyer id OR a raw phone depending on how the order was
+      // created. Resolve ids to a phone — a vendor shown "buy_8f7e082a-…" learns
+      // nothing about who just bought from them.
+      let buyer: string | null = order.buyerRef || null;
+      if (buyer?.startsWith("buy_")) {
+        const record = await this.repos.buyers.byId(buyer).catch(() => null);
+        buyer = record?.phoneOrRef ?? null;
+      }
+      return { lines, buyer };
+    } catch {
+      return { lines: [], buyer: null };
+    }
   }
 
   /** Try channels in priority order; first success wins. */

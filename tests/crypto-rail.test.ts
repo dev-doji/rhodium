@@ -75,8 +75,11 @@ describe("Quai/BlipPay crypto rail — WhatsApp merchant accepts crypto, books i
     expect(finalOrder!.status).toBe("paid");
     expect(entries).toHaveLength(1);
     expect(entries[0]!.amount).toBe(500_000); // naira kobo, not crypto units
-    const bodies = app.channel.sent.map((s) => s.message).join("\n");
-    expect(bodies).toContain("Payment received");
+    // Who was told + the naira amount, rather than the exact wording.
+    const sent = app.channel.sent;
+    const toMerchant = sent.find((s) => s.to === merchant.phone);
+    expect(toMerchant?.message).toContain("₦5,000.00");
+    const bodies = sent.map((s) => s.message).join("\n");
     expect(bodies).toContain("Receipt from");
   });
 

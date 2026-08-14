@@ -30,9 +30,12 @@ describe("the magic moment — sell → pay → confirm → receipt → ledger",
     expect(entries[0]!.balanceAfter).toBe(500_000);
     expect(await app.ledger.balance(merchant.id)).toBe(500_000);
 
-    // Merchant confirmation + buyer receipt were sent.
-    const bodies = app.channel.sent.map((s) => s.message).join("\n");
-    expect(bodies).toContain("Payment received");
+    // Merchant confirmation + buyer receipt were sent. Assert on who was told
+    // and the amount — not the wording, which is copy and gets reworded.
+    const sent = app.channel.sent;
+    const toMerchant = sent.find((s) => s.to === merchant.phone);
+    expect(toMerchant?.message).toContain("₦5,000.00");
+    const bodies = sent.map((s) => s.message).join("\n");
     expect(bodies).toContain("Receipt from");
   });
 

@@ -232,11 +232,19 @@ export class WhatsAppService {
         });
         this.convo.clear(from);
 
+        // Name the item on every instruction — by this point the buyer has sent
+        // two bare numbers, and an order code alone gives them nothing to check
+        // the amount against.
+        const bought = await this.repos.products.byId(String(data.productId)).catch(() => null);
+        const itemName = bought?.name ?? "your order";
+
         if (isOfframp) {
           const inst = await this.payments.requestPayment(order.id, "onswitch");
           return [
-            `Pay for order ${orderRef()}`,
-            `Send *${inst.cryptoAmount} ${inst.tokenSymbol}* on *${inst.network}* to:`,
+            `🧾 *${itemName}* — ${formatNaira(order.amount)}`,
+            `Order ${orderRef()}`,
+            "",
+            `*Send ${inst.cryptoAmount} ${inst.tokenSymbol}* on *${inst.network}* to:`,
             `${inst.depositAddress}`,
             "",
             `The seller receives ${formatNaira(order.amount)} in their bank automatically.`,
@@ -246,24 +254,28 @@ export class WhatsAppService {
         if (isQuai) {
           const inst = await this.payments.requestPayment(order.id);
           return [
-            `Pay for order ${orderRef()}`,
-            `Amount: ${formatNaira(order.amount)} (≈ ${humanCrypto(inst.cryptoAmount, inst.tokenSymbol)})`,
+            `🧾 *${itemName}* — ${formatNaira(order.amount)}`,
+            `Order ${orderRef()} · ≈ ${humanCrypto(inst.cryptoAmount, inst.tokenSymbol)}`,
             "",
-            "Tap to pay (opens BlipPay):",
+            "👉 *Tap to pay:*",
             `${inst.checkoutUrl}`,
             "",
-            "You'll get a receipt here once it confirms on-chain.",
+            "Opens BlipPay / Pelagus. You'll get a receipt here once it",
+            "confirms on-chain.",
           ].join("\n");
         }
         const inst = await this.payments.requestPayment(order.id);
         return [
-          `Pay for order ${orderRef()}`,
-          `Amount: ${formatNaira(order.amount)}`,
+          `🧾 *${itemName}* — ${formatNaira(order.amount)}`,
+          `Order ${orderRef()}`,
           "",
-          "Transfer to:",
+          "*Transfer to this account:*",
           `🏦 ${inst.bankName}`,
-          `#️⃣ ${inst.accountNumber}`,
+          `#️⃣ *${inst.accountNumber}*`,
           `👤 ${inst.accountName}`,
+          "",
+          "This account is for THIS order only — we detect your transfer",
+          "automatically. No screenshot needed.",
           "",
           "You'll get a receipt here the moment it lands.",
         ].join("\n");
