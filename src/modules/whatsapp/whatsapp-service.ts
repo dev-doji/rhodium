@@ -276,6 +276,13 @@ export class WhatsAppService {
           "",
           "This account is for THIS order only — we detect your transfer",
           "automatically. No screenshot needed.",
+          // Built here rather than in the rail: MonnifyConfig has no base URL,
+          // and /checkout/:orderId is a property of the app, not of Monnify.
+          // The page renders the account number with a copy button and flips to
+          // "paid" on its own — better than copying digits from a chat bubble.
+          ...(this.opts.publicBaseUrl
+            ? ["", "👉 *Or open it here:*", `${this.opts.publicBaseUrl}/checkout/${order.id}`]
+            : []),
           "",
           "You'll get a receipt here the moment it lands.",
         ].join("\n");

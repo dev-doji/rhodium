@@ -46,6 +46,22 @@
     .mode.demo { background:#2a2418; color:#e0b968; border:1px solid #5c4a22; }
     .mode svg { width:12px; height:12px; }
     .err { background:#2a1618; border:1px solid #5c2a2e; color:#f0a3a3; padding:12px; border-radius:10px; margin-top:14px; font-size:14px; }
+    /* --- bank transfer --- */
+    .acct { border:1px dashed #9fd8b6; background:#f1faf4; border-radius:14px;
+            padding:18px; text-align:center; margin-bottom:14px; }
+    .acct-bank { font-size:12px; font-weight:700; color:#2f6b46; text-transform:uppercase; letter-spacing:.05em; }
+    .acct-no { font-size:32px; font-weight:800; letter-spacing:.08em; margin:8px 0 4px;
+               font-variant-numeric:tabular-nums; }
+    .acct-name { font-size:13px; opacity:.75; }
+    .copybtn { margin-top:12px; width:100%; padding:11px; border:0; border-radius:10px;
+               background:#0033e7; color:#fff; font:inherit; font-size:14px; font-weight:600;
+               cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; }
+    .copybtn:hover { background:#002bc4; }
+    .waiting { display:flex; align-items:center; justify-content:center; gap:9px;
+               font-size:13px; opacity:.75; padding:14px 0; }
+    .spinner { width:14px; height:14px; border-radius:50%; border:2px solid currentColor;
+               border-top-color:transparent; animation:spin .8s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform:rotate(360deg) } }
   </style>
 </head>
 <body>
@@ -98,9 +114,18 @@
       $("merchant").textContent = merchantName;
       $("orderline").textContent = `Order ${order.id.slice(-6).toUpperCase()}`;
       $("amount").textContent = order.amountFormatted;
-      $("crypto").innerHTML = `${ICON.coin} ≈ ${humanCrypto(instruction)} on Quai`;
 
       if (order.status === "paid") { paid(); return; }
+
+      // A bank order carries a reserved account, not a contract. It used to fall
+      // through to the crypto branch and render an empty page, so the WhatsApp
+      // bot could only ever hand out a link for the QUAI rail.
+      if (instruction.instructionType === "dva" || instruction.accountNumber) {
+        renderBankTransfer(instruction);
+        return;
+      }
+
+      $("crypto").innerHTML = `${ICON.coin} ≈ ${humanCrypto(instruction)} on Quai`;
 
       const contract = (instruction.contractAddress || "").replace(/^(.{6}).+(.{4})$/, "$1…$2");
       $("body").innerHTML = `
@@ -118,6 +143,41 @@
           </span>
         </div>`;
       $("pay").onclick = () => pay(data.quaiMode, instruction);
+    }
+
+    /**
+     * Bank-transfer checkout. The account number IS the payment instrument, so
+     * the job here is to make it trivially copyable and to keep polling until
+     * the Monnify webhook flips the order — the buyer never sends a screenshot.
+     */
+    function renderBankTransfer(inst) {
+      $("crypto").innerHTML = `${ICON.shield} Bank transfer · settles to the merchant`;
+      $("body").innerHTML = `
+        <div class="acct">
+          <div class="acct-bank">${inst.bankName || "Bank"}</div>
+          <div class="acct-no" id="acctno">${inst.accountNumber || "—"}</div>
+          <div class="acct-name">${inst.accountName || ""}</div>
+          <button id="copy" class="copybtn">${ICON.link} Copy account number</button>
+        </div>
+        <div class="rows">
+          <div class="row">${ICON.globe}<span class="k">Amount</span><b>${data.order.amountFormatted}</b></div>
+          <div class="row">${ICON.shield}<span class="k">Settlement</span><b>Merchant's bank · no custody</b></div>
+        </div>
+        <div class="waiting" id="waiting">
+          <span class="spinner"></span> Waiting for your transfer…
+        </div>
+        <div class="hint">This account belongs to <b>this order only</b>, so we detect your
+          transfer automatically — no screenshot needed. Keep this page open; it updates
+          itself, and your receipt arrives on WhatsApp.</div>`;
+
+      $("copy").onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(inst.accountNumber || "");
+          $("copy").innerHTML = `${ICON.check} Copied`;
+          setTimeout(() => { $("copy").innerHTML = `${ICON.link} Copy account number`; }, 1800);
+        } catch { /* clipboard blocked — the number is on screen anyway */ }
+      };
+      pollPaid();
     }
 
     async function pay(quaiMode, instruction) {
