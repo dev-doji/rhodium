@@ -273,6 +273,70 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // Seed believable sales history so a demo merchant's dashboard isn't empty on
+  // stage. Writes through the SAME services the real rails use — commerce for
+  // the order, ledger.recordSale for the entry — so balances, the weekly summary
+  // and CSV export all reconcile exactly as they would for genuine traffic.
+  // Body: { merchantId, count?, days? }. Undo with /admin/cleanup.
+  server.post(
+    "/admin/seed-demo",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const { merchantId, count = 8, days = 14 } = req.body ?? {};
+      if (!merchantId) throw new ValidationError("merchantId required");
+      const merchant = await app.repos.merchants.byId(merchantId);
+      if (!merchant) throw new NotFoundError("merchant", { id: merchantId });
+
+      // Reuse the merchant's catalogue; only invent one if they have none, so a
+      // seeded demo still shows their real products.
+      let products = await app.repos.products.listByMerchant(merchantId);
+      if (products.length === 0) {
+        const catalogue: [string, number][] = [
+          ["Red Lipstick", 5_000],
+          ["Gloss Set", 12_000],
+          ["Lash Kit", 8_500],
+          ["Brow Pencil", 3_500],
+        ];
+        for (const [name, price] of catalogue) {
+          await app.commerce.createProduct({ merchantId, name, price: nairaToKobo(price) });
+        }
+        products = await app.repos.products.listByMerchant(merchantId);
+      }
+
+      const created: string[] = [];
+      for (let i = 0; i < Number(count); i++) {
+        const product = products[i % products.length]!;
+        const qty = 1 + (i % 3);
+        const rail = i % 4 === 3 ? "crypto" : "fiat";
+        const order = await app.commerce.createOrder({
+          merchantId,
+          buyerRef: `+23480${String(10000000 + i * 7919).slice(0, 8)}`,
+          lines: [{ productId: product.id, qty }],
+          rail,
+        });
+        const payment = await app.repos.payments.create({
+          id: ref("pay"),
+          orderId: order.id,
+          railId: rail === "crypto" ? "quai" : "monnify",
+          providerRef: `seed_${order.id.slice(-8)}`,
+          instructionType: rail === "crypto" ? "crypto" : "dva",
+          amount: order.amount,
+          status: "confirmed",
+          confirmedAt: new Date(),
+        });
+        await app.repos.orders.updateStatus(order.id, "paid");
+        await app.ledger.recordSale({
+          merchantId,
+          orderId: order.id,
+          paymentId: payment.id,
+          amount: order.amount,
+        });
+        created.push(order.id);
+      }
+      res.json({ ok: true, merchantId, seeded: created.length, orderIds: created, days });
+    }),
+  );
+
   // Cleanup test data: purge whole merchants (cascade) and/or specific orders /
   // products. Postgres-backed (prod). Body: { merchantIds?, orderIds?, productIds? }.
   server.post(

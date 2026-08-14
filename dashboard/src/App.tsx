@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import "./styles.css";
 import {
   api,
   getToken,
@@ -11,51 +12,98 @@ import {
 
 export function App() {
   const [authed, setAuthed] = useState<boolean>(!!getToken());
-  return authed ? <Dashboard onLogout={() => { setToken(null); setAuthed(false); }} /> : <Login onLogin={() => setAuthed(true)} />;
+  return authed ? (
+    <Dashboard onLogout={() => { setToken(null); setAuthed(false); }} />
+  ) : (
+    <Login onLogin={() => setAuthed(true)} />
+  );
 }
+
+/* ------------------------------------------------------------------ sign-in */
 
 function Login({ onLogin }: { onLogin: () => void }) {
   const [phone, setPhone] = useState("+234");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
+  const send = async () => {
+    setBusy(true);
+    try { await api.requestOtp(phone); setSent(true); setErr(""); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  const verify = async () => {
+    setBusy(true);
+    try { const r = await api.verifyOtp(phone, code); setToken(r.token); onLogin(); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
   return (
-    <Shell>
-      <h1>Rhodium</h1>
-      <p style={{ color: "#667" }}>Merchant sign-in — we text you a 6-digit code.</p>
-      {err && <div style={styles.error}>{err}</div>}
-      {!sent ? (
-        <>
-          <input style={styles.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+2348030000001" />
-          <button style={styles.btn} onClick={async () => {
-            try { await api.requestOtp(phone); setSent(true); setErr(""); }
-            catch (e) { setErr((e as Error).message); }
-          }}>Send code</button>
-        </>
-      ) : (
-        <>
-          <input style={styles.input} value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
-          <button style={styles.btn} onClick={async () => {
-            try { const r = await api.verifyOtp(phone, code); setToken(r.token); onLogin(); }
-            catch (e) { setErr((e as Error).message); }
-          }}>Verify</button>
-          <p style={{ fontSize: 12, color: "#889" }}>
-            (Dev: the code is delivered on the merchant's WhatsApp/SMS channel.)
+    <div className="signin-page">
+      <div className="signin">
+        <div className="signin-card">
+          <div className="brand-mark">R</div>
+          <h1>{sent ? "Enter your code" : "Welcome back"}</h1>
+          <p className="sub">
+            {sent
+              ? `We sent a 6-digit code to ${phone} on WhatsApp.`
+              : "Sign in with the phone number you sell from."}
           </p>
-        </>
-      )}
-    </Shell>
+          {err && <div className="error">{err}</div>}
+          {!sent ? (
+            <div className="stack">
+              <input
+                className="field"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+2348030000001"
+                inputMode="tel"
+                onKeyDown={(e) => e.key === "Enter" && void send()}
+              />
+              <button className="btn block" onClick={() => void send()} disabled={busy}>
+                {busy ? "Sending…" : "Send code"}
+              </button>
+            </div>
+          ) : (
+            <div className="stack">
+              <input
+                className="field num"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="123456"
+                inputMode="numeric"
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && void verify()}
+              />
+              <button className="btn block" onClick={() => void verify()} disabled={busy}>
+                {busy ? "Checking…" : "Verify"}
+              </button>
+              <button className="btn ghost block" onClick={() => { setSent(false); setCode(""); }}>
+                Use a different number
+              </button>
+            </div>
+          )}
+        </div>
+        <p className="hint">Rhodium — sell on WhatsApp, get paid without the screenshot.</p>
+      </div>
+    </div>
   );
 }
 
+/* ----------------------------------------------------------------- dashboard */
+
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [biz, setBiz] = useState("");
+  const [phone, setPhone] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ledger, setLedger] = useState<{ balanceFormatted: string; entries: LedgerEntry[] }>();
-  const [summary, setSummary] = useState<{ message: string }>();
+  const [summary, setSummary] = useState<{ count: number; total: number; message: string }>();
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
     try {
@@ -63,142 +111,300 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         api.me(), api.products(), api.orders(), api.ledger(), api.summary(),
       ]);
       setBiz(me.merchant.businessName);
+      setPhone(me.merchant.phone);
       setProducts(p.products); setOrders(o.orders); setLedger(l); setSummary(s);
+      setErr("");
     } catch (e) { setErr((e as Error).message); }
+    finally { setLoading(false); }
   };
   useEffect(() => { void refresh(); }, []);
 
+  const paidCount = orders.filter((o) => o.status === "paid").length;
+
   return (
-    <Shell wide>
-      <div style={styles.header}>
-        <h1 style={{ margin: 0 }}>{biz || "Dashboard"}</h1>
-        <button style={styles.linkBtn} onClick={onLogout}>Sign out</button>
-      </div>
-      {err && <div style={styles.error}>{err}</div>}
-      {summary && <div style={styles.summary}>📈 {summary.message}</div>}
-      {ledger && (
-        <div style={styles.balance}>
-          Balance <strong>{ledger.balanceFormatted}</strong>
-          <span style={{ float: "right", fontSize: 13 }}>
-            <a href="/api/ledger/export.csv">CSV</a> · <a href="/api/ledger/statement.txt">Statement</a>
-          </span>
+    <>
+      <header className="topbar">
+        <div className="brand-mark">R</div>
+        <div>
+          <div className="biz-name">{biz || (loading ? "Loading…" : "Dashboard")}</div>
+          {phone && <div className="biz-sub">{phone}</div>}
         </div>
-      )}
+        <div className="spacer" />
+        <button className="linkbtn" onClick={() => void refresh()}>Refresh</button>
+        <button className="linkbtn" onClick={onLogout}>Sign out</button>
+      </header>
 
-      <div style={styles.grid}>
-        <Card title="Catalogue">
-          <AddProduct onAdded={refresh} />
-          {products.length === 0 && <Empty>No products yet.</Empty>}
-          {products.map((p) => (
-            <Row key={p.id}>
-              <span>{p.name}</span>
-              <span>{naira(p.price)}{p.stockQty != null ? ` · ${p.stockQty} in stock` : ""}</span>
-            </Row>
-          ))}
-        </Card>
+      <div className="wrap">
+        {err && <div className="error">{err}</div>}
 
-        <Card title="Create payment request">
-          <NewOrder products={products} onCreated={refresh} />
-        </Card>
+        <section className="stats">
+          <div className="stat primary">
+            <div className="stat-label">Balance</div>
+            <div className="stat-value num">{ledger?.balanceFormatted ?? "—"}</div>
+          </div>
+          <div className="stat">
+            <div className="stat-label">Sold this week</div>
+            <div className="stat-value num">{summary ? naira(summary.total) : "—"}</div>
+          </div>
+          <div className="stat">
+            <div className="stat-label">Paid orders</div>
+            <div className="stat-value num">{paidCount}</div>
+          </div>
+          <div className="stat">
+            <div className="stat-label">Products</div>
+            <div className="stat-value num">{products.length}</div>
+          </div>
+        </section>
 
-        <Card title="Orders">
-          {orders.length === 0 && <Empty>No orders yet.</Empty>}
-          {orders.map((o) => (
-            <Row key={o.id}>
-              <span>{o.id.slice(-6).toUpperCase()}</span>
-              <span>{naira(o.amount)} · <Badge status={o.status} /></span>
-            </Row>
-          ))}
-        </Card>
+        <div className="grid">
+          {/* ---- left: the money ---- */}
+          <div>
+            <div className="card">
+              <div className="card-head">
+                <span className="card-title">Sales — last 7 days</span>
+                <div className="spacer" />
+                <a className="linkbtn" href="/api/ledger/export.csv">CSV</a>
+                <a className="linkbtn" href="/api/ledger/statement.txt">Statement</a>
+              </div>
+              <div className="card-body pad">
+                <SalesChart entries={ledger?.entries ?? []} />
+              </div>
+            </div>
 
-        <Card title="Ledger">
-          {!ledger?.entries.length && <Empty>No entries yet.</Empty>}
-          {ledger?.entries.map((e) => (
-            <Row key={e.id}>
-              <span>{new Date(e.createdAt).toLocaleString()}</span>
-              <span>{naira(e.amount)} · bal {naira(e.balanceAfter)}</span>
-            </Row>
-          ))}
-        </Card>
+            <div className="card">
+              <div className="card-head"><span className="card-title">Orders</span></div>
+              <div className="card-body">
+                {orders.length === 0 ? (
+                  <Empty emoji="🧾">No orders yet — create a payment request.</Empty>
+                ) : (
+                  orders.slice(0, 8).map((o) => (
+                    <div className="row" key={o.id}>
+                      <div>
+                        <div className="row-main num">{o.id.slice(-6).toUpperCase()}</div>
+                        <div className="row-sub">{when(o.createdAt)}</div>
+                      </div>
+                      <div className="row-right">
+                        <div className="row-main num">{naira(o.amount)}</div>
+                        <div className="row-sub"><StatusPill status={o.status} /></div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-head"><span className="card-title">Ledger</span></div>
+              <div className="card-body">
+                {!ledger?.entries.length ? (
+                  <Empty emoji="📒">Nothing booked yet.</Empty>
+                ) : (
+                  ledger.entries.slice(0, 8).map((e) => (
+                    <div className="row" key={e.id}>
+                      <div>
+                        <div className="row-main">{e.type === "sale" ? "Sale" : e.type}</div>
+                        <div className="row-sub">{when(e.createdAt)}</div>
+                      </div>
+                      <div className="row-right">
+                        <div className="row-main num">+{naira(e.amount)}</div>
+                        <div className="row-sub num">bal {naira(e.balanceAfter)}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ---- right: the actions ---- */}
+          <div>
+            <div className="card">
+              <div className="card-head"><span className="card-title">Request a payment</span></div>
+              <div className="card-body pad">
+                <NewOrder products={products} onCreated={refresh} />
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-head">
+                <span className="card-title">Catalogue</span>
+                <div className="spacer" />
+                <span className="pill other">{products.length}</span>
+              </div>
+              <div className="card-body pad">
+                <AddProduct onAdded={refresh} />
+              </div>
+              <div className="card-body">
+                {products.length === 0 ? (
+                  <Empty emoji="📦">No products yet.</Empty>
+                ) : (
+                  products.map((p) => (
+                    <div className="row" key={p.id}>
+                      <div className="row-main">{p.name}</div>
+                      <div className="row-right">
+                        <div className="row-main num">{naira(p.price)}</div>
+                        {p.stockQty != null && <div className="row-sub num">{p.stockQty} in stock</div>}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </Shell>
+    </>
+  );
+}
+
+/* --------------------------------------------------------------- components */
+
+/**
+ * Seven day-buckets of sales, newest on the right. Hand-rolled divs rather than
+ * a charting dependency — it's one series of seven bars, and the bundle cost of
+ * a chart library would dwarf the feature.
+ */
+function SalesChart({ entries }: { entries: LedgerEntry[] }) {
+  const { buckets, labels, max, total } = useMemo(() => {
+    const days = 7;
+    const now = new Date();
+    const b = new Array<number>(days).fill(0);
+    const l: string[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - (days - 1 - i));
+      l.push(d.toLocaleDateString(undefined, { weekday: "narrow" }));
+    }
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (days - 1));
+    for (const e of entries) {
+      const t = new Date(e.createdAt);
+      const idx = Math.floor((t.getTime() - start.getTime()) / 86_400_000);
+      if (idx >= 0 && idx < days) b[idx] += e.amount;
+    }
+    return { buckets: b, labels: l, max: Math.max(...b, 1), total: b.reduce((x, y) => x + y, 0) };
+  }, [entries]);
+
+  return (
+    <div>
+      <div className="stat-value small num" style={{ marginBottom: 10 }}>{naira(total)}</div>
+      <div className="chart">
+        {buckets.map((v, i) => (
+          <div
+            key={i}
+            className={`bar${v > 0 ? " on" : ""}`}
+            style={{ height: `${Math.max((v / max) * 100, 3)}%` }}
+            title={naira(v)}
+          />
+        ))}
+      </div>
+      <div className="chart-axis">{labels.map((d, i) => <span key={i}>{d}</span>)}</div>
+    </div>
   );
 }
 
 function AddProduct({ onAdded }: { onAdded: () => void }) {
-  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [err, setErr] = useState("");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const add = async () => {
+    if (!name.trim() || !price) return;
+    setBusy(true);
+    try { await api.addProduct(name, Number(price)); setName(""); setPrice(""); setErr(""); onAdded(); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
   return (
-    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-      <input style={{ ...styles.input, flex: 2, margin: 0 }} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-      <input style={{ ...styles.input, flex: 1, margin: 0 }} placeholder="₦ price" value={price} onChange={(e) => setPrice(e.target.value)} />
-      <button style={{ ...styles.btn, width: "auto", margin: 0 }} onClick={async () => {
-        try { await api.addProduct(name, Number(price)); setName(""); setPrice(""); onAdded(); }
-        catch (e) { setErr((e as Error).message); }
-      }}>Add</button>
-      {err && <div style={styles.error}>{err}</div>}
-    </div>
+    <>
+      {err && <div className="error">{err}</div>}
+      <div className="inline">
+        <input className="field" placeholder="Product name" value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void add()} />
+        <input className="field num" placeholder="₦ price" value={price} inputMode="decimal"
+          style={{ maxWidth: 110 }}
+          onChange={(e) => setPrice(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void add()} />
+        <button className="btn" onClick={() => void add()} disabled={busy || !name.trim() || !price}>
+          Add
+        </button>
+      </div>
+    </>
   );
 }
 
 function NewOrder({ products, onCreated }: { products: Product[]; onCreated: () => void }) {
-  const [productId, setProductId] = useState(""); const [qty, setQty] = useState("1");
-  const [buyer, setBuyer] = useState("+234"); const [dva, setDva] = useState<{ accountNumber: string; bankName: string; accountName: string }>();
+  const [productId, setProductId] = useState("");
+  const [qty, setQty] = useState("1");
+  const [buyer, setBuyer] = useState("+234");
+  const [dva, setDva] = useState<{ accountNumber: string; bankName: string; accountName: string }>();
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const r = await api.createOrder(buyer, [{ productId, qty: Number(qty) }]);
+      setDva(r.instruction); setErr(""); onCreated();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
   return (
-    <div>
-      <select style={styles.input} value={productId} onChange={(e) => setProductId(e.target.value)}>
-        <option value="">Choose product…</option>
-        {products.map((p) => <option key={p.id} value={p.id}>{p.name} — {naira(p.price)}</option>)}
-      </select>
-      <input style={styles.input} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
-      <input style={styles.input} placeholder="Buyer phone" value={buyer} onChange={(e) => setBuyer(e.target.value)} />
-      <button style={styles.btn} onClick={async () => {
-        try {
-          const r = await api.createOrder(buyer, [{ productId, qty: Number(qty) }]);
-          setDva(r.instruction); setErr(""); onCreated();
-        } catch (e) { setErr((e as Error).message); }
-      }}>Generate DVA</button>
-      {err && <div style={styles.error}>{err}</div>}
+    <>
+      {err && <div className="error">{err}</div>}
+      <div className="stack">
+        <select className="field" value={productId} onChange={(e) => setProductId(e.target.value)}>
+          <option value="">Choose a product…</option>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>{p.name} — {naira(p.price)}</option>
+          ))}
+        </select>
+        <div className="inline">
+          <input className="field num" placeholder="Qty" value={qty} inputMode="numeric"
+            style={{ maxWidth: 90 }} onChange={(e) => setQty(e.target.value)} />
+          <input className="field" placeholder="Buyer phone" value={buyer} inputMode="tel"
+            onChange={(e) => setBuyer(e.target.value)} />
+        </div>
+        <button className="btn block" onClick={() => void create()} disabled={busy || !productId}>
+          {busy ? "Generating…" : "Generate account number"}
+        </button>
+      </div>
       {dva && (
-        <div style={styles.dva}>
-          <div>🏦 {dva.bankName}</div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{dva.accountNumber}</div>
-          <div>{dva.accountName}</div>
-          <div style={{ fontSize: 12, color: "#667", marginTop: 6 }}>
-            Buyer transfers here → you're auto-notified. No screenshot.
-          </div>
+        <div className="dva">
+          <div className="dva-bank">🏦 {dva.bankName}</div>
+          <div className="dva-acct num">{dva.accountNumber}</div>
+          <div className="dva-name">{dva.accountName}</div>
+          <div className="dva-note">Buyer transfers here → you're notified automatically. No screenshot.</div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-const Shell = ({ children, wide }: { children: React.ReactNode; wide?: boolean }) => (
-  <div style={{ ...styles.page }}>
-    <div style={{ maxWidth: wide ? 980 : 380, margin: "0 auto" }}>{children}</div>
-  </div>
+const Empty = ({ emoji, children }: { emoji: string; children: React.ReactNode }) => (
+  <div className="empty"><span className="empty-emoji">{emoji}</span>{children}</div>
 );
-const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div style={styles.card}><h3 style={{ marginTop: 0 }}>{title}</h3>{children}</div>
-);
-const Row = ({ children }: { children: React.ReactNode }) => <div style={styles.rowItem}>{children}</div>;
-const Empty = ({ children }: { children: React.ReactNode }) => <div style={{ color: "#99a", fontSize: 14 }}>{children}</div>;
-const Badge = ({ status }: { status: string }) => {
-  const color = status === "paid" ? "#0a7" : status === "awaiting_payment" ? "#c80" : "#889";
-  return <span style={{ color, fontWeight: 600 }}>{status}</span>;
+
+const StatusPill = ({ status }: { status: string }) => {
+  const cls = status === "paid" ? "paid" : status === "awaiting_payment" ? "pending" : "other";
+  const label = status === "awaiting_payment" ? "awaiting payment" : status.replace(/_/g, " ");
+  return <span className={`pill ${cls}`}>{label}</span>;
 };
 
-const styles: Record<string, React.CSSProperties> = {
-  page: { fontFamily: "system-ui, sans-serif", background: "#f5f6fa", minHeight: "100vh", padding: 24, color: "#223" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  card: { background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,.08)" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 16 },
-  input: { display: "block", width: "100%", boxSizing: "border-box", padding: 10, margin: "6px 0", border: "1px solid #ccd", borderRadius: 8, fontSize: 15 },
-  btn: { width: "100%", padding: 11, background: "#3a5bd9", color: "#fff", border: 0, borderRadius: 8, fontSize: 15, cursor: "pointer" },
-  linkBtn: { background: "none", border: 0, color: "#3a5bd9", cursor: "pointer" },
-  error: { background: "#fee", color: "#a00", padding: 8, borderRadius: 6, margin: "6px 0", fontSize: 14 },
-  summary: { background: "#eef4ff", padding: 12, borderRadius: 8, marginTop: 12 },
-  balance: { background: "#fff", padding: 14, borderRadius: 10, marginTop: 12, fontSize: 18 },
-  rowItem: { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #eef", fontSize: 14 },
-  dva: { background: "#f0fff6", border: "1px solid #b6ecc9", borderRadius: 10, padding: 14, marginTop: 10, textAlign: "center" },
-};
+/** Short relative time — "2h ago" reads better than a full timestamp in a list. */
+function when(iso: string): string {
+  const then = new Date(iso).getTime();
+  const mins = Math.round((Date.now() - then) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
