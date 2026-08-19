@@ -68,6 +68,12 @@ const schema = z.object({
   WHATSAPP_APP_SECRET: z.string().optional().default(""),
   // Bot's own number in wa.me digit form (e.g. 15551405536) for buyer shop links.
   WHATSAPP_WA_NUMBER: z.string().optional().default(""),
+  // --- Embedded Signup: vendors connect their OWN WhatsApp number ---
+  WHATSAPP_APP_ID: z.string().optional().default(""),
+  WHATSAPP_CONFIG_ID: z.string().optional().default(""),
+  // Defaults to `${PUBLIC_BASE_URL}/oauth/whatsapp/callback` — must match the
+  // redirect URI registered on the Meta app exactly.
+  WHATSAPP_OAUTH_REDIRECT_URI: z.string().optional().default(""),
 
   OBJECT_STORE_MODE: z.enum(["local", "s3"]).default("local"),
   OBJECT_STORE_BUCKET: z.string().default("rhodium-media"),
@@ -95,6 +101,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cfg.PUBLIC_BASE_URL = platformUrl.startsWith("http")
       ? platformUrl
       : `https://${platformUrl}`;
+  }
+
+  if (!cfg.WHATSAPP_OAUTH_REDIRECT_URI) {
+    cfg.WHATSAPP_OAUTH_REDIRECT_URI = `${cfg.PUBLIC_BASE_URL}/oauth/whatsapp/callback`;
   }
 
   // Guardrails: in production, live external calls must have real credentials.

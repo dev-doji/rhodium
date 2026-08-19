@@ -84,17 +84,43 @@ export function buildApi(app: App): Express {
       // Parse the Cloud API inbound message envelope.
       const value = req.body?.entry?.[0]?.changes?.[0]?.value;
       const msg = value?.messages?.[0];
+      // WHICH of our numbers this arrived on. With vendors on their own numbers
+      // this is the tenant key — the same webhook now serves every shop.
+      const toPhoneNumberId = value?.metadata?.phone_number_id as string | undefined;
+      // --- WhatsApp Coexistence (vendor keeps her Business app on the same
+      // number). These arrive on DIFFERENT paths to `value.messages`, which is
+      // what keeps them out of the normal inbound router:
+      //   history            → data.history[].threads[].messages[]  (up to 6 months)
+      //   smb_app_state_sync → data.state_sync[]                    (contacts)
+      //   smb_message_echoes → value.message_echoes[]               (her app replies)
+      // If history ever landed on the inbound path it would replay months of old
+      // chat as live commands — creating orders from messages sent last March.
+      const echoes = value?.message_echoes as { to?: string }[] | undefined;
       const rec: Record<string, unknown> = {
         at: new Date().toISOString(),
         from: msg?.from,
+        to: toPhoneNumberId,
         type: msg?.type,
         text: msg?.text?.body,
         isStatus: !!value?.statuses,
       };
       try {
-        if (msg?.type === "text" && msg.from) {
-          const reply = await app.whatsapp.handleInbound({ from: `+${msg.from}`, text: msg.text.body });
-          rec.replied = String(reply).slice(0, 80);
+        if (echoes?.length && toPhoneNumberId) {
+          // She answered from her phone — stand the bot down on those threads.
+          for (const echo of echoes) {
+            if (echo.to) app.whatsapp.noteVendorReply(toPhoneNumberId, `+${echo.to}`);
+          }
+          rec.echoes = echoes.length;
+        } else if (msg?.type === "text" && msg.from) {
+          const reply = await app.whatsapp.handleInbound({
+            from: `+${msg.from}`,
+            text: msg.text.body,
+            toPhoneNumberId,
+          });
+          // An empty reply means human takeover muted us. Record it explicitly:
+          // "the bot said nothing" is otherwise indistinguishable from a bug.
+          if (reply) rec.replied = String(reply).slice(0, 80);
+          else rec.suppressed = "vendor handling this thread";
         } else {
           rec.skipped = true;
         }
@@ -105,6 +131,56 @@ export function buildApi(app: App): Express {
       waDebug.events.unshift(rec);
       waDebug.events = waDebug.events.slice(0, 25);
       res.sendStatus(200); // always 200 so Meta doesn't retry-storm
+    }),
+  );
+
+  // --- WhatsApp Embedded Signup: a vendor connects their OWN number ---
+  // Meta redirects here after the vendor authorises us. Public by necessity, so
+  // the merchant it applies to comes from the HMAC-signed `state`, never from a
+  // plain query param.
+  server.get(
+    "/oauth/whatsapp/callback",
+    asyncRoute(async (req, res) => {
+      const { code, state, error, error_description: errorDescription } = req.query;
+      if (error) {
+        res.status(400).send(signupPage("Connection cancelled", String(errorDescription ?? error)));
+        return;
+      }
+      if (!code || !state) {
+        res.status(400).send(signupPage("Missing details", "No authorisation code was returned."));
+        return;
+      }
+      try {
+        const connected = await app.waSignup.completeSignup(String(code), String(state));
+        const merchant = await app.repos.merchants.byId(connected.merchantId);
+        // Say hello on the number they just connected: it proves the whole loop
+        // (their WABA → our token → their number) works, right now, rather than
+        // at the next buyer's expense.
+        if (merchant) {
+          await app.waTransport
+            .send(
+              merchant.phone,
+              [
+                `✅ *${merchant.businessName}* is now live on your own WhatsApp number.`,
+                ...(connected.displayPhone ? [`Buyers can message ${connected.displayPhone}.`] : []),
+                "",
+                "Type *link* here for the link to share.",
+              ].join("\n"),
+              { phoneNumberId: connected.waPhoneNumberId },
+            )
+            .catch(() => undefined);
+        }
+        res.send(
+          signupPage(
+            "Your number is connected 🎉",
+            `${merchant?.businessName ?? "Your shop"} now sells from ${
+              connected.displayPhone ?? "your own WhatsApp number"
+            }. You can close this tab — we've messaged you on WhatsApp.`,
+          ),
+        );
+      } catch (err) {
+        res.status(400).send(signupPage("Couldn't connect that number", (err as Error).message));
+      }
     }),
   );
 
@@ -393,6 +469,26 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // Attach a WhatsApp number to a merchant WITHOUT Embedded Signup — the path
+  // for a number added to our own WABA by hand (Meta review pending). Same
+  // effect as a completed signup: the merchant becomes a tenant.
+  server.post(
+    "/admin/merchants/:id/whatsapp",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const merchant = await app.repos.merchants.byId(req.params.id!);
+      if (!merchant) throw new NotFoundError("merchant", { id: req.params.id });
+      const { phoneNumberId, wabaId, displayPhone } = req.body ?? {};
+      if (!phoneNumberId) throw new ValidationError("phoneNumberId required");
+      const connected = await app.waSignup.attachNumber(merchant, {
+        waPhoneNumberId: String(phoneNumberId),
+        waBusinessAccountId: wabaId ? String(wabaId) : undefined,
+        displayPhone: displayPhone ? String(displayPhone) : undefined,
+      });
+      res.json(connected);
+    }),
+  );
+
   server.get(
     "/admin/merchants",
     asyncRoute(async (req, res) => {
@@ -405,6 +501,8 @@ export function buildApi(app: App): Express {
           status: m.status,
           cryptoEnabled: m.cryptoEnabled,
           quaiAddress: m.quaiAddress,
+          waPhoneNumberId: m.waPhoneNumberId,
+          waDisplayPhone: m.waDisplayPhone,
         })),
       });
     }),
@@ -588,4 +686,26 @@ export function buildApi(app: App): Express {
 
   server.use(errorHandler);
   return server;
+}
+
+/**
+ * Landing page for the Embedded Signup redirect. Self-contained rather than a
+ * file in public/: this is the one page a vendor sees mid-OAuth, and it must
+ * render even if the static dir or dashboard build is missing.
+ */
+function signupPage(title: string, body: string): string {
+  const esc = (s: string) =>
+    s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)} — Rhodium</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf7f2;
+       font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1c1a17;padding:24px}
+  .card{max-width:32rem;background:#fff;border:1px solid #e8e0d4;border-radius:16px;padding:32px}
+  h1{margin:0 0 12px;font-size:1.4rem}
+  p{margin:0;color:#5a5348}
+</style></head>
+<body><main class="card"><h1>${esc(title)}</h1><p>${esc(body)}</p></main></body></html>`;
 }

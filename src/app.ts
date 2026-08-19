@@ -17,6 +17,8 @@ import type { NotificationTransport } from "./modules/notification/transport.js"
 import { WhatsAppService } from "./modules/whatsapp/whatsapp-service.js";
 import { ConversationStore } from "./modules/whatsapp/conversation-store.js";
 import { WhatsAppCloudTransport } from "./modules/whatsapp/cloud-transport.js";
+import { EmbeddedSignupService } from "./modules/whatsapp/embedded-signup.js";
+import { HumanTakeoverStore } from "./modules/whatsapp/human-takeover.js";
 import { AuthService } from "./modules/auth/auth-service.js";
 import { ReconciliationJob } from "./jobs/reconciliation-job.js";
 import { TractionService } from "./modules/traction/traction-service.js";
@@ -36,6 +38,7 @@ export interface App {
   ledger: LedgerService;
   notifications: NotificationService;
   whatsapp: WhatsAppService;
+  waSignup: EmbeddedSignupService;
   auth: AuthService;
   reconciliation: ReconciliationJob;
   traction: TractionService;
@@ -91,6 +94,13 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const payments = new PaymentsOrchestrator(repos, rails, bus, clock, metrics, audit);
   const conversations = new ConversationStore();
   const wallets = new WalletService();
+  const waSignup = new EmbeddedSignupService(repos, {
+    appId: config.WHATSAPP_APP_ID,
+    appSecret: config.WHATSAPP_APP_SECRET,
+    configId: config.WHATSAPP_CONFIG_ID,
+    redirectUri: config.WHATSAPP_OAUTH_REDIRECT_URI,
+    stateSecret: config.APP_SECRET,
+  });
   const whatsapp = new WhatsAppService(
     waTransport,
     commerce,
@@ -99,7 +109,13 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     repos,
     conversations,
     wallets,
-    { publicBaseUrl: config.PUBLIC_BASE_URL, waNumber: config.WHATSAPP_WA_NUMBER },
+    {
+      publicBaseUrl: config.PUBLIC_BASE_URL,
+      waNumber: config.WHATSAPP_WA_NUMBER,
+      platformPhoneNumberId: config.WHATSAPP_PHONE_NUMBER_ID,
+    },
+    waSignup,
+    new HumanTakeoverStore(),
   );
   const auth = new AuthService(repos, clock, async (phone, code) => {
     await waTransport.send(phone, `Your Rhodium code is ${code}. Expires in 5 min.`);
@@ -121,6 +137,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     ledger,
     notifications,
     whatsapp,
+    waSignup,
     auth,
     reconciliation,
     traction,

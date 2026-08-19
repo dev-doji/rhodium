@@ -134,6 +134,125 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(await res.text()).toBe("42");
   });
 
+  it("routes an inbound webhook to the vendor who owns the number it arrived on", async () => {
+    const vendor = await app.repos.merchants.create({
+      id: "mch_tenant_http",
+      phone: "+2348030002222",
+      businessName: "Tenant Store",
+      status: "active",
+      kycState: "verified",
+      cryptoEnabled: false,
+      waPhoneNumberId: "PNID_TENANT_HTTP",
+    });
+    await app.commerce.createProduct({
+      merchantId: vendor.id, name: "Shea Butter", price: 250_000,
+    });
+
+    const res = await fetch(`${base}/webhooks/whatsapp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  metadata: {
+                    display_phone_number: "+234 803 680 3974",
+                    phone_number_id: "PNID_TENANT_HTTP",
+                  },
+                  messages: [
+                    { from: "2348090001234", type: "text", text: { body: "good afternoon" } },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const answer = channel.sent.at(-1)!;
+    expect(answer.message).toContain("Tenant Store");
+    expect(answer.message).toContain("Shea Butter");
+    expect(answer.from).toBe("PNID_TENANT_HTTP");
+  });
+
+  it("stands the bot down when a coexistence echo says the vendor replied", async () => {
+    const buyer = "2348090005678";
+    const post = (body: unknown) =>
+      fetch(`${base}/webhooks/whatsapp`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const inbound = {
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: "PNID_TENANT_HTTP" },
+        messages: [{ from: buyer, type: "text", text: { body: "hello" } }],
+      } }] }],
+    };
+
+    await post(inbound);
+    expect(channel.sent.at(-1)!.message).toContain("Tenant Store");
+
+    // She answers from the WhatsApp Business app; Meta echoes it to us.
+    await post({
+      entry: [{ changes: [{ field: "smb_message_echoes", value: {
+        metadata: { phone_number_id: "PNID_TENANT_HTTP" },
+        message_echoes: [{
+          from: "2348036803974", to: buyer, type: "text",
+          text: { body: "Hi dear, yes we're open!" },
+        }],
+      } }] }],
+    });
+
+    const before = channel.sent.length;
+    await post(inbound);
+    expect(channel.sent.length).toBe(before); // bot said nothing
+  });
+
+  it("ignores a coexistence history payload instead of replaying it", async () => {
+    const before = channel.sent.length;
+    // Up to 6 months of old chat arrives on its own path. If this ever reached
+    // the inbound router it would create orders from messages sent months ago.
+    const res = await fetch(`${base}/webhooks/whatsapp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event: "history",
+        data: {
+          history: [{
+            metadata: { phone_number_id: "PNID_TENANT_HTTP" },
+            threads: [{
+              id: "2348090005678",
+              messages: [{ from: "2348090005678", type: "text", text: { body: "1" } }],
+            }],
+          }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(channel.sent.length).toBe(before);
+  });
+
+  it("rejects an Embedded Signup callback with a forged state", async () => {
+    const res = await fetch(
+      `${base}/oauth/whatsapp/callback?code=CODE&state=mch_http.deadbeef`,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toMatch(/Couldn't connect/);
+  });
+
+  it("shows a readable page when a vendor cancels Embedded Signup", async () => {
+    const res = await fetch(
+      `${base}/oauth/whatsapp/callback?error=access_denied&error_description=User+cancelled`,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toMatch(/cancelled/i);
+  });
+
   it("runs the crypto (Quai/BlipPay) checkout loop and reflects it in traction", async () => {
     // A crypto-capable merchant with a Quai wallet + a crypto order.
     const merchant = await app.repos.merchants.create({

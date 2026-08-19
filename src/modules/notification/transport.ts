@@ -1,15 +1,33 @@
+/**
+ * Which sender a message goes out from. On WhatsApp this is the Cloud API
+ * `phone_number_id` of the vendor's own number — the tenant the buyer is
+ * actually talking to. Omitted => the platform's own number.
+ *
+ * This matters beyond cosmetics: the 24-hour customer-service window that lets
+ * us send free-form text is per *number*. A buyer who messaged the vendor's
+ * number has opened a window there and nowhere else, so a receipt sent from
+ * Rhodium's number would simply be rejected by Meta.
+ */
+export interface SendOptions {
+  phoneNumberId?: string;
+}
+
 /** A channel that can deliver a message to a recipient. */
 export interface NotificationTransport {
   readonly channel: "whatsapp" | "sms" | "email";
-  send(to: string, message: string): Promise<{ ok: boolean; ref?: string }>;
+  send(to: string, message: string, opts?: SendOptions): Promise<{ ok: boolean; ref?: string }>;
 }
 
 /** Test/demo double — captures everything sent, never leaves the process. */
 export class CaptureTransport implements NotificationTransport {
-  readonly sent: { to: string; message: string }[] = [];
+  readonly sent: { to: string; message: string; from?: string }[] = [];
   constructor(readonly channel: "whatsapp" | "sms" | "email" = "whatsapp") {}
-  async send(to: string, message: string): Promise<{ ok: boolean; ref?: string }> {
-    this.sent.push({ to, message });
+  async send(
+    to: string,
+    message: string,
+    opts?: SendOptions,
+  ): Promise<{ ok: boolean; ref?: string }> {
+    this.sent.push({ to, message, from: opts?.phoneNumberId });
     return { ok: true, ref: `capture_${this.sent.length}` };
   }
 }

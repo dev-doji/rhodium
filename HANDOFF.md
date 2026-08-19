@@ -42,7 +42,10 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 - **WhatsApp bot (live):** self‑onboarding (business name → account → bank → creates an active merchant + an **embedded Cyprus1 Quai wallet**), vendor commands (`add`, `list`, `link`, `sell`, `ledger`), and a **buyer storefront** via deep link `wa.me/2348036803974?text=shop-<merchantId>` (pick product → choose bank / USDT→naira / QUAI → pay).
 - **Embedded wallet + 2FA reveal:** wallet generated at onboarding, secrets encrypted in a vault, revealable at `/wallet` with a WhatsApp code.
 - **Ledger, receipts, traction, idempotency, reconciliation** — all wired; sales land in one naira ledger and on `/traction`.
-- **58 unit/integration tests green** (incl. live‑Postgres + HTTP over the wire).
+- **Multi‑tenant WhatsApp:** a vendor connects their own number (`connect` →
+  Embedded Signup, or the admin route by hand) and buyers who message *them* get
+  their shop; Rhodium's number still onboards vendors.
+- **83 unit/integration tests green** (incl. live‑Postgres + HTTP over the wire).
 - **All ~31 HTTP endpoints tested against the live app — every one green** (health, pages, auth, guarded `/api/*`, buyer, rail webhooks with signature checks, admin). Highlights: Monnify issued a **real reserved account** via the API; forged webhook signatures → 401; live‑mode guards work.
 
 ## Deployment
@@ -78,38 +81,104 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
    Needs `ADMIN_SECRET` = the **`APP_SECRET` from the Render dashboard** — the local
    `.env` one is different and returns 401 (verified).
 
-## NEXT UP — multi-tenant WhatsApp (vendors on their own number)
+## Multi-tenant WhatsApp (vendors on their own number) — ✅ BUILT
 
-**Goal.** A buyer messages the *vendor's* WhatsApp Business number, says anything,
-and immediately gets that vendor's catalogue → picks a product → gets a payment
-link → pays → the vendor is notified. Rhodium's own number becomes
-vendor-onboarding only.
+A buyer messages the *vendor's* WhatsApp Business number, says anything, and gets
+that vendor's catalogue → product → payment link → pays → vendor notified.
+Rhodium's own number keeps doing vendor onboarding. **83 tests green** (was 58);
+`npm run demo:whatsapp` drives both paths end to end (acts 12–15, incl. coexistence).
 
-**Embedded Signup is configured** (application under review as of 2026-08-14):
-- app_id `1534245258196461` · config_id `2976386586040947`
-- redirect_uri `https://rhodium-8ocg.onrender.com/oauth/whatsapp/callback`
-- Onboarding type: **Independent Tech Provider** (not Solution Partner — that
-  needs someone else's app id and builds under their umbrella).
-- Blocked on Meta review + Business Verification. Code can be built meanwhile;
-  for the demo, add the vendor number to the existing WABA by hand instead.
+**How tenancy works.** Everything keys off the Meta `phone_number_id` — never a
+phone string (there is still no phone normalisation anywhere in this codebase).
+- `Merchant.waPhoneNumberId` (unique) + `waBusinessAccountId` + `waDisplayPhone`
+  — migration `20260814120000_merchant_wa_phone_number_id`.
+  Lookup: `repos.merchants.byWaPhoneNumberId()`.
+- Webhook reads `value.metadata.phone_number_id` and passes it as
+  `InboundMessage.toPhoneNumberId`.
+- `whatsapp-service.ts` `route()`: tenant number → vendor themself gets vendor
+  commands, **everyone else gets the catalogue** (never onboarding, and a
+  `shop-<other>` deep link is ignored so a vendor's number can't serve a rival).
+  Our own id / an unknown id → the old platform behaviour, unchanged.
+- Conversation keys are `"<phoneNumberId>:<sender>"`, so one buyer can hold
+  separate threads with two shops.
+- `transport.send(to, msg, { phoneNumberId })` picks the sending number;
+  `NotificationService` passes the merchant's, so receipts + paid-confirmations
+  go out from the vendor's number. **This is not cosmetic** — the 24-hour
+  free-form window is per number, and the buyer only ever opened one on the
+  vendor's.
 
-**Build order** (start here, cold):
-0. `GET /oauth/whatsapp/callback` — exchange `code` → vendor token, read their
-   WABA id + `phone_number_id`. This supplies the value everything else keys off.
-   Route does not exist yet; the URI 404s today, which is fine for review.
-1. `Merchant.waPhoneNumberId` — Prisma schema + migration + repo lookup by it.
-2. Webhook resolves the merchant from `value.metadata.phone_number_id` —
-   `src/http/api.ts` (~line 85) currently ignores that field entirely.
-3. Routing in `whatsapp-service.ts` `route()`: unknown sender on a vendor's
-   number → THAT vendor's catalogue (today it falls through to vendor
-   onboarding); sender is the vendor → vendor commands.
-4. Transport sends **from** the merchant's `phone_number_id`, falling back to the
-   global one. `cloud-transport.ts` takes a single id from config today — this is
-   the step that touches the most code.
-5. Tests for both paths, then verify with `npm run demo:whatsapp`.
+**Embedded Signup** (`src/modules/whatsapp/embedded-signup.ts`):
+- app_id `1534245258196461` · config_id `2976386586040947` (both now in
+  `render.yaml`; redirect defaults to `${PUBLIC_BASE_URL}/oauth/whatsapp/callback`).
+- Onboarding type: **Independent Tech Provider**.
+- `GET /oauth/whatsapp/callback` is live: code → token → `debug_token` for the
+  WABA id → `/{waba}/phone_numbers` → `subscribed_apps` → merchant updated.
+  The vendor token is used and **discarded** — under tech-provider onboarding our
+  own system-user token gains access via the shared WABA, so one token serves
+  every tenant and no vendor credential is ever stored.
+- The OAuth `state` is HMAC-signed with `APP_SECRET`. The callback is a public
+  URL with no session; unsigned merchant ids there would let anyone attach their
+  number to someone else's shop.
+- Vendor command **`connect`** hands out the signup link (and says plainly that
+  it's off when `WHATSAPP_APP_ID`/`CONFIG_ID` are unset).
 
-**Watch out.** There is no phone normalisation anywhere in the codebase, so key
-tenancy off `phone_number_id` (a Meta id), never off a phone string.
+### Coexistence — the vendor KEEPS her WhatsApp Business app
+
+The default migration path takes a number *away* from the WhatsApp Business app
+and wipes the vendor's chat history. For a real trader with existing customers
+that is a non-starter. **Coexistence** is Meta's answer: the number runs on the
+Business app **and** the Cloud API at once, she keeps chatting personally, and up
+to 6 months of history syncs. Onboarded through the same Embedded Signup.
+Precondition: she must be on the *WhatsApp Business app* (the free in-place
+upgrade from consumer WhatsApp preserves chats).
+
+Coexistence adds three webhook fields, all on **different payload paths** to
+normal inbound — which is what keeps them out of the router:
+
+| Field | Path | What we do |
+|---|---|---|
+| `history` | `data.history[].threads[].messages[]` | ignore (see below) |
+| `smb_app_state_sync` | `data.state_sync[]` | ignore — contacts only |
+| `smb_message_echoes` | `value.message_echoes[]` | **drives human takeover** |
+
+- **Never let `history` reach the inbound router.** It carries up to 6 months of
+  old chat; routed as live messages it would create orders from texts sent last
+  March. It misses `value.messages[0]`, so it lands in the existing `skipped`
+  branch — there is an HTTP test pinning exactly this.
+- **Human takeover** (`human-takeover.ts`): under coexistence the vendor answers
+  by hand in her app *while* the bot auto-replies to the same messages — two
+  answers to every "hi". Each `smb_message_echoes` mutes the bot on that ONE
+  thread for 30 min (`noteVendorReply`). Per conversation, not per number: a
+  vendor handling one order personally still wants the other twenty served.
+  Muting happens **before** routing, so no conversation state advances and the
+  buyer resumes where they left off.
+- The webhook **fields themselves are an app-level setting** — tick
+  `smb_message_echoes`, `history`, `smb_app_state_sync` in App Dashboard →
+  WhatsApp → Configuration. `subscribed_apps` cannot set them. Without
+  `smb_message_echoes` every buyer gets two replies.
+- Coexistence numbers are capped at **20 msg/sec**; group chats, broadcast lists
+  and calls aren't supported API-side. There's a 24h window to consume the
+  history sync — **irrelevant to us**, we have no agent inbox and her phone keeps
+  everything regardless. Don't let it drive the timeline.
+
+**⚠️ Embedded Signup v2 is deprecated 2026-10-15 and coexistence needs v4.**
+Verify `config_id 2976386586040947` is a v4 config in the Meta dashboard — if it
+was created as v2 it must be redone, and better to learn that before review
+clears than after.
+
+**Still blocked on Meta review + Business Verification** (submitted 2026-08-14),
+so the OAuth leg is untested against real Meta. Until it clears, add the vendor
+number to the existing WABA by hand and make it a tenant with:
+```bash
+curl -X POST $APP/admin/merchants/<merchantId>/whatsapp \
+  -H "Authorization: Bearer $APP_SECRET" -H 'content-type: application/json' \
+  -d '{"phoneNumberId":"<meta id>","wabaId":"1057107730180826","displayPhone":"+234 …"}'
+```
+That is the same code path the callback ends in (`attachNumber`), so the routing,
+sending and receipt behaviour it produces is exactly what signup will produce.
+One thing to re-check when review clears: we build the signup URL as a plain
+`/dialog/oauth` link with `config_id` (shareable in chat) rather than the JS-SDK
+popup Meta's docs lead with.
 
 ## Gotchas learned (so they don't bite again)
 - **Quai deploy hang:** `quais` `usePathing` defaults **true** and appends `/prime` for shard discovery; a URL already ending in `/cyprus1` becomes `…/cyprus1/prime` → 404 → every call hangs. Fix: pass the **base** RPC (strip the shard) + a **static network**; pin reads to `Shard.Cyprus1`. Deploy also needs an **IPFS metadata hash** (`ipfs-only-hash`) as the 4th `ContractFactory` arg.
@@ -140,7 +209,7 @@ tenancy off `phone_number_id` (a Meta id), never off a phone string.
 ## Run locally
 ```bash
 npm install && npm run db:up && npm run prisma:migrate
-npm test                 # 58 tests
+npm test                 # 83 tests
 npm run demo             # bank-transfer magic-moment (mock)
 npm run demo:crypto      # crypto magic-moment (mock)
 npm run dev              # API + dashboard on :3000

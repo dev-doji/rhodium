@@ -45,6 +45,11 @@ class MemMerchantRepo implements MerchantRepo {
     for (const m of this.m.values()) if (m.phone === phone) return m;
     return null;
   }
+  async byWaPhoneNumberId(waPhoneNumberId: string): Promise<Merchant | null> {
+    if (!waPhoneNumberId) return null;
+    for (const m of this.m.values()) if (m.waPhoneNumberId === waPhoneNumberId) return m;
+    return null;
+  }
   async update(id: string, patch: Partial<Merchant>): Promise<Merchant> {
     const cur = this.m.get(id);
     if (!cur) throw new NotFoundError("merchant", { id });

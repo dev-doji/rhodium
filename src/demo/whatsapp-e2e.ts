@@ -24,6 +24,9 @@ import { formatNaira } from "../lib/money.js";
 
 const VENDOR = "+2348030000042";
 const BUYER = "+2348090000009";
+const BUYER2 = "+2348090000077";
+/** Stands in for the phone_number_id of Amaka's own WhatsApp Business number. */
+const VENDOR_PNID = "demo_vendor_pnid";
 
 async function main(): Promise<void> {
   process.env.NODE_ENV = "development";
@@ -47,9 +50,14 @@ async function main(): Promise<void> {
   };
   const beat = (t: string) => console.log(`\n\x1b[33m── ${t} ──\x1b[0m`);
 
-  const send = async (from: string, text: string, label: string): Promise<string> => {
+  const send = async (
+    from: string,
+    text: string,
+    label: string,
+    toPhoneNumberId?: string,
+  ): Promise<string> => {
     say(label, text);
-    const reply = await app.whatsapp.handleInbound({ from, text });
+    const reply = await app.whatsapp.handleInbound({ from, text, toPhoneNumberId });
     bot(reply);
     return reply;
   };
@@ -114,6 +122,64 @@ async function main(): Promise<void> {
 
   beat("11. Vendor checks the books");
   await send(VENDOR, "ledger", "vendor");
+
+  beat("12. Amaka connects her OWN WhatsApp number");
+  await send(VENDOR, "connect", "vendor");
+  // Stands in for the Embedded Signup callback, which needs a real Meta
+  // redirect. Same end state: the merchant now owns a phone_number_id.
+  await app.waSignup.attachNumber(merchant, {
+    waPhoneNumberId: VENDOR_PNID,
+    waBusinessAccountId: "WABA_DEMO",
+    displayPhone: "+234 701 000 0001",
+  });
+  console.log(`\n   ✔ ${merchant.businessName} now answers on ${VENDOR_PNID}`);
+  const ownLink = await send(VENDOR, "link", "vendor", VENDOR_PNID);
+  if (ownLink.includes("shop-")) {
+    console.log("\n   \x1b[31m✗ still handing out the platform deep link\x1b[0m");
+  }
+
+  beat("13. A NEW buyer messages Amaka's own number — no deep link, no onboarding");
+  const catalogue = await send(BUYER2, "Hi, are you open?", "buyer 2", VENDOR_PNID);
+  if (/business name/i.test(catalogue)) {
+    throw new Error("a buyer on the vendor's number was pushed into vendor onboarding");
+  }
+  await send(BUYER2, "1", "buyer 2", VENDOR_PNID);
+  await send(BUYER2, "1", "buyer 2", VENDOR_PNID); // bank transfer
+
+  beat("14. …and the same person on RHODIUM's number is still a vendor lead");
+  const onboarding = await send(BUYER2, "Hi", "buyer 2");
+  if (!/business name/i.test(onboarding)) {
+    throw new Error("vendor onboarding no longer works on the platform number");
+  }
+
+  beat("15. Coexistence: Amaka answers a buyer herself, so the bot stands down");
+  const BUYER3 = "+2348090000088";
+  await send(BUYER3, "Do you deliver to Enugu?", "buyer 3", VENDOR_PNID);
+  // She types a reply in her own WhatsApp Business app; Meta echoes it to us.
+  app.whatsapp.noteVendorReply(VENDOR_PNID, BUYER3);
+  console.log("\n   \x1b[35m[Amaka, from her Business app] Yes we do! ₦2,500 to Enugu.\x1b[0m");
+  say("buyer 3", "Great, I'll take the Gloss Set");
+  const muted = await app.whatsapp.handleInbound({
+    from: BUYER3, text: "Great, I'll take the Gloss Set", toPhoneNumberId: VENDOR_PNID,
+  });
+  if (muted !== "") throw new Error("bot talked over the vendor mid-conversation");
+  console.log("\x1b[32m[bot]\x1b[0m   (silent — she's handling this one)");
+
+  const tenantOrder = (await app.repos.orders.listByMerchant(merchant.id)).at(-1)!;
+  const tenantPayment = await app.repos.payments.byOrderId(tenantOrder.id);
+  const hook2 = fiat.mock!.simulateTransfer(tenantPayment!.providerRef);
+  await app.payments.handleRailWebhook("monnify", {
+    headers: { "monnify-signature": hook2.signature },
+    rawBody: hook2.rawBody,
+  });
+  const fromTenant = capture.sent.filter((m) => m.from === VENDOR_PNID);
+  console.log(
+    `\n   ✔ ${fromTenant.length} message(s) sent FROM Amaka's number ` +
+      `(incl. receipt + payment confirmation)`,
+  );
+  if (!fromTenant.some((m) => m.message.includes("Receipt from"))) {
+    throw new Error("the buyer's receipt did not go out from the vendor's number");
+  }
 
   const finalOrder = await app.repos.orders.byId(order.id);
   const balance = await app.ledger.balance(merchant.id);

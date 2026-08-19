@@ -42,7 +42,7 @@ export class NotificationService {
       "",
       "Type *ledger* to see your books.",
     ].join("\n");
-    await this.deliver(merchant.phone, msg, "merchant_confirmation");
+    await this.deliver(merchant.phone, msg, "merchant_confirmation", merchant.waPhoneNumberId);
   }
 
   async sendReceiptToBuyer(input: {
@@ -65,7 +65,10 @@ export class NotificationService {
       "",
       "Thank you for shopping with us! 💚",
     ].join("\n");
-    await this.deliver(to, msg, "buyer_receipt");
+    // From the vendor's own number when they have one: the buyer's 24-hour
+    // messaging window was opened there, and a receipt arriving from a number
+    // they never messaged reads as spam even when Meta does let it through.
+    await this.deliver(to, msg, "buyer_receipt", merchant?.waPhoneNumberId);
   }
 
   /**
@@ -104,10 +107,15 @@ export class NotificationService {
   }
 
   /** Try channels in priority order; first success wins. */
-  private async deliver(to: string, message: string, kind: string): Promise<void> {
+  private async deliver(
+    to: string,
+    message: string,
+    kind: string,
+    phoneNumberId?: string,
+  ): Promise<void> {
     for (const channel of this.channels) {
       try {
-        const res = await channel.send(to, message);
+        const res = await channel.send(to, message, { phoneNumberId });
         if (res.ok) {
           // WhatsApp conversation cost is a first-class metric from day one.
           if (channel.channel === "whatsapp") {

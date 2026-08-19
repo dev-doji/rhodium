@@ -21,6 +21,12 @@ export interface MerchantRepo {
   create(m: Omit<Merchant, "createdAt">): Promise<Merchant>;
   byId(id: string): Promise<Merchant | null>;
   byPhone(phone: string): Promise<Merchant | null>;
+  /**
+   * Tenant lookup for multi-tenant WhatsApp: which vendor owns the Cloud API
+   * number a message arrived on. Keyed by the Meta phone_number_id, never by a
+   * phone string.
+   */
+  byWaPhoneNumberId(waPhoneNumberId: string): Promise<Merchant | null>;
   update(id: string, patch: Partial<Merchant>): Promise<Merchant>;
   list(): Promise<Merchant[]>;
   /**

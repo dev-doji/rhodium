@@ -1,4 +1,7 @@
 import type { NotificationTransport } from "../notification/transport.js";
+import type { EmbeddedSignupService } from "./embedded-signup.js";
+import type { HumanTakeoverStore } from "./human-takeover.js";
+import type { Merchant } from "../../domain/types.js";
 import type { CommerceService } from "../commerce/commerce-service.js";
 import type { PaymentsOrchestrator } from "../payments/payments-orchestrator.js";
 import type { LedgerService } from "../ledger/ledger-service.js";
@@ -29,16 +32,38 @@ const COMMAND_WORDS = new Set([
   "sales",
   "balance",
   "books",
+  "connect",
 ]);
 
 export interface InboundMessage {
   from: string; // sender WA id (phone, E.164)
   text: string;
+  /**
+   * Cloud API `phone_number_id` the message ARRIVED on
+   * (`value.metadata.phone_number_id`). This is the tenant key: when it belongs
+   * to a vendor, the sender is talking to that vendor's shop, not to Rhodium.
+   * Absent (older callers, demos) => the platform number.
+   */
+  toPhoneNumberId?: string;
 }
 
 export interface WhatsAppOptions {
   publicBaseUrl: string;
   waNumber: string; // digits for wa.me links (e.g. 15551405536)
+  /** Rhodium's own phone_number_id — messages here are vendor onboarding. */
+  platformPhoneNumberId?: string;
+}
+
+/**
+ * Resolved context for one inbound message: who sent it, which number they sent
+ * it to, and which vendor (if any) owns that number.
+ */
+interface Ctx {
+  from: string;
+  phoneNumberId?: string;
+  tenant: Merchant | null;
+  /** Conversation-store key, namespaced per number (see `convKey`). */
+  key: string;
 }
 
 /** Format a crypto base-unit amount for humans (QUAI=18 dp, USDT=6 dp). */
@@ -52,13 +77,22 @@ function humanCrypto(cryptoAmount?: string, symbol?: string): string {
 /**
  * WhatsApp Service — a conversational storefront in chat.
  *
+ * Multi-tenant: which number a message arrived on decides what it means.
+ *
+ * On a VENDOR's own number (`toPhoneNumberId` maps to a merchant):
+ *  • The vendor themself → vendor commands.
+ *  • Anyone else, saying anything at all → that vendor's catalogue → pay.
+ *    Nobody is ever onboarded here; a buyer must never be asked for a bank
+ *    account by the shop they're trying to buy from.
+ *
+ * On RHODIUM's own number (or no tenant id at all):
  *  • Unknown sender says anything → guided *vendor onboarding* (business name →
  *    bank account → bank), which creates an active merchant.
  *  • Registered merchant → vendor commands (list / add / sell / ledger / link).
- *  • Buyer opens a vendor's deep link (`shop-<merchantId>`) → sees the catalogue,
- *    picks a product, chooses bank or crypto, and gets a pay instruction/link.
+ *  • Buyer opens a vendor's deep link (`shop-<merchantId>`) → sees the catalogue.
  *
- * All multi-step flows use a per-user conversation store.
+ * All multi-step flows use a per-user conversation store, keyed per number so
+ * one person can hold separate threads with two different shops.
  */
 export class WhatsAppService {
   constructor(
@@ -70,38 +104,80 @@ export class WhatsAppService {
     private convo: ConversationStore,
     private wallets: WalletService,
     private opts: WhatsAppOptions,
+    private signup?: EmbeddedSignupService,
+    private takeover?: HumanTakeoverStore,
   ) {}
 
+  /**
+   * The vendor answered a buyer by hand from the WhatsApp Business app
+   * (`smb_message_echoes`). Mute the bot on that thread — see HumanTakeoverStore.
+   */
+  noteVendorReply(phoneNumberId: string, customerPhone: string): void {
+    this.takeover?.note(convKey(customerPhone, phoneNumberId));
+  }
+
   async handleInbound(msg: InboundMessage): Promise<string> {
-    const from = msg.from;
     const text = (msg.text ?? "").trim();
+    let ctx: Ctx = {
+      from: msg.from,
+      phoneNumberId: msg.toPhoneNumberId,
+      tenant: null,
+      key: convKey(msg.from, msg.toPhoneNumberId),
+    };
+    // A human is mid-conversation here: say nothing at all. Note this runs
+    // BEFORE routing, so no conversation state advances either — when the
+    // window lapses the buyer picks up exactly where they left off.
+    if (this.takeover?.active(ctx.key)) {
+      log.info({ key: ctx.key }, "suppressed — vendor is handling this thread");
+      return "";
+    }
     let reply: string;
     try {
-      reply = await this.route(from, text);
+      ctx = { ...ctx, tenant: await this.resolveTenant(msg.toPhoneNumberId) };
+      reply = await this.route(ctx, text);
     } catch (err) {
       const message = err instanceof AppError ? err.message : "something went wrong";
       log.warn({ err: (err as Error).message }, "inbound failed");
       reply = `⚠️ ${message}`;
     }
-    await this.reply(from, reply);
+    await this.reply(ctx, reply);
     return reply;
   }
 
-  private async route(from: string, text: string): Promise<string> {
+  /**
+   * Which vendor owns the number this message landed on. Our own number is not
+   * a tenant, and neither is an unrecognised id — both fall through to the
+   * platform behaviour rather than silently serving the wrong shop.
+   */
+  private async resolveTenant(phoneNumberId?: string): Promise<Merchant | null> {
+    if (!phoneNumberId) return null;
+    if (phoneNumberId === this.opts.platformPhoneNumberId) return null;
+    return this.repos.merchants.byWaPhoneNumberId(phoneNumberId);
+  }
+
+  private async route(ctx: Ctx, text: string): Promise<string> {
     // 1) Mid-conversation (onboarding or buying) → continue it.
-    const state = this.convo.get(from);
-    if (state) return this.continueConversation(from, text, state.step, state.data);
+    const state = this.convo.get(ctx.key);
+    if (state) return this.continueConversation(ctx, text, state.step, state.data);
 
-    // 2) Registered merchant → vendor commands.
-    const merchant = await this.repos.merchants.byPhone(from);
-    if (merchant) return this.vendorCommand(merchant.id, merchant.phone, text);
+    // 2) On a vendor's own number the tenancy decides, not the message text.
+    //    A `shop-<other>` deep link is deliberately ignored here: a vendor's
+    //    number must never hand a buyer a competitor's catalogue.
+    if (ctx.tenant) {
+      if (ctx.from === ctx.tenant.phone) return this.vendorCommand(ctx.tenant, text);
+      return this.startBuyerFlow(ctx, ctx.tenant.id);
+    }
 
-    // 3) Buyer deep link: "shop-<merchantId>".
+    // 3) Registered merchant on our own number → vendor commands.
+    const merchant = await this.repos.merchants.byPhone(ctx.from);
+    if (merchant) return this.vendorCommand(merchant, text);
+
+    // 4) Buyer deep link: "shop-<merchantId>".
     const shop = text.match(/^shop[-\s]+(\S+)/i);
-    if (shop) return this.startBuyerFlow(from, shop[1]!);
+    if (shop) return this.startBuyerFlow(ctx, shop[1]!);
 
-    // 4) New unknown sender → greet + start onboarding.
-    return this.startOnboarding(from);
+    // 5) New unknown sender → greet + start onboarding.
+    return this.startOnboarding(ctx);
   }
 
   // ---------------------------------------------------------------------------
@@ -113,8 +189,8 @@ export class WhatsAppService {
    * brand-new vendor can see what they're signing up for before answering, but
    * the sign-up question stays last so it's the thing they reply to.
    */
-  private startOnboarding(from: string): string {
-    this.convo.set(from, "onboard:business_name", {});
+  private startOnboarding(ctx: Ctx): string {
+    this.convo.set(ctx.key, "onboard:business_name", {});
     return [
       "Hello 👋 We're *Rhodium*.",
       "We help you sell and collect payments right here in WhatsApp — by bank transfer or crypto — and keep your sales records automatically.",
@@ -132,11 +208,12 @@ export class WhatsAppService {
   }
 
   private async continueConversation(
-    from: string,
+    ctx: Ctx,
     text: string,
     step: string,
     data: Record<string, unknown>,
   ): Promise<string> {
+    const from = ctx.from;
     switch (step) {
       case "onboard:business_name": {
         if (text.length < 2) return "Please tell me your business name.";
@@ -150,7 +227,7 @@ export class WhatsAppService {
           ].join("\n");
         }
         data.businessName = text;
-        this.convo.set(from, "onboard:account_number", data);
+        this.convo.set(ctx.key, "onboard:account_number", data);
         return `Nice to meet you, *${text}*! 🎉\n\nWhich bank account should we settle your money into?\nSend your *10-digit account number*.`;
       }
       case "onboard:account_number": {
@@ -159,7 +236,7 @@ export class WhatsAppService {
           return "That doesn't look right — send your *10-digit* account number (numbers only).";
         }
         data.accountNumber = acct;
-        this.convo.set(from, "onboard:bank", data);
+        this.convo.set(ctx.key, "onboard:bank", data);
         return `Which bank is that?\n\n${bankMenu()}\n\nReply with the *number*.`;
       }
       case "onboard:bank": {
@@ -186,7 +263,7 @@ export class WhatsAppService {
         } catch (err) {
           log.warn({ err: (err as Error).message }, "wallet generation failed during onboarding");
         }
-        this.convo.clear(from);
+        this.convo.clear(ctx.key);
         return [
           `✅ *${merchant.businessName}* is all set up!`,
           `Payouts (bank): ${bank.name} ••••${String(data.accountNumber).slice(-4)}${walletLine}`,
@@ -206,7 +283,7 @@ export class WhatsAppService {
         }
         const product = await this.repos.products.byId(ids[idx]!);
         data.productId = ids[idx];
-        this.convo.set(from, "buy:select_method", data);
+        this.convo.set(ctx.key, "buy:select_method", data);
         return [
           `You picked *${product?.name}* (${formatNaira(product?.price ?? 0)}).`,
           "",
@@ -230,7 +307,7 @@ export class WhatsAppService {
           ttlMs: 60 * 60 * 1000,
           rail,
         });
-        this.convo.clear(from);
+        this.convo.clear(ctx.key);
 
         // Name the item on every instruction — by this point the buyer has sent
         // two bare numbers, and an order code alone gives them nothing to check
@@ -288,22 +365,25 @@ export class WhatsAppService {
         ].join("\n");
       }
       default:
-        this.convo.clear(from);
-        return this.startOnboarding(from);
+        this.convo.clear(ctx.key);
+        // A stale step on a vendor's number must restart the SHOP, never
+        // onboarding — the person on the other end is a buyer.
+        if (ctx.tenant) return this.startBuyerFlow(ctx, ctx.tenant.id);
+        return this.startOnboarding(ctx);
     }
   }
 
   // ---------------------------------------------------------------------------
   // Buyer storefront
   // ---------------------------------------------------------------------------
-  private async startBuyerFlow(from: string, merchantId: string): Promise<string> {
+  private async startBuyerFlow(ctx: Ctx, merchantId: string): Promise<string> {
     const merchant = await this.repos.merchants.byId(merchantId);
     if (!merchant) return "Sorry, that shop isn't available — please check the link.";
     const products = await this.commerce.listProducts(merchantId);
     if (products.length === 0) {
       return `*${merchant.businessName}* hasn't added products yet. Check back soon!`;
     }
-    this.convo.set(from, "buy:select_product", {
+    this.convo.set(ctx.key, "buy:select_product", {
       merchantId,
       productIds: products.map((p) => p.id),
     });
@@ -322,7 +402,8 @@ export class WhatsAppService {
   // ---------------------------------------------------------------------------
   // Vendor commands
   // ---------------------------------------------------------------------------
-  private async vendorCommand(merchantId: string, merchantPhone: string, text: string): Promise<string> {
+  private async vendorCommand(merchant: Merchant, text: string): Promise<string> {
+    const merchantId = merchant.id;
     const [command, ...rest] = text.split(/\s+/);
     switch ((command ?? "").toLowerCase()) {
       case "help":
@@ -339,15 +420,49 @@ export class WhatsAppService {
       case "link":
       case "myshop":
       case "shop":
-        return this.shopLink(merchantId);
+        return this.shopLink(merchant);
+      case "connect":
+        return this.connectNumber(merchant);
       case "ledger":
       case "sales":
       case "balance":
       case "books":
-        return this.salesLedger(merchantId, merchantPhone);
+        return this.salesLedger(merchantId, merchant.phone);
       default:
         return `Didn't get that. ${this.menu()}`;
     }
+  }
+
+  /**
+   * Hand the vendor their Embedded Signup link, so buyers can message THEIR
+   * number instead of ours. Everything else about their shop is unchanged —
+   * this only moves where the conversation happens.
+   */
+  private connectNumber(merchant: Merchant): string {
+    if (merchant.waPhoneNumberId) {
+      return [
+        "✅ Your own WhatsApp number is already connected.",
+        ...(merchant.waDisplayPhone ? [`Buyers reach you on ${merchant.waDisplayPhone}.`] : []),
+        "",
+        "Type *link* for the link to share.",
+      ].join("\n");
+    }
+    if (!this.signup?.configured) {
+      return [
+        "Connecting your own WhatsApp number isn't switched on yet.",
+        "",
+        "For now buyers reach your shop through our number — type *link* to get yours.",
+      ].join("\n");
+    }
+    return [
+      "📱 *Sell from your own WhatsApp number*",
+      "",
+      "Tap below to connect your WhatsApp Business number. Buyers will then message *you* directly, and your shop replies for you.",
+      "",
+      this.signup.signupUrl(merchant.id),
+      "",
+      "You'll need your business's Facebook login. Takes about 2 minutes.",
+    ].join("\n");
   }
 
   /**
@@ -366,6 +481,7 @@ export class WhatsAppService {
       "",
       "*🔗 Get buyers*",
       "• *link* — your shareable shop link",
+      "• *connect* — sell from your OWN WhatsApp number",
       "",
       "*💳 Take a payment*",
       "• *sell <productId> <qty> <buyerPhone>*",
@@ -378,16 +494,30 @@ export class WhatsAppService {
     ].join("\n");
   }
 
-  private shopLink(merchantId: string): string {
+  /**
+   * Once a vendor is on their own number the link is simply *their* number:
+   * any message to it opens their catalogue, so it needs no `?text=shop-<id>`
+   * payload — and a buyer who saves the contact still lands in the right shop.
+   */
+  private shopLink(merchant: Merchant): string {
+    const own = digits(merchant.waDisplayPhone);
+    if (merchant.waPhoneNumberId && own) {
+      return [
+        "Your shop link — share it with buyers:",
+        `https://wa.me/${own}`,
+        "",
+        "It opens a chat with your own number. Whatever they say, they'll see your products and can pay in a couple of taps.",
+      ].join("\n");
+    }
     if (this.opts.waNumber) {
       return [
         "Your shop link — share it with buyers:",
-        `https://wa.me/${this.opts.waNumber}?text=shop-${merchantId}`,
+        `https://wa.me/${this.opts.waNumber}?text=shop-${merchant.id}`,
         "",
         "When a buyer opens it, they'll see your products and can pay in a couple of taps.",
       ].join("\n");
     }
-    return `Your shop id: *shop-${merchantId}*\nBuyers message this number with that to see your catalogue.`;
+    return `Your shop id: *shop-${merchant.id}*\nBuyers message this number with that to see your catalogue.`;
   }
 
   private async listProducts(merchantId: string): Promise<string> {
@@ -479,7 +609,23 @@ export class WhatsAppService {
     ].join("\n");
   }
 
-  private async reply(to: string, message: string): Promise<void> {
-    await this.transport.send(to, message);
+  /** Always answer on the number the message came in on. */
+  private async reply(ctx: Ctx, message: string): Promise<void> {
+    if (!message) return; // suppressed — never send an empty WhatsApp message
+    await this.transport.send(ctx.from, message, { phoneNumberId: ctx.phoneNumberId });
   }
+}
+
+/**
+ * Conversation keys are namespaced by the number the message arrived on: the
+ * same buyer can be mid-purchase with two different vendors, and on a shared
+ * key the second shop would resume the first shop's product list.
+ */
+function convKey(from: string, phoneNumberId?: string): string {
+  return `${phoneNumberId ?? "platform"}:${from}`;
+}
+
+/** Digits only, for building a `wa.me/<digits>` link from a display number. */
+function digits(phone?: string): string {
+  return (phone ?? "").replace(/\D/g, "");
 }

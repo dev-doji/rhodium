@@ -28,6 +28,17 @@ export interface Merchant {
   processorSubaccountCode?: string;
   /** Merchant's self-custody Quai wallet — where crypto sales settle (no custody by us). */
   quaiAddress?: string;
+  /**
+   * The vendor's OWN WhatsApp Cloud API number, connected through Embedded
+   * Signup. Everything multi-tenant keys off `waPhoneNumberId` (a Meta id):
+   * inbound webhooks carry it in `value.metadata.phone_number_id`, and outbound
+   * sends POST to `/{waPhoneNumberId}/messages`. Absent => this merchant is
+   * served from Rhodium's own number.
+   */
+  waPhoneNumberId?: string;
+  waBusinessAccountId?: string;
+  /** Display form of that number, used to build buyer `wa.me` links. */
+  waDisplayPhone?: string;
   createdAt: Date;
 }
 

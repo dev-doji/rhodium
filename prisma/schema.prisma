@@ -22,6 +22,12 @@ model Merchant {
   quaiAddress             String?  @map("quai_address")
   walletMnemonicEnc       String?  @map("wallet_mnemonic_enc") // encrypted embedded-wallet secrets
   walletPrivateKeyEnc     String?  @map("wallet_private_key_enc")
+  // Multi-tenant WhatsApp: the vendor's OWN Cloud API number, connected via
+  // Embedded Signup. Tenancy keys off waPhoneNumberId (a Meta id) — never off a
+  // phone string, which has no normalisation anywhere in this codebase.
+  waPhoneNumberId         String?  @unique @map("wa_phone_number_id")
+  waBusinessAccountId     String?  @map("wa_business_account_id")
+  waDisplayPhone          String?  @map("wa_display_phone") // e.g. "+234 803 680 3974"
   createdAt               DateTime @default(now()) @map("created_at")
 
   products Product[]

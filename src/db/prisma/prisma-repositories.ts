@@ -54,6 +54,9 @@ class PgMerchantRepo implements MerchantRepo {
           : null,
         processorSubaccountCode: m.processorSubaccountCode ?? null,
         quaiAddress: m.quaiAddress ?? null,
+        waPhoneNumberId: m.waPhoneNumberId ?? null,
+        waBusinessAccountId: m.waBusinessAccountId ?? null,
+        waDisplayPhone: m.waDisplayPhone ?? null,
       },
     });
     return this.map(row);
@@ -66,6 +69,11 @@ class PgMerchantRepo implements MerchantRepo {
     const row = await this.db.merchant.findUnique({
       where: { phoneHash: blindIndex(phone) },
     });
+    return row ? this.map(row) : null;
+  }
+  async byWaPhoneNumberId(waPhoneNumberId: string): Promise<Merchant | null> {
+    if (!waPhoneNumberId) return null;
+    const row = await this.db.merchant.findUnique({ where: { waPhoneNumberId } });
     return row ? this.map(row) : null;
   }
   async update(id: string, patch: Partial<Merchant>): Promise<Merchant> {
@@ -84,6 +92,9 @@ class PgMerchantRepo implements MerchantRepo {
     if (patch.quaiAddress != null) {
       data.quaiAddress = patch.quaiAddress;
     }
+    if (patch.waPhoneNumberId != null) data.waPhoneNumberId = patch.waPhoneNumberId;
+    if (patch.waBusinessAccountId != null) data.waBusinessAccountId = patch.waBusinessAccountId;
+    if (patch.waDisplayPhone != null) data.waDisplayPhone = patch.waDisplayPhone;
     const row = await this.db.merchant.update({ where: { id }, data }).catch(() => {
       throw new NotFoundError("merchant", { id });
     });
@@ -124,6 +135,9 @@ class PgMerchantRepo implements MerchantRepo {
         : undefined,
       processorSubaccountCode: (r.processorSubaccountCode as string | null) ?? undefined,
       quaiAddress: (r.quaiAddress as string | null) ?? undefined,
+      waPhoneNumberId: (r.waPhoneNumberId as string | null) ?? undefined,
+      waBusinessAccountId: (r.waBusinessAccountId as string | null) ?? undefined,
+      waDisplayPhone: (r.waDisplayPhone as string | null) ?? undefined,
       createdAt: r.createdAt as Date,
     };
   }
