@@ -32,32 +32,44 @@ interface StoreSpec {
   items: [string, number][]; // [name, naira]
 }
 
-function stores(jewelleryPhone: string, gadgetPhone: string): StoreSpec[] {
-  return [
-    {
-      phone: jewelleryPhone,
-      businessName: "Diadem Store",
-      items: [
-        ["Gold-Plated Hoop Earrings", 8_500],
-        ["Pearl Drop Necklace", 15_000],
-        ["Stainless Steel Bangle Set", 12_000],
-        ["Silver Anklet", 6_500],
-        ["Beaded Waist Chain", 4_000],
-      ],
-    },
-    {
-      phone: gadgetPhone,
-      businessName: "Circuit City",
-      items: [
-        ["Wireless Mouse", 12_000],
-        ["Mechanical Keyboard", 45_000],
-        ["USB-C Hub 6-in-1", 28_000],
-        ["Noise-Cancelling Earbuds", 65_000],
-        ["Laptop Stand (Aluminium)", 22_000],
-        ["65W GaN Fast Charger", 18_000],
-      ],
-    },
-  ];
+const CIRCUIT_CITY: Omit<StoreSpec, "phone"> = {
+  businessName: "Circuit City",
+  // Deliberately spans ₦6,500 → ₦95,000. The cheap end matters: a buyer paying
+  // in testnet QUAI needs an item they can actually afford from a faucet.
+  items: [
+    ["HDMI Cable 2m", 6_500],
+    ["Wireless Mouse", 12_000],
+    ["Phone Tripod + Ring Light", 15_000],
+    ["Laptop Sleeve 15\"", 16_000],
+    ["65W GaN Fast Charger", 18_000],
+    ["Wireless Charging Pad", 20_000],
+    ["Laptop Stand (Aluminium)", 22_000],
+    ["USB-C Hub 6-in-1", 28_000],
+    ["Webcam 1080p", 32_000],
+    ["Power Bank 20,000mAh", 35_000],
+    ["Bluetooth Speaker", 40_000],
+    ["Mechanical Keyboard", 45_000],
+    ["Smart Watch", 55_000],
+    ["Noise-Cancelling Earbuds", 65_000],
+    ["External SSD 1TB", 95_000],
+  ],
+};
+
+const DIADEM: Omit<StoreSpec, "phone"> = {
+  businessName: "Diadem Store",
+  items: [
+    ["Gold-Plated Hoop Earrings", 8_500],
+    ["Pearl Drop Necklace", 15_000],
+    ["Stainless Steel Bangle Set", 12_000],
+    ["Silver Anklet", 6_500],
+    ["Beaded Waist Chain", 4_000],
+  ],
+};
+
+function stores(gadgetPhone: string, jewelleryPhone?: string): StoreSpec[] {
+  const list: StoreSpec[] = [{ phone: gadgetPhone, ...CIRCUIT_CITY }];
+  if (jewelleryPhone) list.push({ phone: jewelleryPhone, ...DIADEM });
+  return list;
 }
 
 async function seedStore(
@@ -115,14 +127,15 @@ async function seedStore(
 }
 
 async function main(): Promise<void> {
-  const [jewellery, gadgets] = process.argv.slice(2);
-  if (!jewellery || !gadgets) {
+  const [gadgets, jewellery] = process.argv.slice(2);
+  if (!gadgets) {
     throw new Error(
-      'usage: npm run seed:demo-stores -- "+234jewellery" "+234gadgets"\n' +
-        "  (two DIFFERENT phone numbers — each identifies its vendor for vendor commands)",
+      'usage: npm run seed:demo-stores -- "+234gadgets" ["+234jewellery"]\n' +
+        "  first number = Circuit City, optional second = Diadem Store.\n" +
+        "  Each identifies its vendor for vendor commands, so they must differ.",
     );
   }
-  if (jewellery === gadgets) {
+  if (jewellery && jewellery === gadgets) {
     throw new Error("the two stores need different phone numbers — vendors are keyed by phone");
   }
 
@@ -139,7 +152,7 @@ async function main(): Promise<void> {
   }
 
   const seeded = [];
-  for (const spec of stores(jewellery, gadgets)) {
+  for (const spec of stores(gadgets, jewellery)) {
     seeded.push(await seedStore(repos, commerce, wallets, spec));
     console.log("");
   }
