@@ -26,6 +26,7 @@
     "demo:whatsapp": "tsx src/demo/whatsapp-e2e.ts",
     "smoke:whatsapp": "tsx src/smoke/whatsapp-check.ts",
     "seed:merchant": "tsx src/smoke/seed-merchant.ts",
+    "seed:demo-stores": "tsx src/smoke/seed-demo-stores.ts",
     "cleanup:test-data": "tsx src/smoke/cleanup-test-data.ts",
     "contracts:install": "npm --prefix chain install",
     "contracts:compile": "npm --prefix chain run compile",
