@@ -183,12 +183,39 @@
       pollPaid();
     }
 
+    /**
+     * A Quai-aware injected wallet, or null.
+     *
+     * window.ethereum is deliberately NOT accepted. MetaMask and other EVM
+     * wallets inject it but implement none of the quai_* methods, so including
+     * it here produced 'The method "quai_requestAccounts" does not exist' —
+     * which reads like a Rhodium bug when it is simply the wrong wallet.
+     */
+    function quaiProvider() {
+      return window.pelagus || window.blip || null;
+    }
+
+    function needWallet() {
+      const btn = $("pay");
+      btn.disabled = false;
+      btn.innerHTML = `${ICON.wallet} Pay with BlipPay / Pelagus`;
+      $("body").insertAdjacentHTML("beforeend",
+        '<div class="err">This order settles on Quai, so it needs a Quai wallet — ' +
+        'an EVM wallet like MetaMask cannot sign it.<br><br>' +
+        '<b>On your phone:</b> open this page inside the <b>BlipPay</b> app.<br>' +
+        '<b>On desktop:</b> install <a href="https://pelaguswallet.io" target="_blank" ' +
+        'rel="noopener">Pelagus</a>, then reload.</div>');
+    }
+
     async function pay(quaiMode, instruction) {
       const btn = $("pay");
       btn.disabled = true; btn.innerHTML = "Confirming…";
       try {
-        const provider = window.pelagus || window.blip || window.ethereum;
-        if (quaiMode === "live" && provider) {
+        const provider = quaiProvider();
+        if (quaiMode === "live") {
+          // Never fall back to the simulator when live: doing so would mark a
+          // real order paid with no transaction behind it.
+          if (!provider) return needWallet();
           lastTx = await payOnChain(provider, instruction);
         } else {
           const res = await fetch("/api/crypto/simulate-pay", {
