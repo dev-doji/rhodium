@@ -204,6 +204,44 @@ describe("multi-tenant WhatsApp — Rhodium's own number is unchanged", () => {
     expect(reply).toMatch(/Red Lipstick/);
   });
 
+  it("lets a registered vendor shop another store from their own phone", async () => {
+    const app = makeApp();
+    const vendor = await seedMerchant(app, {
+      phone: "+2349110461379",
+      businessName: "Circuit City",
+    });
+    const other = await seedMerchant(app, {
+      phone: "+2348030007777",
+      businessName: "Diadem Store",
+    });
+    await seedProduct(app, other.id, 650_000);
+
+    // A vendor tapping a shop link used to fall through to vendorCommand, which
+    // does not know "shop-mch_…" and answered "Didn't get that" — leaving them
+    // unable to buy anywhere, or to test their own storefront.
+    const reply = await app.whatsapp.handleInbound({
+      from: vendor.phone,
+      text: `shop-${other.id}`,
+      toPhoneNumberId: PLATFORM,
+    });
+
+    expect(reply).toContain("Diadem Store");
+    expect(reply).not.toMatch(/didn't get that/i);
+  });
+
+  it("still gives a vendor their own link for a bare 'shop'", async () => {
+    const app = makeApp();
+    const vendor = await seedMerchant(app, { phone: "+2349110461380" });
+    // The deep-link regex needs an id after "shop", so the bare word must still
+    // reach vendorCommand rather than being swallowed as a buyer link.
+    const reply = await app.whatsapp.handleInbound({
+      from: vendor.phone,
+      text: "shop",
+      toPhoneNumberId: PLATFORM,
+    });
+    expect(reply).toContain(`shop-${vendor.id}`);
+  });
+
   it("offers a vendor the connect link and reports once connected", async () => {
     const app = makeApp();
     const merchant = await seedMerchant(app);

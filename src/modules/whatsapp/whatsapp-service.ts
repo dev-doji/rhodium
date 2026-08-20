@@ -168,13 +168,19 @@ export class WhatsAppService {
       return this.startBuyerFlow(ctx, ctx.tenant.id);
     }
 
-    // 3) Registered merchant on our own number → vendor commands.
-    const merchant = await this.repos.merchants.byPhone(ctx.from);
-    if (merchant) return this.vendorCommand(merchant, text);
-
-    // 4) Buyer deep link: "shop-<merchantId>".
+    // 3) Buyer deep link: "shop-<merchantId>". Checked BEFORE the merchant
+    //    lookup, because opening a shop link is an unambiguous intent to buy
+    //    whoever you are. Ordered the other way, a registered vendor tapping any
+    //    link fell through to `vendorCommand`, which does not recognise
+    //    "shop-mch_…" as a command and answered "Didn't get that" — so a vendor
+    //    could never buy from another Rhodium shop, and could not test their own.
+    //    Bare "shop" still reaches vendorCommand: the regex needs an id after it.
     const shop = text.match(/^shop[-\s]+(\S+)/i);
     if (shop) return this.startBuyerFlow(ctx, shop[1]!);
+
+    // 4) Registered merchant on our own number → vendor commands.
+    const merchant = await this.repos.merchants.byPhone(ctx.from);
+    if (merchant) return this.vendorCommand(merchant, text);
 
     // 5) New unknown sender → greet + start onboarding.
     return this.startOnboarding(ctx);
