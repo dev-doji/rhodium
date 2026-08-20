@@ -156,29 +156,31 @@ export class WhatsAppService {
   }
 
   private async route(ctx: Ctx, text: string): Promise<string> {
-    // 1) Mid-conversation (onboarding or buying) → continue it.
+    // 1) A shop deep link outranks EVERYTHING on our own number — including a
+    //    conversation already in progress. A buyer who says "hi" first is put
+    //    into vendor onboarding, and without this their `shop-mch_…` link was
+    //    consumed as the answer to "what's your business name?", registering a
+    //    merchant called "shop-mch_e562…" instead of opening the shop.
+    //    Requires the `mch_` prefix so a real business called "Shop Rite" can
+    //    still sign up — the id format is what disambiguates, not the word.
+    const shop = text.match(/^shop[-\s]+(mch_\w+)/i);
+    if (shop && !ctx.tenant) return this.startBuyerFlow(ctx, shop[1]!);
+
+    // 2) Mid-conversation (onboarding or buying) → continue it.
     const state = this.convo.get(ctx.key);
     if (state) return this.continueConversation(ctx, text, state.step, state.data);
 
-    // 2) On a vendor's own number the tenancy decides, not the message text.
-    //    A `shop-<other>` deep link is deliberately ignored here: a vendor's
-    //    number must never hand a buyer a competitor's catalogue.
+    // 3) On a vendor's own number the tenancy decides, not the message text.
+    //    A `shop-<other>` deep link is deliberately ignored here (hence the
+    //    `!ctx.tenant` guard above): a vendor's number must never hand a buyer
+    //    a competitor's catalogue.
     if (ctx.tenant) {
       if (ctx.from === ctx.tenant.phone) return this.vendorCommand(ctx.tenant, text);
       return this.startBuyerFlow(ctx, ctx.tenant.id);
     }
 
-    // 3) Buyer deep link: "shop-<merchantId>". Checked BEFORE the merchant
-    //    lookup, because opening a shop link is an unambiguous intent to buy
-    //    whoever you are. Ordered the other way, a registered vendor tapping any
-    //    link fell through to `vendorCommand`, which does not recognise
-    //    "shop-mch_…" as a command and answered "Didn't get that" — so a vendor
-    //    could never buy from another Rhodium shop, and could not test their own.
-    //    Bare "shop" still reaches vendorCommand: the regex needs an id after it.
-    const shop = text.match(/^shop[-\s]+(\S+)/i);
-    if (shop) return this.startBuyerFlow(ctx, shop[1]!);
-
-    // 4) Registered merchant on our own number → vendor commands.
+    // 4) Registered merchant on our own number → vendor commands. Below the
+    //    deep link so a vendor can shop other stores from their own phone.
     const merchant = await this.repos.merchants.byPhone(ctx.from);
     if (merchant) return this.vendorCommand(merchant, text);
 

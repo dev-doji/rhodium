@@ -204,6 +204,43 @@ describe("multi-tenant WhatsApp — Rhodium's own number is unchanged", () => {
     expect(reply).toMatch(/Red Lipstick/);
   });
 
+  it("rescues a buyer who said 'hi' first and landed in onboarding", async () => {
+    const app = makeApp();
+    const shop = await seedMerchant(app, { businessName: "Circuit City" });
+    await seedProduct(app, shop.id, 650_000);
+    const buyer = "+2349032621846";
+
+    // The real sequence a buyer performs: greet, then tap the link.
+    const greeting = await app.whatsapp.handleInbound({
+      from: buyer, text: "Hi", toPhoneNumberId: PLATFORM,
+    });
+    expect(greeting).toMatch(/business name/i);
+
+    const catalogue = await app.whatsapp.handleInbound({
+      from: buyer, text: `shop-${shop.id}`, toPhoneNumberId: PLATFORM,
+    });
+
+    // Previously the link was swallowed as the answer to "business name?",
+    // registering a merchant literally called "shop-mch_…".
+    expect(catalogue).toContain("Circuit City");
+    expect(catalogue).not.toMatch(/bank account|business name/i);
+    const junk = await app.repos.merchants.byPhone(buyer);
+    expect(junk).toBeNull();
+  });
+
+  it("still lets a business called 'Shop Rite' onboard", async () => {
+    const app = makeApp();
+    const phone = "+2348099887766";
+    await app.whatsapp.handleInbound({ from: phone, text: "hello", toPhoneNumberId: PLATFORM });
+    // Tightening the deep-link pattern to require `mch_` is what protects this:
+    // a looser /^shop[-\s]+(\S+)/ would eat the name and answer "shop
+    // unavailable" to a vendor who is simply called Shop Rite.
+    const reply = await app.whatsapp.handleInbound({
+      from: phone, text: "Shop Rite", toPhoneNumberId: PLATFORM,
+    });
+    expect(reply).toMatch(/account number/i);
+  });
+
   it("lets a registered vendor shop another store from their own phone", async () => {
     const app = makeApp();
     const vendor = await seedMerchant(app, {
