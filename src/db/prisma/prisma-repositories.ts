@@ -54,6 +54,7 @@ class PgMerchantRepo implements MerchantRepo {
           : null,
         processorSubaccountCode: m.processorSubaccountCode ?? null,
         quaiAddress: m.quaiAddress ?? null,
+        slug: m.slug ?? null,
         waPhoneNumberId: m.waPhoneNumberId ?? null,
         waBusinessAccountId: m.waBusinessAccountId ?? null,
         waDisplayPhone: m.waDisplayPhone ?? null,
@@ -76,6 +77,11 @@ class PgMerchantRepo implements MerchantRepo {
     const row = await this.db.merchant.findUnique({ where: { waPhoneNumberId } });
     return row ? this.map(row) : null;
   }
+  async bySlug(slug: string): Promise<Merchant | null> {
+    if (!slug) return null;
+    const row = await this.db.merchant.findUnique({ where: { slug: slug.toLowerCase() } });
+    return row ? this.map(row) : null;
+  }
   async update(id: string, patch: Partial<Merchant>): Promise<Merchant> {
     const data: Prisma.MerchantUpdateInput = {};
     if (patch.businessName != null) data.businessName = patch.businessName;
@@ -92,6 +98,7 @@ class PgMerchantRepo implements MerchantRepo {
     if (patch.quaiAddress != null) {
       data.quaiAddress = patch.quaiAddress;
     }
+    if (patch.slug != null) data.slug = patch.slug.toLowerCase();
     if (patch.waPhoneNumberId != null) data.waPhoneNumberId = patch.waPhoneNumberId;
     if (patch.waBusinessAccountId != null) data.waBusinessAccountId = patch.waBusinessAccountId;
     if (patch.waDisplayPhone != null) data.waDisplayPhone = patch.waDisplayPhone;
@@ -135,6 +142,7 @@ class PgMerchantRepo implements MerchantRepo {
         : undefined,
       processorSubaccountCode: (r.processorSubaccountCode as string | null) ?? undefined,
       quaiAddress: (r.quaiAddress as string | null) ?? undefined,
+      slug: (r.slug as string | null) ?? undefined,
       waPhoneNumberId: (r.waPhoneNumberId as string | null) ?? undefined,
       waBusinessAccountId: (r.waBusinessAccountId as string | null) ?? undefined,
       waDisplayPhone: (r.waDisplayPhone as string | null) ?? undefined,

@@ -20,6 +20,9 @@ model Merchant {
   settlementAccountEnc    String?  @map("settlement_account_enc") // encrypted
   processorSubaccountCode String?  @map("processor_subaccount_code")
   quaiAddress             String?  @map("quai_address")
+  // Human-readable handle for buyer links: `shop-circuitcity` instead of
+  // `shop-mch_e562196b4b76ad5b`. Nullable so pre-existing merchants stay valid.
+  slug                    String?  @unique @map("slug")
   walletMnemonicEnc       String?  @map("wallet_mnemonic_enc") // encrypted embedded-wallet secrets
   walletPrivateKeyEnc     String?  @map("wallet_private_key_enc")
   // Multi-tenant WhatsApp: the vendor's OWN Cloud API number, connected via

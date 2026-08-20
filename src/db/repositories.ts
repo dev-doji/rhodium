@@ -27,6 +27,8 @@ export interface MerchantRepo {
    * phone string.
    */
   byWaPhoneNumberId(waPhoneNumberId: string): Promise<Merchant | null>;
+  /** Look up a shop by its human-readable handle (case-insensitive). */
+  bySlug(slug: string): Promise<Merchant | null>;
   update(id: string, patch: Partial<Merchant>): Promise<Merchant>;
   list(): Promise<Merchant[]>;
   /**

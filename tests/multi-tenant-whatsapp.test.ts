@@ -452,3 +452,66 @@ describe("Embedded Signup", () => {
     expect(signup.verifyState(url.searchParams.get("state")!)).toBe("mch_abc");
   });
 });
+
+describe("human-readable shop handles", () => {
+  it("opens a shop from its handle instead of a raw id", async () => {
+    const app = makeApp();
+    const shop = await seedMerchant(app, { businessName: "Circuit City", slug: "circuitcity" });
+    await seedProduct(app, shop.id, 650_000);
+
+    const reply = await app.whatsapp.handleInbound({
+      from: "+2348090001010", text: "shop-circuitcity", toPhoneNumberId: PLATFORM,
+    });
+    expect(reply).toContain("Circuit City");
+    expect(reply).toMatch(/Red Lipstick/);
+  });
+
+  it("is case-insensitive, because people capitalise links", async () => {
+    const app = makeApp();
+    const shop = await seedMerchant(app, { businessName: "Circuit City", slug: "circuitcity" });
+    await seedProduct(app, shop.id);
+    const reply = await app.whatsapp.handleInbound({
+      from: "+2348090002020", text: "Shop-CircuitCity", toPhoneNumberId: PLATFORM,
+    });
+    expect(reply).toContain("Circuit City");
+  });
+
+  it("mints a handle at onboarding and shares it in the link", async () => {
+    const app = makeApp();
+    const phone = "+2348090003030";
+    await app.whatsapp.handleInbound({ from: phone, text: "hi", toPhoneNumberId: PLATFORM });
+    await app.whatsapp.handleInbound({ from: phone, text: "Circuit City", toPhoneNumberId: PLATFORM });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789", toPhoneNumberId: PLATFORM });
+    await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
+
+    const merchant = await app.repos.merchants.byPhone(phone);
+    expect(merchant!.slug).toBe("circuitcity");
+
+    const link = await app.whatsapp.handleInbound({ from: phone, text: "link", toPhoneNumberId: PLATFORM });
+    expect(link).toContain("shop-circuitcity");
+    expect(link).not.toContain(merchant!.id);
+  });
+
+  it("suffixes a handle that is already taken", async () => {
+    const app = makeApp();
+    await seedMerchant(app, { businessName: "Circuit City", slug: "circuitcity" });
+    const phone = "+2348090004040";
+    await app.whatsapp.handleInbound({ from: phone, text: "hi", toPhoneNumberId: PLATFORM });
+    await app.whatsapp.handleInbound({ from: phone, text: "Circuit City", toPhoneNumberId: PLATFORM });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789", toPhoneNumberId: PLATFORM });
+    await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
+
+    const merchant = await app.repos.merchants.byPhone(phone);
+    expect(merchant!.slug).toBe("circuitcity2");
+  });
+
+  it("still accepts the raw id, so links already shared keep working", async () => {
+    const app = makeApp();
+    const shop = await seedMerchant(app, { businessName: "Circuit City", slug: "circuitcity" });
+    await seedProduct(app, shop.id);
+    const reply = await app.whatsapp.handleInbound({
+      from: "+2348090005050", text: `shop-${shop.id}`, toPhoneNumberId: PLATFORM,
+    });
+    expect(reply).toContain("Circuit City");
+  });
+});

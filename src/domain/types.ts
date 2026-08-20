@@ -28,6 +28,8 @@ export interface Merchant {
   processorSubaccountCode?: string;
   /** Merchant's self-custody Quai wallet — where crypto sales settle (no custody by us). */
   quaiAddress?: string;
+  /** Human-readable buyer-link handle, e.g. "circuitcity" → `shop-circuitcity`. */
+  slug?: string;
   /**
    * The vendor's OWN WhatsApp Cloud API number, connected through Embedded
    * Signup. Everything multi-tenant keys off `waPhoneNumberId` (a Meta id):

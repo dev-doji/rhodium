@@ -10,7 +10,7 @@ import type { Repositories } from "../../db/repositories.js";
 import type { ConversationStore } from "./conversation-store.js";
 import { bankMenu, pickBank } from "./banks.js";
 import { formatNaira, nairaToKobo } from "../../lib/money.js";
-import { ref } from "../../lib/ids.js";
+import { ref, slugify } from "../../lib/ids.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../lib/errors.js";
 
@@ -144,6 +144,28 @@ export class WhatsAppService {
     return reply;
   }
 
+  /** Resolve a buyer link target: either a `mch_…` id or a human handle. */
+  private async resolveShop(token: string): Promise<Merchant | null> {
+    if (/^mch_/i.test(token)) return this.repos.merchants.byId(token);
+    return this.repos.merchants.bySlug(token);
+  }
+
+  /**
+   * A free handle derived from the business name, with a numeric suffix if it
+   * is taken. Best-effort: a merchant with no handle still works via its id, so
+   * a collision storm must never block someone onboarding.
+   */
+  private async freeSlug(businessName: string): Promise<string | undefined> {
+    const base = slugify(businessName);
+    if (!base) return undefined;
+    for (let i = 0; i < 5; i++) {
+      const candidate = i === 0 ? base : `${base}${i + 1}`;
+      const taken = await this.repos.merchants.bySlug(candidate).catch(() => null);
+      if (!taken) return candidate;
+    }
+    return undefined;
+  }
+
   /**
    * Which vendor owns the number this message landed on. Our own number is not
    * a tenant, and neither is an unrecognised id — both fall through to the
@@ -161,10 +183,21 @@ export class WhatsAppService {
     //    into vendor onboarding, and without this their `shop-mch_…` link was
     //    consumed as the answer to "what's your business name?", registering a
     //    merchant called "shop-mch_e562…" instead of opening the shop.
-    //    Requires the `mch_` prefix so a real business called "Shop Rite" can
-    //    still sign up — the id format is what disambiguates, not the word.
-    const shop = text.match(/^shop[-\s]+(mch_\w+)/i);
-    if (shop && !ctx.tenant) return this.startBuyerFlow(ctx, shop[1]!);
+    //    Accepts a handle ("shop-circuitcity") or a raw id. A token that
+    //    resolves to nothing falls through, so a business genuinely called
+    //    "Shop Rite" still onboards under its own name.
+    const shop = text.match(/^shop[-\s]+([\w-]+)/i);
+    if (shop && !ctx.tenant) {
+      const target = await this.resolveShop(shop[1]!);
+      // Only claim the message if it really names a shop. A handle that matches
+      // nothing falls through to normal routing, so a vendor whose business is
+      // called "Shop Rite" still onboards instead of being told their own name
+      // is an unavailable shop.
+      if (target) return this.startBuyerFlow(ctx, target.id);
+      if (/^mch_/i.test(shop[1]!)) {
+        return "Sorry, that shop isn't available — please check the link.";
+      }
+    }
 
     // 2) Mid-conversation (onboarding or buying) → continue it.
     const state = this.convo.get(ctx.key);
@@ -254,6 +287,7 @@ export class WhatsAppService {
           id: ref("mch"),
           phone: from,
           businessName: String(data.businessName),
+          slug: await this.freeSlug(String(data.businessName)),
           status: "active",
           kycState: "verified",
           cryptoEnabled: true,
@@ -518,14 +552,17 @@ export class WhatsAppService {
       ].join("\n");
     }
     if (this.opts.waNumber) {
+      // Prefer the handle: buyers read these aloud and retype them, and
+      // "shop-mch_e562196b4b76ad5b" is unusable the moment it leaves a tap.
+      const handle = merchant.slug ?? merchant.id;
       return [
         "Your shop link — share it with buyers:",
-        `https://wa.me/${this.opts.waNumber}?text=shop-${merchant.id}`,
+        `https://wa.me/${this.opts.waNumber}?text=shop-${handle}`,
         "",
         "When a buyer opens it, they'll see your products and can pay in a couple of taps.",
       ].join("\n");
     }
-    return `Your shop id: *shop-${merchant.id}*\nBuyers message this number with that to see your catalogue.`;
+    return `Your shop id: *shop-${merchant.slug ?? merchant.id}*\nBuyers message this number with that to see your catalogue.`;
   }
 
   private async listProducts(merchantId: string): Promise<string> {
