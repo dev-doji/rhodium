@@ -65,8 +65,13 @@ services:
         value: live
       - key: FEATURE_QUAI_ENABLED
         value: "true"
+      # live = the checkout page opens a real wallet and /api/crypto/confirm
+      # verifies the tx against Orchard. In mock the page says "no on-chain tx
+      # yet" and orders settle without ever touching the chain — which silently
+      # made every crypto sale fake while the bank rail was already live.
+      # Needs QUAI_CONTRACT_ADDRESS set in the dashboard (it is).
       - key: QUAI_ADAPTER_MODE
-        value: mock
+        value: live
       - key: QUAI_PAYMENT_ASSET
         value: native
       # PUBLIC_BASE_URL auto-resolves from RENDER_EXTERNAL_URL (see config).
