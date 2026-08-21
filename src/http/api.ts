@@ -215,6 +215,10 @@ export function buildApi(app: App): Express {
         instruction,
         quaiMode: app.config.QUAI_ADAPTER_MODE,
         quaiExplorer: app.config.QUAI_EXPLORER_URL,
+        // Needed so a wallet sitting on mainnet can be asked to add/switch to
+        // the chain this order actually settles on.
+        quaiRpcUrl: app.config.QUAI_RPC_URL,
+        quaiChainId: app.config.QUAI_CHAIN_ID,
         fx: app.fx.snapshot(),
       });
     }),

@@ -146,7 +146,12 @@
             ${data.quaiMode === 'live' ? ICON.check + ' Live on Orchard' : ICON.coin + ' Demo (mock) — no on-chain tx yet'}
           </span>
         </div>`;
-      $("pay").onclick = () => pay(data.quaiMode, instruction);
+      const chain = {
+        chainId: data.quaiChainId || instruction.chainId,
+        rpcUrl: data.quaiRpcUrl,
+        explorer: data.quaiExplorer,
+      };
+      $("pay").onclick = () => pay(data.quaiMode, instruction, chain);
       startFxTicker(instruction);
       // Decide up front rather than letting the buyer tap Pay and hit a wall:
       // on a phone without Blip the button should already say "Open in Blip".
@@ -275,7 +280,7 @@
       setInterval(tick, 60000);
     }
 
-    async function pay(quaiMode, instruction) {
+    async function pay(quaiMode, instruction, chain) {
       const btn = $("pay");
       btn.disabled = true; btn.innerHTML = "Confirming…";
       try {
@@ -284,7 +289,7 @@
           // Never fall back to the simulator when live: doing so would mark a
           // real order paid with no transaction behind it.
           if (!provider) return needWallet();
-          lastTx = await payOnChain(provider, instruction);
+          lastTx = await payOnChain(provider, instruction, chain);
         } else {
           const res = await fetch("/api/crypto/simulate-pay", {
             method: "POST", headers: { "content-type": "application/json" },
@@ -332,9 +337,56 @@
       }
     }
 
-    async function payOnChain(provider, instruction) {
+    /**
+     * Put the wallet on the chain this order settles on.
+     *
+     * Blip defaults to Cyprus1 MAINNET (0x9) while this deployment runs on
+     * Orchard testnet (15000 / 0x3a98). On the wrong chain the app wallet is a
+     * different address entirely, so the payment fails as "insufficient funds
+     * ... have 0" — which looks like an empty wallet rather than a wrong
+     * network, and sends the buyer hunting for a faucet that will not help.
+     */
+    async function ensureChain(provider, want) {
+      const target = "0x" + Number(want.chainId || 15000).toString(16);
+      let current = null;
+      try { current = await provider.request({ method: "quai_chainId" }); } catch { /* older provider */ }
+      if (current && String(current).toLowerCase() === target.toLowerCase()) return;
+
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: target }],
+        });
+        return;
+      } catch (err) {
+        // 4902 = wallet does not know this chain yet, so describe it and retry.
+        if (err && (err.code === 4902 || /unrecogniz|unsupported|4902/i.test(err.message || ""))) {
+          await provider.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: target,
+              chainName: "Quai Orchard (Cyprus1)",
+              rpcUrls: [want.rpcUrl || "https://orchard.rpc.quai.network/cyprus1"],
+              nativeCurrency: { name: "Quai", symbol: "QUAI", decimals: 18 },
+              blockExplorerUrls: [want.explorer || "https://orchard.quaiscan.io"],
+            }],
+          });
+          return;
+        }
+        throw new Error(
+          "This order settles on Quai Orchard testnet, but your wallet is on a " +
+          "different network and would not switch. Pelagus on desktop supports " +
+          "Orchard directly.",
+        );
+      }
+    }
+
+    async function payOnChain(provider, instruction, chain) {
       const accounts = await provider.request({ method: "quai_requestAccounts" });
-      const from = accounts[0];
+      await ensureChain(provider, chain);
+      // Re-read: switching chains can change the app-wallet address Blip serves.
+      const after = await provider.request({ method: "quai_requestAccounts" }).catch(() => accounts);
+      const from = (after && after[0]) || accounts[0];
       await fundAppWallet(provider, instruction);
       const { quais } = await import("https://cdn.jsdelivr.net/npm/quais@latest/+esm").catch(() => ({}));
       if (!quais) throw new Error("could not load quais.js — try again in the wallet's browser");
