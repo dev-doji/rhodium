@@ -2,6 +2,58 @@ import { logger } from "./logger.js";
 
 const log = logger("fx-oracle");
 
+type Getter = (url: string) => Promise<Response>;
+
+export interface PriceSource {
+  name: string;
+  /** Returns NGN per QUAI, or throws. */
+  read(get: Getter): Promise<number>;
+}
+
+async function json<T>(get: Getter, url: string): Promise<T> {
+  const res = await get(url);
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/**
+ * Ordered by directness. CoinGecko quotes QUAI in naira in a single call, but
+ * rate-limits hard by IP and a shared host (Render) is often already over the
+ * limit — so a keyless two-hop fallback matters more than it looks.
+ */
+export const DEFAULT_SOURCES: PriceSource[] = [
+  {
+    name: "coingecko",
+    async read(get) {
+      const b = await json<{ "quai-network"?: { ngn?: number } }>(
+        get,
+        "https://api.coingecko.com/api/v3/simple/price?ids=quai-network&vs_currencies=ngn",
+      );
+      const ngn = b["quai-network"]?.ngn;
+      if (typeof ngn !== "number") throw new Error("no ngn in response");
+      return ngn;
+    },
+  },
+  {
+    name: "coinpaprika+erapi",
+    async read(get) {
+      const [coin, fx] = await Promise.all([
+        json<{ quotes?: { USD?: { price?: number } } }>(
+          get,
+          "https://api.coinpaprika.com/v1/tickers/quai-quai-network?quotes=USD",
+        ),
+        json<{ rates?: { NGN?: number } }>(get, "https://open.er-api.com/v6/latest/USD"),
+      ]);
+      const usd = coin.quotes?.USD?.price;
+      const ngnPerUsd = fx.rates?.NGN;
+      if (typeof usd !== "number" || typeof ngnPerUsd !== "number") {
+        throw new Error("missing usd price or ngn rate");
+      }
+      return usd * ngnPerUsd;
+    },
+  },
+];
+
 export interface RateSnapshot {
   ngnPerQuai: number;
   /** "live" once a fetch has succeeded; "config" while falling back. */
@@ -31,7 +83,8 @@ export class FxOracle {
     private fallbackNgnPerQuai: number,
     private ttlMs = 5 * 60 * 1000,
     private fetchImpl: typeof fetch = fetch,
-    private url = "https://api.coingecko.com/api/v3/simple/price?ids=quai-network&vs_currencies=ngn",
+    /** Tried in order until one yields a usable rate. */
+    private sources: PriceSource[] = DEFAULT_SOURCES,
   ) {}
 
   /** Cached rate, or the configured fallback. Never throws, never blocks. */
@@ -51,34 +104,39 @@ export class FxOracle {
     };
   }
 
+  private get(url: string): Promise<Response> {
+    return this.fetchImpl(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+  }
+
   async refresh(): Promise<boolean> {
-    try {
-      const res = await this.fetchImpl(this.url, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const body = (await res.json()) as { "quai-network"?: { ngn?: number } };
-      const ngn = body["quai-network"]?.ngn;
-      if (typeof ngn !== "number" || !Number.isFinite(ngn) || ngn <= 0) {
-        throw new Error("no usable ngn rate in response");
+    const failures: string[] = [];
+    for (const source of this.sources) {
+      try {
+        const ngn = await source.read((u) => this.get(u));
+        if (typeof ngn !== "number" || !Number.isFinite(ngn) || ngn <= 0) {
+          throw new Error("no usable rate");
+        }
+        const previous = this.rate;
+        this.rate = ngn;
+        this.fetchedAt = Date.now();
+        if (previous == null || Math.abs(previous - ngn) / ngn > 0.01) {
+          log.info({ ngnPerQuai: ngn, previous, source: source.name }, "quai rate updated");
+        }
+        return true;
+      } catch (err) {
+        failures.push(`${source.name}: ${(err as Error).message}`);
       }
-      const previous = this.rate;
-      this.rate = ngn;
-      this.fetchedAt = Date.now();
-      if (previous == null || Math.abs(previous - ngn) / ngn > 0.01) {
-        log.info({ ngnPerQuai: ngn, previous }, "quai rate updated");
-      }
-      return true;
-    } catch (err) {
-      // Keep serving the last good rate. Only the very first failure leaves us
-      // on the configured fallback.
-      log.warn(
-        { err: (err as Error).message, using: this.rate ?? this.fallbackNgnPerQuai },
-        "quai rate refresh failed",
-      );
-      return false;
     }
+    // Keep serving the last good rate. Only a cold start leaves us on the
+    // configured fallback — a price feed being down must not stop a sale.
+    log.warn(
+      { failures, using: this.rate ?? this.fallbackNgnPerQuai },
+      "every quai rate source failed",
+    );
+    return false;
   }
 
   /** Begin background refreshing. Safe to call twice. */

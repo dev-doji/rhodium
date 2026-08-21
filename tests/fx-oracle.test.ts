@@ -75,3 +75,38 @@ describe("live QUAI→NGN oracle", () => {
     expect(koboToQuaiDisplay(100)).toMatch(/QUAI$/);
   });
 });
+
+describe("price source fallback", () => {
+  /** Routes by URL so each upstream can be failed independently. */
+  function routed(map: Record<string, [unknown, number]>): typeof fetch {
+    return (async (url: string) => {
+      const key = Object.keys(map).find((k) => String(url).includes(k));
+      if (!key) return new Response("{}", { status: 404 });
+      const [body, status] = map[key]!;
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+  }
+
+  it("falls through to CoinPaprika when CoinGecko rate-limits", async () => {
+    // Exactly what Render hits: CoinGecko 429s a shared outbound IP.
+    const oracle = new FxOracle(16.5, 1000, routed({
+      "coingecko": [{ status: { error_code: 429 } }, 429],
+      "coinpaprika": [{ quotes: { USD: { price: 0.012 } } }, 200],
+      "er-api": [{ rates: { NGN: 1350 } }, 200],
+    }));
+
+    expect(await oracle.refresh()).toBe(true);
+    expect(oracle.ngnPerQuai()).toBeCloseTo(16.2, 1); // 0.012 × 1350
+    expect(oracle.snapshot().source).toBe("live");
+  });
+
+  it("reports failure only when every source is down", async () => {
+    const oracle = new FxOracle(16.5, 1000, routed({
+      "coingecko": [{}, 429],
+      "coinpaprika": [{}, 503],
+      "er-api": [{}, 503],
+    }));
+    expect(await oracle.refresh()).toBe(false);
+    expect(oracle.snapshot().source).toBe("config");
+  });
+});
