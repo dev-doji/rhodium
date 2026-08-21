@@ -148,6 +148,9 @@
         </div>`;
       $("pay").onclick = () => pay(data.quaiMode, instruction);
       startFxTicker(instruction);
+      // Decide up front rather than letting the buyer tap Pay and hit a wall:
+      // on a phone without Blip the button should already say "Open in Blip".
+      if (data.quaiMode === "live" && !quaiProvider()) needWallet();
     }
 
     /**
@@ -188,25 +191,53 @@
     /**
      * A Quai-aware injected wallet, or null.
      *
-     * window.ethereum is deliberately NOT accepted. MetaMask and other EVM
-     * wallets inject it but implement none of the quai_* methods, so including
-     * it here produced 'The method "quai_requestAccounts" does not exist' —
-     * which reads like a Rhodium bug when it is simply the wrong wallet.
+     * Detection is by CAPABILITY FLAG, not by object name. Blip injects its
+     * provider at window.quai and also aliases window.pelagus AND
+     * window.ethereum, so checking names alone either misses Blip or picks up a
+     * plain MetaMask — which implements no quai_* method and fails with
+     * 'The method "quai_requestAccounts" does not exist', an error that reads
+     * like our bug rather than "wrong wallet".
      */
     function quaiProvider() {
-      return window.pelagus || window.blip || null;
+      const candidates = [window.quai, window.pelagus, window.blip, window.ethereum];
+      for (const p of candidates) {
+        if (p && (p.isQuai || p.isBlip || p.isPelagus)) return p;
+      }
+      return null;
     }
 
+    /** Blip's universal link. Opens the app if installed, its site if not. */
+    function blipLink() {
+      return "https://blippay.me/browser?url=" + encodeURIComponent(location.href);
+    }
+
+    function isMobile() {
+      return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+    }
+
+    /**
+     * No Quai wallet here. On a phone that is one tap from fixable, so offer the
+     * jump into Blip rather than instructions the buyer has to act on manually.
+     */
     function needWallet() {
       const btn = $("pay");
       btn.disabled = false;
+      if (isMobile()) {
+        btn.innerHTML = `${ICON.wallet} Open in Blip to pay`;
+        btn.onclick = () => { location.href = blipLink(); };
+        $("body").insertAdjacentHTML("beforeend",
+          '<div class="hint">This order settles on Quai, so it needs the Blip wallet. ' +
+          'The button reopens this exact page inside Blip — your order is kept.</div>');
+        return;
+      }
       btn.innerHTML = `${ICON.wallet} Pay with BlipPay / Pelagus`;
       $("body").insertAdjacentHTML("beforeend",
         '<div class="err">This order settles on Quai, so it needs a Quai wallet — ' +
-        'an EVM wallet like MetaMask cannot sign it.<br><br>' +
-        '<b>On your phone:</b> open this page inside the <b>BlipPay</b> app.<br>' +
+        'MetaMask and other EVM wallets cannot sign it.<br><br>' +
         '<b>On desktop:</b> install <a href="https://pelaguswallet.io" target="_blank" ' +
-        'rel="noopener">Pelagus</a>, then reload.</div>');
+        'rel="noopener">Pelagus</a>, then reload this page.<br>' +
+        '<b>On your phone:</b> <a href="' + blipLink() + '">open this order in Blip</a>.' +
+        '</div>');
     }
 
     /**

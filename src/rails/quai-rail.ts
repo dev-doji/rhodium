@@ -91,7 +91,10 @@ export class QuaiRail implements PaymentRail {
       merchantAddress: merchant.quaiAddress,
       orderIdBytes32: orderIdToBytes32(order.id),
       checkoutUrl,
-      deepLink: `blip://browser?url=${encodeURIComponent(checkoutUrl)}`,
+      // Universal link, not the raw blip:// scheme. A custom scheme fails
+      // silently when the app is absent — the buyer taps and nothing happens.
+      // blippay.me/browser opens Blip when installed and its own page when not.
+      deepLink: `https://blippay.me/browser?url=${encodeURIComponent(checkoutUrl)}`,
     };
   }
 

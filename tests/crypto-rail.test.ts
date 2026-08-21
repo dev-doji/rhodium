@@ -46,7 +46,10 @@ describe("Quai/BlipPay crypto rail — WhatsApp merchant accepts crypto, books i
     expect(instruction.tokenSymbol).toBe("USDT");
     expect(instruction.cryptoAmount).toBe(koboToUsdtUnits(500_000)); // ₦5000 → 3.125 USDT
     expect(instruction.checkoutUrl).toContain(`/checkout/${order.id}`);
-    expect(instruction.deepLink).toContain("blip://browser");
+    // Universal link rather than the blip:// scheme: a custom scheme fails
+    // silently when the app is absent, so the buyer taps and nothing happens.
+    expect(instruction.deepLink).toContain("https://blippay.me/browser");
+    expect(instruction.deepLink).toContain(encodeURIComponent(order.id));
   });
 
   it("refuses to issue crypto payment when the merchant has no wallet (no-custody)", async () => {
