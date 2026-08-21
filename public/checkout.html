@@ -300,9 +300,42 @@
       }
     }
 
+    /**
+     * Blip derives a SEPARATE wallet per dApp origin from the same mnemonic, so
+     * quai_requestAccounts returns an app wallet whose balance starts at zero —
+     * a buyer holding 2000 QUAI in their main vault still fails with
+     * "insufficient funds ... have 0". The dApp is expected to ask for a
+     * top-up; Blip moves it silently under the per-app limit (1000 QUAI by
+     * default) or shows an approval sheet above it.
+     */
+    async function fundAppWallet(provider, instruction) {
+      if (!provider.isBlip) return; // Pelagus has no app-wallet split
+      const need = BigInt(instruction.cryptoAmount || "0");
+      if (need <= 0n) return;
+      const withGas = need + need / 10n; // Blip's docs: request ~10% over
+      const params = {
+        chainId: "0x" + Number(instruction.chainId || 15000).toString(16),
+        reason: "purchase",
+        continueLabel: "Continue payment",
+        assets: [{
+          type: "native", symbol: "QUAI", decimals: 18,
+          amountWei: "0x" + withGas.toString(16), purpose: "payment",
+        }],
+      };
+      try {
+        await provider.request({ method: "blip_requestAppWalletFunding", params: [params] });
+      } catch (e) {
+        // Some builds take the object unwrapped. Try once, then give up and let
+        // the transaction itself report the real problem.
+        try { await provider.request({ method: "blip_requestAppWalletFunding", params }); }
+        catch { /* fall through to the send */ }
+      }
+    }
+
     async function payOnChain(provider, instruction) {
       const accounts = await provider.request({ method: "quai_requestAccounts" });
       const from = accounts[0];
+      await fundAppWallet(provider, instruction);
       const { quais } = await import("https://cdn.jsdelivr.net/npm/quais@latest/+esm").catch(() => ({}));
       if (!quais) throw new Error("could not load quais.js — try again in the wallet's browser");
       const orderIdHash = instruction.orderIdBytes32 || quais.id(orderId);
