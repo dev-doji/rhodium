@@ -51,9 +51,10 @@ built once in `lib/site.ts` from:
 NEXT_PUBLIC_WHATSAPP_NUMBER   # wa.me digits, no + or spaces
 ```
 
-It defaults to `2348036803974` (+234 803 680 3974, "Fonio Labs") — the same
-number as `WHATSAPP_WA_NUMBER` in `render.yaml`. Set the env var at build time
-to point elsewhere:
+Deployed on **Vercel** at https://www.userhodium.xyz (root directory
+`apps/landing`). It defaults to `2348036803974` (+234 803 680 3974, "Fonio
+Labs") — the same number as `WHATSAPP_WA_NUMBER` on the API service. Set the
+env var at build time to point elsewhere:
 
 ```bash
 NEXT_PUBLIC_WHATSAPP_NUMBER=2348012345678 npm run build
