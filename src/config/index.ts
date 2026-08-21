@@ -59,7 +59,11 @@ const schema = z.object({
   PUBLIC_BASE_URL: z.string().default("http://localhost:3000"),
   // FX oracle stubs. [VALIDATE] — swap for a real price feed in prod.
   FX_NGN_PER_USD: z.coerce.number().default(1600),
-  FX_NGN_PER_QUAI: z.coerce.number().default(5000),
+  // Fallback only — the live CoinGecko rate wins when FX_LIVE_RATES is on.
+  // Kept as a floor so a dead price feed never stops a sale.
+  FX_NGN_PER_QUAI: z.coerce.number().default(16.5),
+  FX_LIVE_RATES: bool(true),
+  FX_RATE_TTL_MS: z.coerce.number().default(5 * 60 * 1000),
 
   WHATSAPP_MODE: z.enum(["mock", "live"]).default("mock"),
   WHATSAPP_ACCESS_TOKEN: z.string().optional().default(""),

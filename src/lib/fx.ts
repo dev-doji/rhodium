@@ -8,6 +8,7 @@
  * a real price feed for production; this module is the only thing that changes.
  */
 import { loadConfig } from "../config/index.js";
+import { getFxOracle } from "./fx-oracle.js";
 import type { Kobo } from "./money.js";
 
 const USDT_DECIMALS = 6;
@@ -47,11 +48,25 @@ export function humanUsdt(units: string): string {
   return `${u.toFixed(2)} USDT`;
 }
 
-// --- Native QUAI (18 decimals). Testnet price is arbitrary; stub rate. ---
-function ngnPerQuai(): number {
+// --- Native QUAI (18 decimals) ---
+/**
+ * Live rate when the oracle has one, else FX_NGN_PER_QUAI. Reading through the
+ * oracle keeps this synchronous — it serves a cached number, never a fetch, so
+ * a slow or down price feed can never stall a payment.
+ */
+export function ngnPerQuai(): number {
+  const live = getFxOracle()?.ngnPerQuai();
+  if (Number.isFinite(live) && (live as number) > 0) return live as number;
   const n = Number(loadConfig().FX_NGN_PER_QUAI);
   if (!Number.isFinite(n) || n <= 0) throw new Error("invalid FX_NGN_PER_QUAI");
   return n;
+}
+
+/** ₦ (kobo) → a human "≈ 393.46 QUAI" for catalogues and instructions. */
+export function koboToQuaiDisplay(kobo: Kobo): string {
+  const quai = kobo / 100 / ngnPerQuai();
+  const dp = quai >= 100 ? 2 : quai >= 1 ? 3 : 6;
+  return `${quai.toLocaleString("en-US", { maximumFractionDigits: dp })} QUAI`;
 }
 
 /** kobo → QUAI wei (18 dp), as a decimal string (BigInt-safe). */

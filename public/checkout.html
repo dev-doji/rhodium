@@ -133,6 +133,7 @@
       const contract = (instruction.contractAddress || "").replace(/^(.{6}).+(.{4})$/, "$1…$2");
       $("body").innerHTML = `
         <div class="rows">
+          <div class="row">${ICON.globe}<span class="k">Rate</span><b id="fxrate">…</b></div>
           <div class="row">${ICON.globe}<span class="k">Network</span><b>Quai Orchard testnet</b></div>
           <div class="row">${ICON.shield}<span class="k">Settlement</span><b>Merchant wallet · no custody</b></div>
           <div class="row">${ICON.wallet}<span class="k">Contract</span><b>${contract || "—"}</b></div>
@@ -146,6 +147,7 @@
           </span>
         </div>`;
       $("pay").onclick = () => pay(data.quaiMode, instruction);
+      startFxTicker(instruction);
     }
 
     /**
@@ -205,6 +207,41 @@
         '<b>On your phone:</b> open this page inside the <b>BlipPay</b> app.<br>' +
         '<b>On desktop:</b> install <a href="https://pelaguswallet.io" target="_blank" ' +
         'rel="noopener">Pelagus</a>, then reload.</div>');
+    }
+
+    /**
+     * Keep the displayed rate current. The quoted cryptoAmount is fixed at
+     * order creation — showing a rate that silently drifts from it would be
+     * worse than showing none, so a moved rate is labelled rather than used to
+     * re-quote the order.
+     */
+    function startFxTicker(instruction) {
+      const el = () => document.getElementById("fxrate");
+      const quotedQuai = Number(instruction.cryptoAmount) / 1e18;
+      const naira = instruction.amount / 100;
+      const quotedRate = quotedQuai > 0 ? naira / quotedQuai : null;
+
+      async function tick() {
+        const node = el();
+        if (!node) return;
+        try {
+          const r = await (await fetch("/api/fx/quai", { cache: "no-store" })).json();
+          const rate = Number(r.ngnPerQuai);
+          if (!Number.isFinite(rate) || rate <= 0) return;
+          let label = `₦${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} / QUAI`;
+          if (r.source === "config") label += " (fallback)";
+          else if (r.stale) label += " (may be stale)";
+          // Warn only when the live rate has drifted materially from the price
+          // this order was quoted at.
+          if (quotedRate && Math.abs(rate - quotedRate) / quotedRate > 0.05) {
+            label += " · order quoted at ₦" +
+              quotedRate.toLocaleString("en-US", { maximumFractionDigits: 2 });
+          }
+          node.textContent = label;
+        } catch { /* leave the last value on screen */ }
+      }
+      tick();
+      setInterval(tick, 60000);
     }
 
     async function pay(quaiMode, instruction) {

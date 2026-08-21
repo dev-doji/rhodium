@@ -7,6 +7,7 @@ import { InMemoryIdempotencyStore } from "./events/idempotency.js";
 import { EventBus } from "./events/bus.js";
 import { buildRegistry, type RailRegistry } from "./rails/registry.js";
 import { type Clock, systemClock } from "./lib/clock.js";
+import { FxOracle, setFxOracle } from "./lib/fx-oracle.js";
 
 import { CommerceService } from "./modules/commerce/commerce-service.js";
 import { PaymentsOrchestrator } from "./modules/payments/payments-orchestrator.js";
@@ -44,6 +45,7 @@ export interface App {
   traction: TractionService;
   wallets: WalletService;
   waTransport: NotificationTransport;
+  fx: FxOracle;
 }
 
 export interface BuildAppDeps {
@@ -73,6 +75,12 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const objectStore =
     deps.objectStore ??
     (config.OBJECT_STORE_MODE === "local" ? new LocalObjectStore() : new InMemoryObjectStore());
+
+  // Live QUAI→NGN. Only starts polling when enabled, so tests and demos stay
+  // offline and deterministic on the configured fallback.
+  const fx = new FxOracle(config.FX_NGN_PER_QUAI, config.FX_RATE_TTL_MS);
+  setFxOracle(fx);
+  if (config.FX_LIVE_RATES && config.NODE_ENV !== "test") fx.start();
 
   const bus = new EventBus(idempotency);
   const rails = buildRegistry(config);
@@ -143,5 +151,6 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     traction,
     wallets,
     waTransport,
+    fx,
   };
 }

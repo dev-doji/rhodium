@@ -10,6 +10,7 @@ import type { Repositories } from "../../db/repositories.js";
 import type { ConversationStore } from "./conversation-store.js";
 import { bankMenu, pickBank } from "./banks.js";
 import { formatNaira, nairaToKobo } from "../../lib/money.js";
+import { koboToQuaiDisplay } from "../../lib/fx.js";
 import { ref, slugify } from "../../lib/ids.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../lib/errors.js";
@@ -327,7 +328,7 @@ export class WhatsAppService {
         data.productId = ids[idx];
         this.convo.set(ctx.key, "buy:select_method", data);
         return [
-          `You picked *${product?.name}* (${formatNaira(product?.price ?? 0)}).`,
+          `You picked *${product?.name}* (${formatNaira(product?.price ?? 0)} ≈ ${koboToQuaiDisplay(product?.price ?? 0)}).`,
           "",
           "How would you like to pay?",
           "1) Bank transfer",
@@ -429,8 +430,11 @@ export class WhatsAppService {
       merchantId,
       productIds: products.map((p) => p.id),
     });
+    // Naira is the price; the QUAI figure is guidance, so it stays visually
+    // secondary. A buyer paying on-chain still needs to know roughly what the
+    // item costs in the token they actually hold.
     const list = products
-      .map((p, i) => `${i + 1}) ${p.name} — ${formatNaira(p.price)}`)
+      .map((p, i) => `${i + 1}) ${p.name} — ${formatNaira(p.price)}  _(≈ ${koboToQuaiDisplay(p.price)})_`)
       .join("\n");
     return [
       `🛍️ *${merchant.businessName}*`,

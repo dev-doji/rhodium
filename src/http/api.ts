@@ -45,6 +45,13 @@ export function buildApi(app: App): Express {
     });
   });
 
+  // Live QUAI→NGN, polled by the checkout page so a buyer watching the screen
+  // sees the rate move rather than a number frozen at page load.
+  server.get("/api/fx/quai", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(app.fx.snapshot());
+  });
+
   // Prometheus-ish metrics incl. WhatsApp conversation cost (§2.5, §4).
   server.get("/metrics", (_req, res) => {
     res.json(app.metrics.snapshot());
@@ -208,6 +215,7 @@ export function buildApi(app: App): Express {
         instruction,
         quaiMode: app.config.QUAI_ADAPTER_MODE,
         quaiExplorer: app.config.QUAI_EXPLORER_URL,
+        fx: app.fx.snapshot(),
       });
     }),
   );
