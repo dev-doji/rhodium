@@ -6,12 +6,14 @@ import { asyncRoute, errorHandler } from "./errors.js";
 import { requireMerchant, type AuthedRequest } from "./auth-middleware.js";
 import { ledgerToCsv, ledgerToStatement } from "./export.js";
 import { nairaToKobo, formatNaira } from "../lib/money.js";
-import { withTrace } from "../lib/logger.js";
+import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
-import { encryptField, decryptField } from "../lib/crypto.js";
+import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
 import type { RailId } from "../domain/types.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
+
+const log = logger("http-api");
 
 /** Process start time — lets /health show whether a deploy actually restarted. */
 const STARTED_AT = new Date().toISOString();
@@ -84,12 +86,49 @@ export function buildApi(app: App): Express {
     }
   });
 
+  /**
+   * Is this really Meta? Every inbound webhook is signed with the app secret
+   * over the RAW body as `X-Hub-Signature-256: sha256=<hex>`.
+   *
+   * Without this the endpoint accepts anything: a forged payload naming a
+   * merchant's phone number is treated as that merchant, so a stranger could
+   * add products, raise orders or read a shop's books just by knowing the URL.
+   * The payment rails have always verified their signatures; this one did not.
+   *
+   * Unset secret (dev, tests, demos) => skip, so the system still runs with no
+   * credentials. In production the guardrail in config requires the secret.
+   */
+  const whatsappSignatureOk = (raw: Buffer, header?: string): boolean => {
+    const secret = app.config.WHATSAPP_APP_SECRET;
+    if (!secret) return true;
+    if (!header?.startsWith("sha256=")) return false;
+    const expected = `sha256=${hmacSign(raw.toString("utf8"), secret)}`;
+    const a = Buffer.from(header);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+
   server.post(
     "/webhooks/whatsapp",
-    express.json(),
+    // RAW, not json(): the signature covers the exact bytes Meta sent, and
+    // re-serialising a parsed object would not reproduce them.
+    express.raw({ type: "*/*" }),
     asyncRoute(async (req: Request, res: Response) => {
+      const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
+      if (!whatsappSignatureOk(raw, req.header("x-hub-signature-256"))) {
+        log.warn({ ip: req.ip }, "rejected unsigned whatsapp webhook");
+        res.sendStatus(401);
+        return;
+      }
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = JSON.parse(raw.toString("utf8") || "{}") as Record<string, unknown>;
+      } catch {
+        res.sendStatus(200); // malformed: ack so Meta stops retrying
+        return;
+      }
       // Parse the Cloud API inbound message envelope.
-      const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+      const value = (parsed as any)?.entry?.[0]?.changes?.[0]?.value;
       const msg = value?.messages?.[0];
       // WHICH of our numbers this arrived on. With vendors on their own numbers
       // this is the tenant key — the same webhook now serves every shop.
