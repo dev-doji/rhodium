@@ -1,0 +1,11 @@
+# Cloudflare Pages security headers.
+#
+# This site hosts the privacy policy and terms a payments business is judged
+# on, so the baseline matters: no framing (clickjacking a "delete my data"
+# link), no MIME sniffing, and referrers trimmed on the way out.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

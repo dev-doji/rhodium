@@ -16,11 +16,15 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 
 | Thing | Value |
 |---|---|
-| **App (Render)** | https://rhodium-8ocg.onrender.com |
+| **Landing** | https://www.userhodium.xyz (Cloudflare Pages) — also `/privacy`, `/terms` |
+| **App / dashboard** | https://app.userhodium.xyz → Render `rhodium` |
+| **Checkout (buyer-facing)** | https://pay.userhodium.xyz → same Render service |
+| **App (Render origin)** | https://rhodium-8ocg.onrender.com — keep enabled; old checkout links point here |
 | **GitHub** | github.com/dev-doji/rhodium (branch `main`) |
 | **DB** | Render Postgres `rhodium-db` (external URL in Render dashboard) |
 | **WhatsApp bot number** | **+234 803 680 3974** "Fonio Labs" → `wa.me/2348036803974`, phone_number_id `1198640330004714` — **real** number, no allowlist |
-| **Meta app** | "Rhodium", App ID `1534245258196461` |
+| **Meta app** | "Rhodium", App ID `1782305146230634` (the buildathon app `1534245258196461` was DELETED — its config_id and secret are dead) |
+| **OAuth redirect** | `https://app.userhodium.xyz/oauth/whatsapp/callback` — derives from `MERCHANT_BASE_URL`, must match Meta exactly |
 | **WABA** | "Fonio Labs" `1057107730180826` (subscribed to the app, `messages` field) |
 | **Retired** | Meta test number +1 555‑140‑5536 (`1242060842323233`) — removed from the WABA; any `wa.me/15551405536` link is dead |
 | **Demo merchant** | "Amaka Beauty" `mch_31ee64974e03b907`, phone `+2349032621846`, wallet `0x0041bB8fB1087aB6d2026A81277bAC4ad57C357E` |
@@ -45,8 +49,29 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 - **Multi‑tenant WhatsApp:** a vendor connects their own number (`connect` →
   Embedded Signup, or the admin route by hand) and buyers who message *them* get
   their shop; Rhodium's number still onboards vendors.
-- **83 unit/integration tests green** (incl. live‑Postgres + HTTP over the wire).
+- **102 unit/integration tests green** (incl. live‑Postgres + HTTP over the wire).
 - **All ~31 HTTP endpoints tested against the live app — every one green** (health, pages, auth, guarded `/api/*`, buyer, rail webhooks with signature checks, admin). Highlights: Monnify issued a **real reserved account** via the API; forged webhook signatures → 401; live‑mode guards work.
+
+## Hosting
+
+| Piece | Host | Why |
+|---|---|---|
+| Landing + `/privacy` + `/terms` | **Cloudflare Pages** | free commercially, unlimited domains, no cold start |
+| API + dashboard + checkout | **Render** (`rhodium`) | long-running Node: in-memory conversation state + reconciliation job |
+| Postgres | Render `rhodium-db` | |
+| DNS | Cloudflare | |
+
+**Cloudflare Pages settings** (Git integration, repo `dev-doji/rhodium`):
+- Root directory `apps/landing` (it has its own lockfile, so it builds standalone)
+- Build command `npm run build`, output directory `out`
+- `.node-version` pins 22 — Pages defaults older and Next 16 needs 20+
+- `public/_headers` ships the security headers
+
+**Why the API is NOT on Workers.** `ConversationStore` and `HumanTakeoverStore`
+are in-memory `Map`s with no isolate affinity on Workers, so a buyer mid-checkout
+would lose their catalogue between messages. Add the reconciliation `setInterval`,
+Express, and 14 `node:*` imports and it is a rewrite, not a migration. Moving
+those two stores into Postgres is the prerequisite if that ever changes.
 
 ## Deployment
 - Render **Blueprint** (`render.yaml`) → web service + free Postgres. Build forces dev deps (`--include=dev`); `--workspaces=false` keeps landing/chain out of the API image.
@@ -85,7 +110,7 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 
 A buyer messages the *vendor's* WhatsApp Business number, says anything, and gets
 that vendor's catalogue → product → payment link → pays → vendor notified.
-Rhodium's own number keeps doing vendor onboarding. **83 tests green** (was 58);
+Rhodium's own number keeps doing vendor onboarding. **102 tests green** (was 58);
 `npm run demo:whatsapp` drives both paths end to end (acts 12–15, incl. coexistence).
 
 **How tenancy works.** Everything keys off the Meta `phone_number_id` — never a
@@ -209,7 +234,7 @@ popup Meta's docs lead with.
 ## Run locally
 ```bash
 npm install && npm run db:up && npm run prisma:migrate
-npm test                 # 83 tests
+npm test                 # 102 tests
 npm run demo             # bank-transfer magic-moment (mock)
 npm run demo:crypto      # crypto magic-moment (mock)
 npm run dev              # API + dashboard on :3000
