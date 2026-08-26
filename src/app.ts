@@ -119,6 +119,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     wallets,
     {
       publicBaseUrl: config.PUBLIC_BASE_URL,
+      merchantBaseUrl: config.MERCHANT_BASE_URL,
       waNumber: config.WHATSAPP_WA_NUMBER,
       platformPhoneNumberId: config.WHATSAPP_PHONE_NUMBER_ID,
     },

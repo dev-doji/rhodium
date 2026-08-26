@@ -49,7 +49,10 @@ export interface InboundMessage {
 }
 
 export interface WhatsAppOptions {
+  /** Buyer-facing origin — checkout links a customer opens. */
   publicBaseUrl: string;
+  /** Merchant-facing origin — dashboard and wallet backup. Defaults to publicBaseUrl. */
+  merchantBaseUrl?: string;
   waNumber: string; // digits for wa.me links (e.g. 15551405536)
   /** Rhodium's own phone_number_id — messages here are vendor onboarding. */
   platformPhoneNumberId?: string;
@@ -302,7 +305,7 @@ export class WhatsAppService {
           const wallet = await this.wallets.generateCyprus1();
           await this.repos.merchants.setWalletSecrets(merchant.id, wallet.mnemonic, wallet.privateKey);
           await this.repos.merchants.update(merchant.id, { quaiAddress: wallet.address });
-          walletLine = `\n🪙 We created your crypto wallet: ${wallet.address.slice(0, 10)}…${wallet.address.slice(-4)}\n⚠️ Back it up now: ${this.opts.publicBaseUrl}/wallet (verify with the code we text you). It's the only way to control your crypto funds.`;
+          walletLine = `\n🪙 We created your crypto wallet: ${wallet.address.slice(0, 10)}…${wallet.address.slice(-4)}\n⚠️ Back it up now: ${this.merchantOrigin()}/wallet (verify with the code we text you). It's the only way to control your crypto funds.`;
         } catch (err) {
           log.warn({ err: (err as Error).message }, "wallet generation failed during onboarding");
         }
@@ -654,8 +657,13 @@ export class WhatsAppService {
       "Recent:",
       ...recent,
       "",
-      `Full books + CSV export: ${this.opts.publicBaseUrl} (sign in with this number)`,
+      `Full books + CSV export: ${this.merchantOrigin()} (sign in with this number)`,
     ].join("\n");
+  }
+
+  /** Where a MERCHANT signs in. Falls back to the buyer origin when unset. */
+  private merchantOrigin(): string {
+    return this.opts.merchantBaseUrl || this.opts.publicBaseUrl;
   }
 
   /** Always answer on the number the message came in on. */

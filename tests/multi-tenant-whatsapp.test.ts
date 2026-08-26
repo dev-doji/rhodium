@@ -515,3 +515,37 @@ describe("human-readable shop handles", () => {
     expect(reply).toContain("Circuit City");
   });
 });
+
+describe("buyer and merchant origins", () => {
+  it("puts buyers on the pay origin and merchants on the app origin", async () => {
+    process.env.PUBLIC_BASE_URL = "https://pay.example";
+    process.env.MERCHANT_BASE_URL = "https://app.example";
+    const app = makeApp();
+    try {
+      // A vendor onboarding gets a wallet-backup link — merchant-facing.
+      const phone = "+2348090111222";
+      await app.whatsapp.handleInbound({ from: phone, text: "hi", toPhoneNumberId: PLATFORM });
+      await app.whatsapp.handleInbound({ from: phone, text: "Origin Store", toPhoneNumberId: PLATFORM });
+      await app.whatsapp.handleInbound({ from: phone, text: "0123456789", toPhoneNumberId: PLATFORM });
+      const done = await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
+      expect(done).toContain("https://app.example/wallet");
+      expect(done).not.toContain("pay.example");
+
+      // A buyer's bank-transfer instruction gets a checkout link — buyer-facing.
+      const merchant = (await app.repos.merchants.byPhone(phone))!;
+      await seedProduct(app, merchant.id, 650_000);
+      const buyer = "+2348090333444";
+      await app.whatsapp.handleInbound({ from: buyer, text: `shop-${merchant.id}`, toPhoneNumberId: PLATFORM });
+      await app.whatsapp.handleInbound({ from: buyer, text: "1", toPhoneNumberId: PLATFORM });
+      const pay = await app.whatsapp.handleInbound({ from: buyer, text: "1", toPhoneNumberId: PLATFORM });
+
+      // A buyer being asked to pay should see a payments domain, never an
+      // admin one — that is the whole point of keeping the origins apart.
+      expect(pay).toContain("https://pay.example/checkout/");
+      expect(pay).not.toContain("app.example");
+    } finally {
+      delete process.env.PUBLIC_BASE_URL;
+      delete process.env.MERCHANT_BASE_URL;
+    }
+  });
+});

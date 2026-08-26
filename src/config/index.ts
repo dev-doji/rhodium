@@ -55,8 +55,13 @@ const schema = z.object({
   // Which asset buyers pay: 'native' QUAI (simplest for the testnet demo) or
   // 'usdt' (ERC-20 stablecoin). Native needs only faucet QUAI.
   QUAI_PAYMENT_ASSET: z.enum(["native", "usdt"]).default("usdt"),
-  // Public base URL used to build BlipPay checkout deep links.
+  // BUYER-facing origin: checkout links, BlipPay deep links, rail callbacks.
   PUBLIC_BASE_URL: z.string().default("http://localhost:3000"),
+  // MERCHANT-facing origin: dashboard, wallet backup, OAuth callback. Both
+  // hostnames reach the same service; they differ only in what a reader sees.
+  // A buyer paying should see a payments domain, not an admin one. Empty falls
+  // back to PUBLIC_BASE_URL so single-domain deployments need no extra config.
+  MERCHANT_BASE_URL: z.string().optional().default(""),
   // FX oracle stubs. [VALIDATE] — swap for a real price feed in prod.
   FX_NGN_PER_USD: z.coerce.number().default(1600),
   // Fallback only — the live CoinGecko rate wins when FX_LIVE_RATES is on.
@@ -75,7 +80,7 @@ const schema = z.object({
   // --- Embedded Signup: vendors connect their OWN WhatsApp number ---
   WHATSAPP_APP_ID: z.string().optional().default(""),
   WHATSAPP_CONFIG_ID: z.string().optional().default(""),
-  // Defaults to `${PUBLIC_BASE_URL}/oauth/whatsapp/callback` — must match the
+  // Defaults to `${MERCHANT_BASE_URL}/oauth/whatsapp/callback` — must match the
   // redirect URI registered on the Meta app exactly.
   WHATSAPP_OAUTH_REDIRECT_URI: z.string().optional().default(""),
 
@@ -107,8 +112,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       : `https://${platformUrl}`;
   }
 
+  if (!cfg.MERCHANT_BASE_URL) cfg.MERCHANT_BASE_URL = cfg.PUBLIC_BASE_URL;
+
+  // The vendor completes Embedded Signup, so the callback belongs on the
+  // merchant origin. Must match the Meta app's registered URI character for
+  // character or the exchange fails.
   if (!cfg.WHATSAPP_OAUTH_REDIRECT_URI) {
-    cfg.WHATSAPP_OAUTH_REDIRECT_URI = `${cfg.PUBLIC_BASE_URL}/oauth/whatsapp/callback`;
+    cfg.WHATSAPP_OAUTH_REDIRECT_URI = `${cfg.MERCHANT_BASE_URL}/oauth/whatsapp/callback`;
   }
 
   // Guardrails: in production, live external calls must have real credentials.

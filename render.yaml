@@ -74,7 +74,15 @@ services:
         value: live
       - key: QUAI_PAYMENT_ASSET
         value: native
-      # PUBLIC_BASE_URL auto-resolves from RENDER_EXTERNAL_URL (see config).
+      # Buyer-facing origin — what a customer sees on a checkout link.
+      - key: PUBLIC_BASE_URL
+        value: https://pay.userhodium.xyz
+      # Merchant-facing origin — dashboard, wallet backup, OAuth callback.
+      # Both hostnames reach THIS service; they differ only in what a reader
+      # sees. WHATSAPP_OAUTH_REDIRECT_URI derives from this, so it must match
+      # the Meta app's registered redirect URI character for character.
+      - key: MERCHANT_BASE_URL
+        value: https://app.userhodium.xyz
 
 databases:
   - name: rhodium-db
