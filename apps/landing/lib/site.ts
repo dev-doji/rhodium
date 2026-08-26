@@ -19,7 +19,11 @@ export const site = {
   whatsappUrl: `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
     WHATSAPP_GREETING,
   )}`,
-  email: "hello@rhodium.africa", // [PLACEHOLDER]
+  email: "hello@userhodium.xyz", // [PLACEHOLDER]
+  /** Where data-protection and legal requests go — cited in the policies. */
+  legalEmail: "admin@foniolabs.xyz",
+  /** Canonical marketing origin. Meta's app settings must match this exactly. */
+  origin: "https://www.userhodium.xyz",
 } as const;
 
 export const nav = [
@@ -199,8 +203,8 @@ export const footerColumns = [
     links: [
       { label: "How it works", href: "#how" },
       { label: "Pricing", href: "#pricing" },
-      { label: "Security & NDPR", href: "#benefits" },
-      { label: "Contact", href: "#cta" },
+      { label: "Privacy Policy", href: "/privacy" },
+      { label: "Terms of Service", href: "/terms" },
     ],
   },
 ] as const;
