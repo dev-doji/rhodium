@@ -11,6 +11,8 @@ export interface EmbeddedSignupConfig {
   appSecret: string;
   configId: string;
   redirectUri: string;
+  /** Meta-hosted landing page; preferred over the self-built dialog URL. */
+  hostedSignupUrl?: string;
   /** Signs the OAuth `state` so a callback can't be pointed at another merchant. */
   stateSecret: string;
   graphBase?: string;
@@ -52,6 +54,7 @@ export class EmbeddedSignupService {
   }
 
   get configured(): boolean {
+    if (this.cfg.hostedSignupUrl) return Boolean(this.cfg.appSecret);
     return Boolean(this.cfg.appId && this.cfg.appSecret && this.cfg.configId);
   }
 
@@ -62,6 +65,13 @@ export class EmbeddedSignupService {
    * attach their number to someone else's shop.
    */
   signupUrl(merchantId: string): string {
+    // Meta-hosted flow: keep their URL exactly as generated — the extras blob
+    // carries the ES version and feature type, and re-encoding it breaks the
+    // journey — and append only our signed state.
+    if (this.cfg.hostedSignupUrl) {
+      const sep = this.cfg.hostedSignupUrl.includes("?") ? "&" : "?";
+      return `${this.cfg.hostedSignupUrl}${sep}state=${encodeURIComponent(this.signState(merchantId))}`;
+    }
     const params = new URLSearchParams({
       client_id: this.cfg.appId,
       config_id: this.cfg.configId,

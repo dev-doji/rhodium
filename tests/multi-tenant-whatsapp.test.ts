@@ -549,3 +549,44 @@ describe("buyer and merchant origins", () => {
     }
   });
 });
+
+describe("Meta-hosted Embedded Signup", () => {
+  const hosted =
+    "https://business.facebook.com/messaging/whatsapp/onboard/?app_id=1782305146230634" +
+    "&config_id=2564764790611751&extras=%7B%22version%22%3A%22v4%22%7D";
+
+  it("hands out Meta's URL untouched, with only our signed state appended", () => {
+    const repos = createInMemoryRepositories();
+    const signup = new EmbeddedSignupService(repos, {
+      appId: "1782305146230634",
+      appSecret: "s3cret",
+      configId: "2564764790611751",
+      redirectUri: "https://app.userhodium.xyz/oauth/whatsapp/callback",
+      hostedSignupUrl: hosted,
+      stateSecret: "state-secret",
+    });
+
+    const url = signup.signupUrl("mch_abc");
+
+    // Meta's `extras` blob carries the ES version and feature type. Rebuilding
+    // the query string would re-encode it and break the onboarding journey, so
+    // the prefix must survive byte for byte.
+    expect(url.startsWith(hosted)).toBe(true);
+    expect(url).toContain("config_id=2564764790611751");
+    const state = new URL(url).searchParams.get("state")!;
+    expect(signup.verifyState(state)).toBe("mch_abc");
+  });
+
+  it("counts as configured without an appId, since Meta hosts the page", () => {
+    const repos = createInMemoryRepositories();
+    const signup = new EmbeddedSignupService(repos, {
+      appId: "",
+      appSecret: "s3cret",
+      configId: "",
+      redirectUri: "https://app.userhodium.xyz/oauth/whatsapp/callback",
+      hostedSignupUrl: hosted,
+      stateSecret: "state-secret",
+    });
+    expect(signup.configured).toBe(true);
+  });
+});

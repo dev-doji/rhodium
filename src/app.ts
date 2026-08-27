@@ -107,6 +107,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     appSecret: config.WHATSAPP_APP_SECRET,
     configId: config.WHATSAPP_CONFIG_ID,
     redirectUri: config.WHATSAPP_OAUTH_REDIRECT_URI,
+    hostedSignupUrl: config.WHATSAPP_SIGNUP_URL,
     stateSecret: config.APP_SECRET,
   });
   const whatsapp = new WhatsAppService(

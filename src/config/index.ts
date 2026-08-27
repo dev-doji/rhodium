@@ -80,6 +80,12 @@ const schema = z.object({
   // --- Embedded Signup: vendors connect their OWN WhatsApp number ---
   WHATSAPP_APP_ID: z.string().optional().default(""),
   WHATSAPP_CONFIG_ID: z.string().optional().default(""),
+  // Meta-HOSTED Embedded Signup landing page. When set, `connect` hands the
+  // vendor this instead of a self-built /dialog/oauth link: Meta renders the
+  // whole onboarding journey (including Coexistence, which keeps the vendor's
+  // WhatsApp Business app alive on the same number), and we only handle the
+  // redirect back. Empty => fall back to the URL we construct ourselves.
+  WHATSAPP_SIGNUP_URL: z.string().optional().default(""),
   // Defaults to `${MERCHANT_BASE_URL}/oauth/whatsapp/callback` — must match the
   // redirect URI registered on the Meta app exactly.
   WHATSAPP_OAUTH_REDIRECT_URI: z.string().optional().default(""),
