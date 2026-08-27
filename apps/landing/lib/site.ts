@@ -24,6 +24,14 @@ export const site = {
   legalEmail: "admin@foniolabs.xyz",
   /** Canonical marketing origin. Meta's app settings must match this exactly. */
   origin: "https://www.userhodium.xyz",
+  /**
+   * The operating company. Rhodium is the product; Fonio Labs is the legal
+   * entity that Meta's Business Verification checks against, and the data
+   * controller named in the policies. Stating it on the site is what lets a
+   * reviewer connect a "Fonio Labs" business portfolio to a Rhodium website.
+   */
+  company: "Fonio Labs",
+  companyUrl: "https://www.foniolabs.xyz/",
 } as const;
 
 export const nav = [

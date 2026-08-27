@@ -11,10 +11,19 @@ export default function PrivacyPage() {
   return (
     <LegalPage title="Privacy Policy" updated="28 August 2026">
       <p>
-        {site.name} (&ldquo;we&rdquo;, &ldquo;us&rdquo;) helps merchants in
-        Nigeria sell and collect payments through WhatsApp and keep their sales
-        records. This policy explains what we collect, why, and what you can do
-        about it.
+        {site.name} is a product of{" "}
+        <a
+          href={site.companyUrl}
+          target="_blank"
+          rel="noopener"
+          className="text-brand-500 hover:text-brand-600"
+        >
+          {site.company}
+        </a>{" "}
+        (&ldquo;we&rdquo;, &ldquo;us&rdquo;), the company responsible for the
+        data described here. {site.name} helps merchants in Nigeria sell and
+        collect payments through WhatsApp and keep their sales records. This
+        policy explains what we collect, why, and what you can do about it.
       </p>
 
       <H2>1. Who we are to you</H2>

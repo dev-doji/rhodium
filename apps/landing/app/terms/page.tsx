@@ -11,8 +11,17 @@ export default function TermsPage() {
   return (
     <LegalPage title="Terms of Service" updated="28 August 2026">
       <p>
-        These terms govern your use of {site.name}. By onboarding a shop or
-        placing an order through {site.name}, you agree to them.
+        These terms govern your use of {site.name}, a product of{" "}
+        <a
+          href={site.companyUrl}
+          target="_blank"
+          rel="noopener"
+          className="text-brand-500 hover:text-brand-600"
+        >
+          {site.company}
+        </a>{" "}
+        (&ldquo;we&rdquo;, &ldquo;us&rdquo;). By onboarding a shop or placing an
+        order through {site.name}, you agree to them.
       </p>
 
       <H2>1. The service</H2>

@@ -13,6 +13,18 @@ export function SiteFooter() {
               WhatsApp-native commerce for African merchants. Take the payment
               where the conversation already is — and keep the books in naira.
             </p>
+            <p className="mt-4 text-sm text-white/45">
+              A product of{" "}
+              <a
+                href={site.companyUrl}
+                target="_blank"
+                rel="noopener"
+                className="text-white/70 underline-offset-4 hover:underline"
+              >
+                {site.company}
+              </a>
+              .
+            </p>
           </div>
 
           {footerColumns.map((column) => (
