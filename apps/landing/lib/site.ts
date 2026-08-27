@@ -29,8 +29,12 @@ export const site = {
    * entity that Meta's Business Verification checks against, and the data
    * controller named in the policies. Stating it on the site is what lets a
    * reviewer connect a "Fonio Labs" business portfolio to a Rhodium website.
+   *
+   * Keep this the EXACT registered name. Meta matches it against the CAC
+   * certificate character for character; dropping "Limited" to read better
+   * would break the match this line exists to provide.
    */
-  company: "Fonio Labs",
+  company: "Fonio Labs Limited",
   companyUrl: "https://www.foniolabs.xyz/",
 } as const;
 

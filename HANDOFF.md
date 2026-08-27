@@ -16,6 +16,7 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 
 | Thing | Value |
 |---|---|
+| **Legal entity** | **Fonio Labs Limited** (parent; Rhodium is the product) — https://www.foniolabs.xyz. Meta Business Verification matches this name against the CAC certificate character for character, so it is the business-portfolio name and the controller named in both policies. |
 | **Landing** | https://www.userhodium.xyz (Cloudflare Pages) — also `/privacy`, `/terms` |
 | **App / dashboard** | https://app.userhodium.xyz → Render `rhodium` |
 | **Checkout (buyer-facing)** | https://pay.userhodium.xyz → same Render service |
