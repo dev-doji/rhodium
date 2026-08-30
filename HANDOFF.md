@@ -12,6 +12,70 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 
 ---
 
+## ⚡ START HERE — state as of 2026-08-30
+
+**Nothing is broken except one thing.** A previous session deregistered the
+WhatsApp number while attempting a WABA migration. Every other asset survived.
+
+| Thing | State |
+|---|---|
+| Meta app `1534245258196461` ("Rhodium") | **ALIVE** — was thought deleted, it is not. Its SYSTEM_USER token still works, valid to **2026-10-10** |
+| WABA `1057107730180826` ("Rhodium") | **ALIVE**, `account_review_status: APPROVED` |
+| Number `+234 803 680 3974` (`1198640330004714`) | **DISCONNECTED** ← the one broken thing. `quality_rating` still GREEN |
+| Template `buyer_receipt` | **APPROVED**, still on the WABA |
+| Live app | up, commit `50a7e93` |
+| Landing + `/privacy` + `/terms` | up on Cloudflare Pages |
+| Tests | **105 passing** |
+
+### The one fix — restores the bot in ~1 minute
+```bash
+T=$(grep '^WHATSAPP_ACCESS_TOKEN=' .env | cut -d= -f2)
+curl -X POST "https://graph.facebook.com/v26.0/1198640330004714/request_code" \
+  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
+  -d '{"code_method":"SMS","language":"en"}'
+# → SMS arrives on +234 803 680 3974
+curl -X POST "https://graph.facebook.com/v26.0/1198640330004714/verify_code" \
+  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
+  -d '{"code":"<6 DIGITS FROM SMS>"}'
+curl -X POST "https://graph.facebook.com/v26.0/1198640330004714/register" \
+  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
+  -d '{"messaging_product":"whatsapp","pin":"204815"}'
+```
+PIN **`204815`** — two-step verification was off before this; registering turns
+it on. Record it: losing it means a support ticket.
+
+### The Meta mess, explained
+There are **two business portfolios with near-identical names**, which caused
+every symptom:
+
+| Portfolio | Name | Holds |
+|---|---|---|
+| `972224245869574` | `"Fonio Labs "` (**trailing space**) | the WABA, the number, the template |
+| `1847657433251972` | `"Fonio Labs"` | the new app `1782305146230634`, an empty WABA |
+
+The browser login can reach the second but **not** the first; the system-user
+token can reach the first. That mismatch is why "migrate" and "disconnect"
+links kept 404ing, and why each attempt minted another empty WABA (there are
+now three: `1057107730180826` real, `2059584464807156` and `1523889746086292`
+empty).
+
+**Do not create more WABAs.** Either regain access to `972224245869574` (likely
+a different Facebook login — check `business.facebook.com` top-right), or use
+the number where it already lives. Meta Direct Support can restore portfolio
+access with proof of ownership.
+
+### New Meta app (`1782305146230634`) — configured but not in use
+- config_id `2564764790611751`, ES **v4**, featureType
+  `whatsapp_business_app_onboarding` (Coexistence)
+- Meta-**hosted** signup URL goes in `WHATSAPP_SIGNUP_URL`; `connect` appends
+  only the signed state (never re-encode the `extras` blob)
+- Its redirect_uri is baked as the **onrender** origin, so
+  `WHATSAPP_OAUTH_REDIRECT_URI` must be pinned to match exactly, or the token
+  exchange fails
+- Embedded Signup only works for **app admins** until Tech Provider approval
+
+---
+
 ## Live system
 
 | Thing | Value |
@@ -24,8 +88,9 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 | **GitHub** | github.com/dev-doji/rhodium (branch `main`) |
 | **DB** | Render Postgres `rhodium-db` (external URL in Render dashboard) |
 | **WhatsApp bot number** | **+234 803 680 3974** "Fonio Labs" → `wa.me/2348036803974`, phone_number_id `1198640330004714` — **real** number, no allowlist |
-| **Meta app** | "Rhodium", App ID `1782305146230634` (the buildathon app `1534245258196461` was DELETED — its config_id and secret are dead) |
-| **OAuth redirect** | `https://app.userhodium.xyz/oauth/whatsapp/callback` — derives from `MERCHANT_BASE_URL`, must match Meta exactly |
+| **Meta app (in use)** | `1534245258196461` "Rhodium" — **NOT deleted**, still alive, owns the working WABA + system-user token |
+| **Meta app (new, spare)** | `1782305146230634`, config_id `2564764790611751` — created during the failed migration; usable but its portfolio has no assets |
+| **OAuth redirect** | Derives from `MERCHANT_BASE_URL`. Both `https://app.userhodium.xyz/oauth/whatsapp/callback` and the onrender equivalent are live (400 on GET = route healthy). Must match the Meta app's registered URI **character for character**, including whichever is baked into `WHATSAPP_SIGNUP_URL`. |
 | **WABA** | "Fonio Labs" `1057107730180826` (subscribed to the app, `messages` field) |
 | **Retired** | Meta test number +1 555‑140‑5536 (`1242060842323233`) — removed from the WABA; any `wa.me/15551405536` link is dead |
 | **Demo merchant** | "Amaka Beauty" `mch_31ee64974e03b907`, phone `+2349032621846`, wallet `0x0041bB8fB1087aB6d2026A81277bAC4ad57C357E` |
@@ -39,7 +104,8 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 
 - **RhodiumPay contract:** `0x0044Fa1a7d871a80c8b1027e75639c7A3Ef0E741` (Quai Orchard, Cyprus1) — verified on‑chain (real runtime bytecode). Explorer: https://orchard.quaiscan.io/address/0x0044Fa1a7d871a80c8b1027e75639c7A3Ef0E741
 - **Deployer/buyer wallet:** `0x003280a5a7e5a1F99ee3D87ad2Deaeb8Daef6C02` (funded ~100k test QUAI). Key is `QUAI_PRIVATE_KEY` in `.env`.
-- Paystack was **removed**; Monnify is the sole bank rail.
+- Paystack was removed in favour of Monnify. **It is coming back** — a live
+  Paystack key has now been approved. See "Switch the bank rail to Paystack".
 
 ---
 
@@ -50,7 +116,7 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 - **Multi‑tenant WhatsApp:** a vendor connects their own number (`connect` →
   Embedded Signup, or the admin route by hand) and buyers who message *them* get
   their shop; Rhodium's number still onboards vendors.
-- **102 unit/integration tests green** (incl. live‑Postgres + HTTP over the wire).
+- **105 unit/integration tests green** (incl. live‑Postgres + HTTP over the wire).
 - **All ~31 HTTP endpoints tested against the live app — every one green** (health, pages, auth, guarded `/api/*`, buyer, rail webhooks with signature checks, admin). Highlights: Monnify issued a **real reserved account** via the API; forged webhook signatures → 401; live‑mode guards work.
 
 ## Hosting
@@ -111,7 +177,7 @@ those two stores into Postgres is the prerequisite if that ever changes.
 
 A buyer messages the *vendor's* WhatsApp Business number, says anything, and gets
 that vendor's catalogue → product → payment link → pays → vendor notified.
-Rhodium's own number keeps doing vendor onboarding. **102 tests green** (was 58);
+Rhodium's own number keeps doing vendor onboarding. **105 tests green** (was 58);
 `npm run demo:whatsapp` drives both paths end to end (acts 12–15, incl. coexistence).
 
 **How tenancy works.** Everything keys off the Meta `phone_number_id` — never a
@@ -206,6 +272,65 @@ One thing to re-check when review clears: we build the signup URL as a plain
 `/dialog/oauth` link with `config_id` (shareable in chat) rather than the JS-SDK
 popup Meta's docs lead with.
 
+## NEXT UP — MVP, week of 2026-08-31
+
+Ordered by what blocks what. (1) is the only true blocker.
+
+### 1. Re-register the number — 1 minute
+See "START HERE". Until this runs, the bot answers nobody and nothing else can
+be demoed.
+
+### 2. Switch the bank rail to Paystack — ~half a day
+A **live** Paystack key is now approved, so Paystack replaces Monnify sandbox as
+the bank rail. The architecture was built for this: `PaymentRail` is a 4-method
+interface (`createPaymentInstruction`, `handleWebhook`, `verifyPayment`,
+`settlementTarget`) and `MonnifyFiatRail` is only 181 lines. Copy its shape.
+
+Work:
+- `src/rails/paystack-fiat-rail.ts` implementing `PaymentRail`
+  - instruction = a **dedicated virtual account** per order (Paystack DVA), so
+    the existing "transfer to this account, we detect it" UX is unchanged
+  - `handleWebhook` must verify `x-paystack-signature` (HMAC-SHA512 of the raw
+    body with the secret key) — mirror how `MonnifyFiatRail` verifies, and note
+    `/webhooks/rails/:railId` already passes the RAW body for exactly this
+  - **idempotency on the Paystack event id** — the ledger must never
+    double-credit a replayed webhook (`tests/ledger-integrity.test.ts` guards it)
+- `src/rails/mock-paystack-server.ts` mirroring `mock-monnify-server.ts` so the
+  tests and `npm run demo` keep running offline
+- register it in `src/rails/registry.ts` (`fiat()`), config in `src/config/index.ts`
+- **No-custody rule holds:** settlement must name the MERCHANT's account via a
+  subaccount/split, never a Rhodium balance. `settlementTarget()` is where this
+  is enforced — see the `processorSubaccountCode` field already on `Merchant`,
+  which exists from the original Paystack integration.
+- Keep Monnify's files; make the rail a config switch rather than a deletion, so
+  a Paystack outage can be reverted in one env var.
+
+### 3. White-label / Tech Provider
+Two routes, and the choice is strategic:
+- **Own Tech Provider status** — free, but gated on Business Verification then
+  Access Verification, *sequentially*. Do not plan an MVP date around it.
+- **Ride a BSP** (360dialog or Gupshup Partner API) — their Tech Provider status
+  is already approved, so multi-tenant onboarding works immediately; you pay a
+  per-message margin. `NotificationTransport` is already an interface with
+  `WhatsAppCloudTransport` as one implementation, so a `Dialog360Transport` is a
+  sibling class, not a rewrite.
+
+If the MVP must ship next week with vendors on their own numbers, take the BSP.
+If vendors can live on Rhodium's number via `shop-<handle>` links for now, stay
+on Cloud API and wait out the review.
+
+### 4. Before real money
+- Move the in-memory stores to Postgres. `src/events/bus.ts` (idempotency) and
+  `src/modules/auth/auth-service.ts` (OTP) are the two that matter — the first
+  is what stops a replayed webhook double-crediting a ledger, and it only holds
+  on a single instance. This is also the prerequisite for any multi-instance host.
+- Wire `buyer_receipt` into `NotificationService.sendReceiptToBuyer`. Receipts
+  are sent as free-form text today, which Meta silently drops outside the
+  24-hour window — so a bank transfer confirming next morning delivers nothing.
+  The template is APPROVED and unused.
+- Render free tier sleeps (11.5s cold start measured). $7/mo Starter removes it
+  and raises the 2-domain cap.
+
 ## Gotchas learned (so they don't bite again)
 - **Quai deploy hang:** `quais` `usePathing` defaults **true** and appends `/prime` for shard discovery; a URL already ending in `/cyprus1` becomes `…/cyprus1/prime` → 404 → every call hangs. Fix: pass the **base** RPC (strip the shard) + a **static network**; pin reads to `Shard.Cyprus1`. Deploy also needs an **IPFS metadata hash** (`ipfs-only-hash`) as the 4th `ContractFactory` arg.
 - **~~Agent sandbox blocks the `quais` HTTP client~~ — WRONG, ignore this.** The SDK
@@ -235,7 +360,7 @@ popup Meta's docs lead with.
 ## Run locally
 ```bash
 npm install && npm run db:up && npm run prisma:migrate
-npm test                 # 102 tests
+npm test                 # 105 tests
 npm run demo             # bank-transfer magic-moment (mock)
 npm run demo:crypto      # crypto magic-moment (mock)
 npm run dev              # API + dashboard on :3000
