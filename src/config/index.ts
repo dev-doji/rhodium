@@ -32,6 +32,24 @@ const schema = z.object({
   MONNIFY_BASE_URL: z.string().default("https://sandbox.monnify.com"),
   MONNIFY_WALLET_ACCOUNT_NUMBER: z.string().optional().default(""),
 
+  // --- Paystack (bank rail) ---
+  // Which provider serves the fiat rail. Monnify is sandbox-only; Paystack has
+  // a live key, so this is the switch that lets a bad day be reverted in one
+  // env var rather than a deploy.
+  // Lower-cased before parsing: this is typed by hand into a dashboard, and
+  // "Monnify" failing to boot the whole app over a capital letter is a poor
+  // trade for strictness.
+  FIAT_PROVIDER: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "monnify").trim().toLowerCase())
+    .pipe(z.enum(["monnify", "paystack"])),
+  PAYSTACK_SECRET_KEY: z.string().optional().default(""),
+  PAYSTACK_BASE_URL: z.string().default("https://api.paystack.co"),
+  // Bank the dedicated virtual accounts are issued against. Paystack supports
+  // wema-bank, titan-bank and paystack-titan depending on your account.
+  PAYSTACK_DVA_BANK: z.string().default("wema-bank"),
+
   // --- OnSwitch (crypto→naira off-ramp): buyer pays USDT/USDC, vendor gets naira ---
   ONSWITCH_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
   ONSWITCH_SERVICE_KEY: z.string().optional().default(""),
@@ -129,8 +147,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   // Guardrails: in production, live external calls must have real credentials.
   if (cfg.NODE_ENV === "production") {
-    if (cfg.FIAT_ADAPTER_MODE === "live" && (!cfg.MONNIFY_API_KEY || !cfg.MONNIFY_SECRET_KEY)) {
-      throw new Error("FIAT_ADAPTER_MODE=live requires MONNIFY_API_KEY + MONNIFY_SECRET_KEY");
+    if (cfg.FIAT_ADAPTER_MODE === "live") {
+      if (cfg.FIAT_PROVIDER === "monnify" && (!cfg.MONNIFY_API_KEY || !cfg.MONNIFY_SECRET_KEY)) {
+        throw new Error("FIAT_PROVIDER=monnify + live requires MONNIFY_API_KEY + MONNIFY_SECRET_KEY");
+      }
+      if (cfg.FIAT_PROVIDER === "paystack" && !cfg.PAYSTACK_SECRET_KEY) {
+        throw new Error("FIAT_PROVIDER=paystack + live requires PAYSTACK_SECRET_KEY");
+      }
     }
     if (cfg.WHATSAPP_MODE === "live" && !cfg.WHATSAPP_ACCESS_TOKEN) {
       throw new Error("WHATSAPP_MODE=live requires WHATSAPP_ACCESS_TOKEN");

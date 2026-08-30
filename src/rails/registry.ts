@@ -1,6 +1,7 @@
 import type { PaymentRail } from "./types.js";
 import type { RailId, RailKind } from "../domain/types.js";
 import { MonnifyFiatRail } from "./monnify-fiat-rail.js";
+import { PaystackFiatRail } from "./paystack-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
 import { QuaiRail } from "./quai-rail.js";
 import { OnSwitchRail } from "./onswitch-rail.js";
@@ -51,8 +52,19 @@ export class RailRegistry {
 }
 
 export function buildRegistry(cfg: AppConfig): RailRegistry {
-  // Bank rail: Monnify (reserved accounts → naira settlement, no custody by us).
-  const registry = new RailRegistry("monnify");
+  // Bank rail. BOTH providers are registered whatever FIAT_PROVIDER says, so a
+  // provider outage is one env var to revert rather than a deploy — and so an
+  // in-flight order created under the old provider can still be confirmed by
+  // its webhook after the switch.
+  const registry = new RailRegistry(cfg.FIAT_PROVIDER);
+  registry.register(
+    new PaystackFiatRail({
+      mode: cfg.FIAT_ADAPTER_MODE,
+      secretKey: cfg.PAYSTACK_SECRET_KEY,
+      baseUrl: cfg.PAYSTACK_BASE_URL,
+      dvaBank: cfg.PAYSTACK_DVA_BANK,
+    }),
+  );
   registry.register(
     new MonnifyFiatRail({
       mode: cfg.FIAT_ADAPTER_MODE,
