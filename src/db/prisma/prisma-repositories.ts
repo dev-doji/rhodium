@@ -92,16 +92,26 @@ class PgMerchantRepo implements MerchantRepo {
     if (patch.settlementAccountNumber != null) {
       data.settlementAccountEnc = encryptField(patch.settlementAccountNumber);
     }
-    if (patch.processorSubaccountCode != null) {
-      data.processorSubaccountCode = patch.processorSubaccountCode;
-    }
     if (patch.quaiAddress != null) {
       data.quaiAddress = patch.quaiAddress;
     }
-    if (patch.slug != null) data.slug = patch.slug.toLowerCase();
-    if (patch.waPhoneNumberId != null) data.waPhoneNumberId = patch.waPhoneNumberId;
-    if (patch.waBusinessAccountId != null) data.waBusinessAccountId = patch.waBusinessAccountId;
-    if (patch.waDisplayPhone != null) data.waDisplayPhone = patch.waDisplayPhone;
+    // CLEARABLE fields: an empty string means "unset this", absent means "leave
+    // alone". Without this every one of these was write-once — a merchant could
+    // never detach a settlement subaccount or disconnect their WhatsApp number,
+    // which the privacy policy explicitly says they may do.
+    // quaiAddress is deliberately NOT clearable: blanking it would orphan a
+    // wallet holding real funds.
+    const clearable = (v: string | undefined) => (v === undefined ? undefined : v || null);
+    const sub = clearable(patch.processorSubaccountCode);
+    if (sub !== undefined) data.processorSubaccountCode = sub;
+    const slug = clearable(patch.slug);
+    if (slug !== undefined) data.slug = slug ? slug.toLowerCase() : null;
+    const pnid = clearable(patch.waPhoneNumberId);
+    if (pnid !== undefined) data.waPhoneNumberId = pnid;
+    const waba = clearable(patch.waBusinessAccountId);
+    if (waba !== undefined) data.waBusinessAccountId = waba;
+    const disp = clearable(patch.waDisplayPhone);
+    if (disp !== undefined) data.waDisplayPhone = disp;
     const row = await this.db.merchant.update({ where: { id }, data }).catch(() => {
       throw new NotFoundError("merchant", { id });
     });

@@ -60,6 +60,17 @@ class MemMerchantRepo implements MerchantRepo {
     const cur = this.m.get(id);
     if (!cur) throw new NotFoundError("merchant", { id });
     const next = { ...cur, ...patch, id: cur.id };
+    // Mirror the Postgres semantics: an empty string clears the field. The two
+    // implementations must agree or a test passes while production does not.
+    for (const k of [
+      "processorSubaccountCode",
+      "slug",
+      "waPhoneNumberId",
+      "waBusinessAccountId",
+      "waDisplayPhone",
+    ] as const) {
+      if (next[k] === "") delete next[k];
+    }
     this.m.set(id, next);
     return next;
   }

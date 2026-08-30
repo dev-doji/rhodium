@@ -160,3 +160,45 @@ describe("Paystack through the whole payment loop", () => {
     }
   });
 });
+
+describe("attach / detach a settlement subaccount", () => {
+  it("binds a subaccount and can unbind it again", async () => {
+    const { makeApp, seedMerchant } = await import("./helpers/harness.js");
+    const app = makeApp();
+    const merchant = await seedMerchant(app, { businessName: "Circuit City" });
+
+    const bound = await app.repos.merchants.update(merchant.id, {
+      processorSubaccountCode: "ACCT_kvj7p2t4pzz45au",
+    });
+    expect(bound.processorSubaccountCode).toBe("ACCT_kvj7p2t4pzz45au");
+
+    // Empty string means unbind. Every field here used to guard on `!= null`,
+    // so a subaccount was write-once and a test binding could never be undone —
+    // the same bug also made "disconnect your WhatsApp number" impossible,
+    // despite the privacy policy promising it.
+    const cleared = await app.repos.merchants.update(merchant.id, {
+      processorSubaccountCode: "",
+    });
+    expect(cleared.processorSubaccountCode).toBeUndefined();
+  });
+
+  it("leaves the subaccount alone when the patch omits it", async () => {
+    const { makeApp, seedMerchant } = await import("./helpers/harness.js");
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    await app.repos.merchants.update(merchant.id, { processorSubaccountCode: "ACCT_keep" });
+    const after = await app.repos.merchants.update(merchant.id, { businessName: "Renamed" });
+    expect(after.processorSubaccountCode).toBe("ACCT_keep");
+    expect(after.businessName).toBe("Renamed");
+  });
+
+  it("can disconnect a WhatsApp number, as the privacy policy promises", async () => {
+    const { makeApp, seedMerchant } = await import("./helpers/harness.js");
+    const app = makeApp();
+    const merchant = await seedMerchant(app, { waPhoneNumberId: "PNID_X" });
+    expect(await app.repos.merchants.byWaPhoneNumberId("PNID_X")).not.toBeNull();
+
+    await app.repos.merchants.update(merchant.id, { waPhoneNumberId: "" });
+    expect(await app.repos.merchants.byWaPhoneNumberId("PNID_X")).toBeNull();
+  });
+});
