@@ -1,7 +1,7 @@
 import type { Repositories } from "../../db/repositories.js";
 import type { Clock } from "../../lib/clock.js";
 import { hmacSign, hmacVerify } from "../../lib/crypto.js";
-import { ref } from "../../lib/ids.js";
+import { normalisePhone } from "../../lib/phone.js";
 import { UnauthorizedError, ValidationError } from "../../lib/errors.js";
 import { loadConfig } from "../../config/index.js";
 import { randomInt } from "node:crypto";
@@ -26,7 +26,8 @@ export class AuthService {
     private deliverOtp: (phone: string, code: string) => Promise<void>,
   ) {}
 
-  async requestOtp(phone: string): Promise<void> {
+  async requestOtp(rawPhone: string): Promise<void> {
+    const phone = normalisePhone(rawPhone) || rawPhone;
     if (!/^\+?\d{7,15}$/.test(phone)) throw new ValidationError("invalid phone");
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     this.challenges.set(phone, {
@@ -38,7 +39,11 @@ export class AuthService {
   }
 
   /** Verifies OTP; returns a signed session token bound to the merchant. */
-  async verifyOtp(phone: string, code: string): Promise<{ token: string; merchantId: string }> {
+  async verifyOtp(rawPhone: string, code: string): Promise<{ token: string; merchantId: string }> {
+    // Normalise BOTH sides: the challenge was keyed on the normalised form, so
+    // a user who types the number differently on the second screen must still
+    // land on the same key.
+    const phone = normalisePhone(rawPhone) || rawPhone;
     const challenge = this.challenges.get(phone);
     if (!challenge) throw new UnauthorizedError("no otp requested");
     if (this.clock.now() > challenge.expiresAt) {
@@ -55,17 +60,17 @@ export class AuthService {
     }
     this.challenges.delete(phone);
 
-    let merchant = await this.repos.merchants.byPhone(phone);
+    const merchant = await this.repos.merchants.byPhone(phone);
     if (!merchant) {
-      // First login = onboarding: create a pending merchant record.
-      merchant = await this.repos.merchants.create({
-        id: ref("mch"),
-        phone,
-        businessName: "New Merchant",
-        status: "pending",
-        kycState: "unverified",
-        cryptoEnabled: false,
-      });
+      // Deliberately NOT creating one. A blank shop conjured for an
+      // unrecognised number is worse than a refusal: the person signs in, sees
+      // zero sales, and concludes their business has vanished. Production
+      // already carries orphaned "New Merchant" rows minted exactly this way.
+      // Onboarding happens on WhatsApp, where the bot can actually ask for a
+      // business name and a payout account.
+      throw new UnauthorizedError(
+        "no shop is registered on this number — message the WhatsApp bot to set one up",
+      );
     }
     return { token: this.issueToken(merchant.id), merchantId: merchant.id };
   }

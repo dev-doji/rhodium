@@ -26,6 +26,7 @@ import { id } from "../../lib/ids.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { encryptField, decryptField } from "../../lib/crypto.js";
 import { blindIndex } from "../../lib/pii.js";
+import { normalisePhone } from "../../lib/phone.js";
 import type { Kobo } from "../../lib/money.js";
 
 /**
@@ -42,8 +43,11 @@ class PgMerchantRepo implements MerchantRepo {
     const row = await this.db.merchant.create({
       data: {
         id: m.id,
-        phoneEnc: encryptField(m.phone),
-        phoneHash: blindIndex(m.phone),
+        // Normalised on the way IN as well as on lookup: storing "+2340803…"
+        // once is all it takes to create a shadow account that the same person
+        // can never reach again.
+        phoneEnc: encryptField(normalisePhone(m.phone)),
+        phoneHash: blindIndex(normalisePhone(m.phone)),
         businessName: m.businessName,
         status: m.status,
         kycState: m.kycState,
@@ -68,9 +72,15 @@ class PgMerchantRepo implements MerchantRepo {
   }
   async byPhone(phone: string): Promise<Merchant | null> {
     const row = await this.db.merchant.findUnique({
+      where: { phoneHash: blindIndex(normalisePhone(phone)) },
+    });
+    if (row) return this.map(row);
+    // Fall back to the raw form so merchants stored before normalisation — of
+    // which production has several — remain reachable.
+    const legacy = await this.db.merchant.findUnique({
       where: { phoneHash: blindIndex(phone) },
     });
-    return row ? this.map(row) : null;
+    return legacy ? this.map(legacy) : null;
   }
   async byWaPhoneNumberId(waPhoneNumberId: string): Promise<Merchant | null> {
     if (!waPhoneNumberId) return null;

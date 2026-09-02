@@ -22,6 +22,7 @@ import type { Clock } from "../../lib/clock.js";
 import { systemClock } from "../../lib/clock.js";
 import { id } from "../../lib/ids.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { normalisePhone } from "../../lib/phone.js";
 import type { Kobo } from "../../lib/money.js";
 
 /**
@@ -34,7 +35,11 @@ class MemMerchantRepo implements MerchantRepo {
   private m = new Map<string, Merchant>();
   constructor(private clock: Clock) {}
   async create(input: Omit<Merchant, "createdAt">): Promise<Merchant> {
-    const merchant: Merchant = { ...input, createdAt: this.clock.now() };
+    const merchant: Merchant = {
+      ...input,
+      phone: normalisePhone(input.phone) || input.phone,
+      createdAt: this.clock.now(),
+    };
     this.m.set(merchant.id, merchant);
     return merchant;
   }
@@ -42,7 +47,9 @@ class MemMerchantRepo implements MerchantRepo {
     return this.m.get(id) ?? null;
   }
   async byPhone(phone: string): Promise<Merchant | null> {
-    for (const m of this.m.values()) if (m.phone === phone) return m;
+    const wanted = normalisePhone(phone) || phone;
+    for (const m of this.m.values()) if (m.phone === wanted) return m;
+    for (const m of this.m.values()) if (m.phone === phone) return m; // legacy rows
     return null;
   }
   async byWaPhoneNumberId(waPhoneNumberId: string): Promise<Merchant | null> {
