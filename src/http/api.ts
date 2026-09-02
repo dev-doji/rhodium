@@ -263,7 +263,60 @@ export function buildApi(app: App): Express {
     }),
   );
 
-  // --- Crypto (Quai/BlipPay) buyer-facing checkout ---
+  /**
+   * Public receipt for a PAID order. Both sides of a sale get this link, so it
+   * carries no auth: the order id is an unguessable uuid, the same shape Stripe
+   * and every other processor uses for shareable receipts.
+   *
+   * Two deliberate limits. It answers only for paid orders, so the URL can
+   * never be used to watch an order that has not settled. And the buyer's phone
+   * is masked — a receipt is forwarded to family, group chats and accountants,
+   * and neither party should leak the other's number by sharing it.
+   */
+  server.get(
+    "/api/receipt/:orderId",
+    asyncRoute(async (req, res) => {
+      const order = await app.repos.orders.byId(req.params.orderId!);
+      if (!order) throw new NotFoundError("order", { id: req.params.orderId });
+      if (order.status !== "paid") {
+        res.status(404).json({ error: "receipt not available until the order is paid" });
+        return;
+      }
+      const merchant = await app.repos.merchants.byId(order.merchantId);
+      const payment = await app.repos.payments.byOrderId(order.id);
+
+      let buyer = order.buyerRef || "";
+      if (buyer.startsWith("buy_")) {
+        buyer = (await app.repos.buyers.byId(buyer).catch(() => null))?.phoneOrRef ?? "";
+      }
+
+      const items = [];
+      for (const line of order.items) {
+        const product = await app.repos.products.byId(line.productId).catch(() => null);
+        items.push({
+          name: product?.name ?? "Item",
+          qty: line.qty,
+          unitPrice: product?.price ?? line.unitPrice ?? 0,
+          unitPriceFormatted: formatNaira(product?.price ?? line.unitPrice ?? 0),
+        });
+      }
+
+      res.set("Cache-Control", "no-store");
+      res.json({
+        orderRef: order.id.slice(-6).toUpperCase(),
+        orderId: order.id,
+        merchantName: merchant?.businessName ?? "Merchant",
+        amount: order.amount,
+        amountFormatted: formatNaira(order.amount),
+        items,
+        buyerMasked: maskPhone(buyer),
+        method: payment?.railId === "quai" ? "Crypto" : "Bank transfer",
+        paidAt: payment?.confirmedAt ?? null,
+      });
+    }),
+  );
+
+  // --- Crypto buyer-facing checkout ---
   // Public order + payment instruction for the checkout page (no auth: buyer-facing).
   server.get(
     "/api/checkout/:orderId",
@@ -737,9 +790,12 @@ export function buildApi(app: App): Express {
     }),
   );
 
-  // Buyer-facing crypto checkout (opens inside BlipPay) + live traction page.
+  // Buyer-facing checkout + shareable receipt + live traction page.
   server.get("/checkout/:orderId", (_req, res) => {
     res.sendFile(resolve("public/checkout.html"));
+  });
+  server.get("/receipt/:orderId", (_req, res) => {
+    res.sendFile(resolve("public/receipt.html"));
   });
   server.get("/traction", (_req, res) => {
     res.sendFile(resolve("public/traction.html"));
@@ -767,6 +823,12 @@ export function buildApi(app: App): Express {
 
   server.use(errorHandler);
   return server;
+}
+
+/** Last four digits only — a receipt gets forwarded, a phone number should not. */
+function maskPhone(phone: string): string {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.length < 4 ? "" : `•••• ${digits.slice(-4)}`;
 }
 
 /**

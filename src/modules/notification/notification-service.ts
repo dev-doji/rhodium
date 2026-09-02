@@ -16,8 +16,19 @@ export class NotificationService {
     private repos: Repositories,
     private channels: NotificationTransport[],
     private metrics: Metrics,
+    /**
+     * Where a buyer opens their receipt, and where a merchant signs in. Two
+     * origins because a buyer should see a payments domain, not an admin one.
+     * Empty => links are omitted rather than rendered broken.
+     */
+    private urls: { buyerBaseUrl?: string; merchantBaseUrl?: string } = {},
   ) {
     if (channels.length === 0) throw new Error("need at least one channel");
+  }
+
+  private receiptUrl(orderId: string): string | null {
+    const base = this.urls.buyerBaseUrl;
+    return base ? `${base}/receipt/${orderId}` : null;
   }
 
   async notifyMerchantPaid(input: {
@@ -32,6 +43,8 @@ export class NotificationService {
     // the whole story.
     const { lines, buyer } = await this.describeOrder(input.orderId);
     const balance = await this.repos.ledger.balance(input.merchantId).catch(() => null);
+    const receipt = this.receiptUrl(input.orderId);
+    const dashboard = this.urls.merchantBaseUrl;
     const msg = [
       `✅ *You've been paid ${formatNaira(input.amount)}*`,
       ...(lines.length ? ["", ...lines.map((l) => `• ${l}`)] : []),
@@ -40,7 +53,15 @@ export class NotificationService {
       `Order ${short(input.orderId)} · settled to your account`,
       ...(balance != null ? [`Balance: *${formatNaira(balance)}*`] : []),
       "",
-      "Type *ledger* to see your books.",
+      ...(receipt ? [`🧾 Receipt: ${receipt}`] : []),
+      ...(dashboard
+        ? [
+            `📊 Dashboard: ${dashboard}`,
+            `Sign in with ${merchant.phone} — we'll text you a code.`,
+          ]
+        : []),
+      "",
+      "Or type *ledger* to see your books here.",
     ].join("\n");
     await this.deliver(merchant.phone, msg, "merchant_confirmation", merchant.waPhoneNumberId);
   }
@@ -56,12 +77,16 @@ export class NotificationService {
     const to = buyer?.phoneOrRef ?? input.buyerRef;
     const biz = merchant?.businessName ?? "the merchant";
     const { lines } = await this.describeOrder(input.orderId);
+    const buyerReceipt = this.receiptUrl(input.orderId);
     const msg = [
       `🧾 *Receipt from ${biz}*`,
       ...(lines.length ? ["", ...lines.map((l) => `• ${l}`)] : []),
       "",
       `Total paid: *${formatNaira(input.amount)}*`,
       `Order ${short(input.orderId)}`,
+      ...(buyerReceipt
+        ? ["", `🧾 Your receipt: ${buyerReceipt}`, "Keep this link as proof of payment."]
+        : []),
       "",
       "Thank you for shopping with us! 💚",
     ].join("\n");

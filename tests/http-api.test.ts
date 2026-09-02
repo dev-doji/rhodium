@@ -337,7 +337,66 @@ describe("HTTP API — end-to-end over the wire", () => {
   });
 
   it("serves the checkout + traction pages", async () => {
-    expect(await (await fetch(`${base}/checkout/anything`)).text()).toContain("BlipPay");
+    // Asserts the checkout SHELL is served, not a vendor name — the page is
+    // chain-agnostic now, so naming a wallet here would re-couple the test to
+    // whichever chain happens to be wired up.
+    const checkoutHtml = await (await fetch(`${base}/checkout/anything`)).text();
+    expect(checkoutHtml).toContain('id="card"');
+    expect(checkoutHtml).toContain("Secure checkout");
     expect(await (await fetch(`${base}/traction`)).text()).toContain("Traction");
+  });
+});
+
+describe("shareable receipt", () => {
+  it("refuses a receipt until the order is actually paid", async () => {
+    const merchant = await app.repos.merchants.byId("mch_http");
+    const product = await app.commerce.createProduct({
+      merchantId: merchant!.id, name: "Lamp", price: 250_000,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: merchant!.id, buyerRef: "+2349032621846",
+      lines: [{ productId: product.id, qty: 1 }],
+    });
+    // A receipt URL must never become a way to watch an unsettled order.
+    const res = await fetch(`${base}/api/receipt/${order.id}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("serves a paid receipt with the buyer's number masked", async () => {
+    const merchant = await app.repos.merchants.byId("mch_http");
+    const product = await app.commerce.createProduct({
+      merchantId: merchant!.id, name: "Kettle", price: 400_000,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: merchant!.id, buyerRef: "+2349032621846",
+      lines: [{ productId: product.id, qty: 1 }],
+    });
+    const instruction = await app.payments.requestPayment(order.id);
+    const fiat = app.rails.fiat() as MonnifyFiatRail;
+    const signed = fiat.mock!.simulateTransfer(instruction.providerRef);
+    await fetch(`${base}/webhooks/rails/monnify`, {
+      method: "POST",
+      headers: { "monnify-signature": signed.signature, "content-type": "application/json" },
+      body: signed.rawBody,
+    });
+
+    const r = await json<{
+      merchantName: string; amountFormatted: string; orderRef: string;
+      buyerMasked: string; items: { name: string }[];
+    }>(await fetch(`${base}/api/receipt/${order.id}`));
+
+    expect(r.merchantName).toBe("HTTP Store");
+    expect(r.items[0]!.name).toBe("Kettle");
+    expect(r.orderRef).toBe(order.id.slice(-6).toUpperCase());
+    // Receipts get forwarded to family, group chats and accountants. Neither
+    // party should leak the other's phone number by sharing one.
+    expect(r.buyerMasked).toBe("•••• 1846");
+    expect(JSON.stringify(r)).not.toContain("2349032621846");
+  });
+
+  it("serves the receipt page shell", async () => {
+    const html = await (await fetch(`${base}/receipt/anything`)).text();
+    expect(html).toContain('id="card"');
+    expect(html).toContain("Receipt");
   });
 });

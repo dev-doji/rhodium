@@ -97,7 +97,10 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const channels = deps.notificationChannels ?? [waTransport];
 
   const ledger = new LedgerService(repos);
-  const notifications = new NotificationService(repos, channels, metrics);
+  const notifications = new NotificationService(repos, channels, metrics, {
+    buyerBaseUrl: config.PUBLIC_BASE_URL,
+    merchantBaseUrl: config.MERCHANT_BASE_URL,
+  });
   const commerce = new CommerceService(repos, objectStore, clock);
   const payments = new PaymentsOrchestrator(repos, rails, bus, clock, metrics, audit);
   const conversations = new ConversationStore();
