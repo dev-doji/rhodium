@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./styles.css";
 import {
-  api, getToken, setToken, naira,
+  api, getToken, setToken, naira, downloadFile,
   type Product, type Order, type LedgerEntry,
 } from "./api.js";
 import {
@@ -283,8 +283,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               <div className="side-h">Last 7 days</div>
               <SalesChart entries={ledger?.entries ?? []} />
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                <a className="btn ghost block" href="/api/ledger/export.csv"><Download /> CSV</a>
-                <a className="btn ghost block" href="/api/ledger/statement.txt">Statement</a>
+                <button className="btn ghost block" onClick={() => downloadFile("/api/ledger/export.csv", "rhodium-ledger.csv")}><Download /> CSV</button>
+                <button className="btn ghost block" onClick={() => downloadFile("/api/ledger/statement.txt", "rhodium-statement.txt")}>Statement</button>
               </div>
             </div>
           </div>
@@ -374,7 +374,7 @@ function OrderDrawer({ order, biz, phone, onClose }: {
         </div>
         <div className="drawer-foot">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <a className="btn" href="/api/ledger/statement.txt"><Download /> Download</a>
+          <button className="btn" onClick={() => downloadFile("/api/ledger/statement.txt", "rhodium-statement.txt")}><Download /> Download</button>
         </div>
       </aside>
     </>

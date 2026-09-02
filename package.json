@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:prod": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm --prefix dashboard run typecheck",
     "dev": "tsx watch src/http/server.ts",
     "start": "node dist/http/server.js",
     "start:prod": "node dist/http/server.js",
