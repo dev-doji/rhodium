@@ -331,6 +331,57 @@ on Cloud API and wait out the review.
 - Render free tier sleeps (11.5s cold start measured). $7/mo Starter removes it
   and raises the 2-domain cap.
 
+## NEXT — Arbitrum + stablecoin rail (Arbitrum Singapore Buildathon)
+
+**Goal.** Chain-agnostic **stablecoin-only** crypto rail: buyer pays USDC (or
+USDT) on an EVM chain, merchant is paid direct, order settles into the same
+naira ledger. Retires the native-token (QUAI) path.
+
+### Decisions taken
+
+**1. Arbitrum Sepolia for the demo, mainnet by config.**
+- Sepolia USDC `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`
+- Arbitrum One USDC `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` (Circle-issued
+  NATIVE, not bridged `USDC.e` — different contract, confuses wallets)
+- Judges get free testnet USDC from faucet.circle.com (20 per address / 2h).
+  Real money in a demo is a liability, not a flourish.
+
+**2. `approve` + `payToken` first; EIP-2612 `permit` as a fast-follow.**
+Two wallet confirmations is real drop-off, and USDC does implement permit — but
+it needs verifying against Arbitrum's deployment, and a working payment beats a
+shorter one. The instruction shape leaves room for either.
+
+**3. Stablecoins only; Quai stays registered but is no longer the default.**
+Same pattern as Monnify: an old rail kept loaded so historical orders remain
+explicable and a revert is one env var, while new crypto orders route elsewhere.
+
+### Why this is smaller than it looks
+`RhodiumPay.payToken()` **already does the job** — `transferFrom` buyer →
+merchant, emits `Paid(orderId, merchant, token, amount, payer)`, never holds a
+balance. Plain Solidity 0.8.20, and Arbitrum is EVM-equivalent. The contract is
+redeployed unchanged.
+
+EVM wallets are also *easier* than Quai: MetaMask and WalletConnect work
+normally — no per-origin app wallets, no `blip_requestAppWalletFunding`, no
+bespoke provider detection.
+
+### Traps
+- **USDC is 6 decimals, not 18.** The Quai code assumes 18 for native. Getting
+  this wrong overcharges a buyer by 10^12. Highest-risk line in the port.
+- **`withinTolerance` allows 150bps for `kind === "crypto"`.** Correct for a
+  volatile token, wrong for a pegged one — a stablecoin should match near-exactly
+  like fiat, or an underpayment silently passes.
+- **Pricing gets SIMPLER.** A stablecoin is ~1 USD, so it is ₦ ÷ FX_NGN_PER_USD.
+  No live oracle needed on this rail; the CoinGecko dependency is Quai-only.
+- Use Circle-issued native USDC, never bridged `USDC.e`.
+
+### Also queued
+**Receipt images.** WhatsApp sends an image by public URL, and the receipt is
+already public at an unguessable id. Build the SVG from the design tokens →
+PNG via `@resvg/resvg-js` (Rust/WASM, no system deps — `node-canvas` and
+Puppeteer are both wrong on a free tier that cold-starts in 11s). Send the link
+as text AND the image: an image cannot be copy-pasted or forwarded as easily.
+
 ## Gotchas learned (so they don't bite again)
 - **Quai deploy hang:** `quais` `usePathing` defaults **true** and appends `/prime` for shard discovery; a URL already ending in `/cyprus1` becomes `…/cyprus1/prime` → 404 → every call hangs. Fix: pass the **base** RPC (strip the shard) + a **static network**; pin reads to `Shard.Cyprus1`. Deploy also needs an **IPFS metadata hash** (`ipfs-only-hash`) as the 4th `ContractFactory` arg.
 - **~~Agent sandbox blocks the `quais` HTTP client~~ — WRONG, ignore this.** The SDK

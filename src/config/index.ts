@@ -73,6 +73,26 @@ const schema = z.object({
   // Which asset buyers pay: 'native' QUAI (simplest for the testnet demo) or
   // 'usdt' (ERC-20 stablecoin). Native needs only faucet QUAI.
   QUAI_PAYMENT_ASSET: z.enum(["native", "usdt"]).default("usdt"),
+  // --- EVM stablecoin rail (Arbitrum et al) ---
+  // Chain-agnostic by construction: nothing below names Arbitrum, so pointing
+  // at Base or Polygon is four env vars, not a new adapter.
+  FEATURE_EVM_STABLE_ENABLED: bool(false),
+  EVM_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
+  EVM_CHAIN_ID: z.coerce.number().default(421614), // Arbitrum Sepolia
+  EVM_CHAIN_NAME: z.string().default("Arbitrum Sepolia"),
+  EVM_RPC_URL: z.string().default("https://sepolia-rollup.arbitrum.io/rpc"),
+  EVM_EXPLORER_URL: z.string().default("https://sepolia.arbiscan.io"),
+  // RhodiumPay, redeployed unchanged — payToken() is already an ERC-20
+  // transferFrom(buyer -> merchant) that emits Paid(orderId, ...).
+  EVM_CONTRACT_ADDRESS: z.string().optional().default(""),
+  // Circle-issued NATIVE USDC on Arbitrum Sepolia. Never bridged USDC.e:
+  // different contract, and wallets display it confusingly.
+  EVM_TOKEN_ADDRESS: z.string().default("0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"),
+  EVM_TOKEN_SYMBOL: z.string().default("USDC"),
+  // SIX for USDC/USDT, not eighteen. Assuming 18 overcharges a buyer by 10^12,
+  // which is the single highest-risk number in this rail.
+  EVM_TOKEN_DECIMALS: z.coerce.number().default(6),
+
   // BUYER-facing origin: checkout links, BlipPay deep links, rail callbacks.
   PUBLIC_BASE_URL: z.string().default("http://localhost:3000"),
   // MERCHANT-facing origin: dashboard, wallet backup, OAuth callback. Both

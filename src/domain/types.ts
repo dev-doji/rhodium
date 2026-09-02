@@ -5,7 +5,7 @@ import type { Kobo } from "../lib/money.js";
 // ---------------------------------------------------------------------------
 
 export type RailKind = "fiat" | "crypto";
-export type RailId = "monnify" | "paystack" | "stablecoin_base" | "quai" | "onswitch";
+export type RailId = "monnify" | "paystack" | "stablecoin_base" | "quai" | "evm_stable" | "onswitch";
 
 export type MerchantStatus = "pending" | "active" | "suspended";
 export type KycState = "unverified" | "pending" | "verified" | "rejected";

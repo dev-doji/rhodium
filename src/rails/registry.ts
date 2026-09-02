@@ -4,6 +4,7 @@ import { MonnifyFiatRail } from "./monnify-fiat-rail.js";
 import { PaystackFiatRail } from "./paystack-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
 import { QuaiRail } from "./quai-rail.js";
+import { EvmStableRail } from "./evm-stable-rail.js";
 import { OnSwitchRail } from "./onswitch-rail.js";
 import { NotFoundError } from "../lib/errors.js";
 import type { AppConfig } from "../config/index.js";
@@ -76,8 +77,30 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
     }),
   );
 
-  // Crypto rail: the fleshed-out Quai/BlipPay adapter when enabled; otherwise
-  // the dark stablecoin stub keeps the seam present but refusing.
+  // Crypto rail. When the EVM stablecoin rail is enabled it is registered FIRST,
+  // so `crypto()` — which returns the first crypto rail found — routes new
+  // orders to it while Quai stays loaded for historical ones. Same pattern as
+  // keeping Monnify registered behind Paystack.
+  if (cfg.FEATURE_EVM_STABLE_ENABLED) {
+    registry.register(
+      new EvmStableRail({
+        mode: cfg.EVM_ADAPTER_MODE,
+        chainId: cfg.EVM_CHAIN_ID,
+        chainName: cfg.EVM_CHAIN_NAME,
+        rpcUrl: cfg.EVM_RPC_URL,
+        explorerUrl: cfg.EVM_EXPLORER_URL,
+        contractAddress: cfg.EVM_CONTRACT_ADDRESS,
+        tokenAddress: cfg.EVM_TOKEN_ADDRESS,
+        tokenSymbol: cfg.EVM_TOKEN_SYMBOL,
+        tokenDecimals: cfg.EVM_TOKEN_DECIMALS,
+        ngnPerUsd: cfg.FX_NGN_PER_USD,
+        publicBaseUrl: cfg.PUBLIC_BASE_URL,
+      }),
+    );
+  }
+
+  // Legacy crypto rail: the Quai/BlipPay adapter when enabled; otherwise the
+  // dark stablecoin stub keeps the seam present but refusing.
   if (cfg.FEATURE_QUAI_ENABLED) {
     registry.register(
       new QuaiRail({

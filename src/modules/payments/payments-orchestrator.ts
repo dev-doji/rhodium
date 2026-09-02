@@ -155,7 +155,11 @@ export class PaymentsOrchestrator {
     // Amount integrity: fiat must match to the kobo; crypto allows a small FX
     // round-trip tolerance (the on-chain stablecoin amount reconverted to kobo).
     const rail = this.rails.get(payment.railId);
-    const toleranceBps = rail.kind === "crypto" ? 150 : 0;
+    // 150bps exists for a VOLATILE token, where the price moves between quoting
+    // and settling. A stablecoin is pegged, so the same slack would let a real
+    // underpayment through — 50bps covers only rounding at 6 decimals.
+    const toleranceBps =
+      rail.kind !== "crypto" ? 0 : rail.id === "evm_stable" ? 50 : 150;
     if (amount != null && !withinTolerance(amount, payment.amount, toleranceBps)) {
       this.metrics.increment("payment_amount_mismatch");
       await this.audit.record({
