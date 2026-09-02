@@ -272,3 +272,37 @@ describe("matching a DVA transfer to its order", () => {
     expect(event.providerRef).toBe("9816867854");
   });
 });
+
+describe("the \"I've sent the money\" poll", () => {
+  it("finds a transfer by account number and confirms once", async () => {
+    process.env.FIAT_PROVIDER = "paystack";
+    process.env.FIAT_ADAPTER_MODE = "mock";
+    const { makeApp, seedMerchant, seedProduct } = await import("./helpers/harness.js");
+    const app = makeApp();
+    try {
+      const merchant = await seedMerchant(app);
+      const product = await seedProduct(app, merchant.id, 10_000); // ₦100
+      const o = await app.commerce.createOrder({
+        merchantId: merchant.id, buyerRef: "+2349032621846",
+        lines: [{ productId: product.id, qty: 1 }],
+      });
+      const inst = await app.payments.requestPayment(o.id);
+      const psk = app.rails.get("paystack") as { mock?: { simulateTransfer: (r: string) => unknown } };
+
+      // Nothing sent yet — the button must not confirm on a buyer's say-so.
+      expect(await app.payments.reconcileByPolling(inst.providerRef)).toBe(false);
+      expect((await app.repos.orders.byId(o.id))!.status).toBe("awaiting_payment");
+
+      psk.mock!.simulateTransfer(inst.providerRef); // money actually arrives
+      expect(await app.payments.reconcileByPolling(inst.providerRef)).toBe(true);
+      expect((await app.repos.orders.byId(o.id))!.status).toBe("paid");
+      expect(await app.ledger.balance(merchant.id)).toBe(10_000);
+
+      // Pressing the button again must not credit a second time.
+      await app.payments.reconcileByPolling(inst.providerRef);
+      expect(await app.ledger.entries(merchant.id)).toHaveLength(1);
+    } finally {
+      delete process.env.FIAT_PROVIDER;
+    }
+  });
+});

@@ -118,11 +118,13 @@ export class PaymentsOrchestrator {
     const status = await rail.verifyPayment(providerRef);
     this.metrics.increment("verify_poll");
     if (status.status === "confirmed") {
-      await this.confirmByProviderRef(
-        providerRef,
-        status.amount,
-        `poll:${providerRef}:${payment.id}`,
-      );
+      // Key on the PROVIDER's transaction where it gives us one. A dedicated
+      // account is reused across orders, so `poll:<account>:<payment>` would
+      // let a single real transfer confirm a second order on the same account.
+      const key = status.rawEventId
+        ? `${payment.railId}:${status.rawEventId}`
+        : `poll:${providerRef}:${payment.id}`;
+      await this.confirmByProviderRef(providerRef, status.amount, key);
       return true;
     }
     return false;

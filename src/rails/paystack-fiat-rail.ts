@@ -184,20 +184,39 @@ export class PaystackFiatRail implements PaymentRail {
     if (this.cfg.mode === "mock") {
       const acct = this.mock!.getByReference(providerRef);
       if (!acct) return { providerRef, status: "pending" };
+      if (acct.status !== "paid") return { providerRef, status: "pending" };
       return {
         providerRef,
-        status: acct.status === "paid" ? "confirmed" : "pending",
+        status: "confirmed",
         amount: acct.amount,
+        rawEventId: String(acct.txId ?? ""),
       };
     }
-    const res = await this.api<{ data?: { status?: string; amount?: number } }>(
-      `/transaction/verify/${encodeURIComponent(providerRef)}`,
+    // providerRef is a dedicated-account NUMBER, not a transaction reference —
+    // /transaction/verify rejects it with "Transaction reference not found".
+    // Find the most recent successful transfer that landed in this account.
+    type Tx = {
+      id?: number;
+      amount?: number;
+      status?: string;
+      metadata?: { receiver_account_number?: string };
+      authorization?: { receiver_bank_account_number?: string };
+    };
+    const res = await this.api<{ data?: Tx[] }>(
+      "/transaction?perPage=50&status=success",
       { method: "GET" },
     ).catch(() => null);
+    const hit = (res?.data ?? []).find(
+      (t) =>
+        (t.metadata?.receiver_account_number ??
+          t.authorization?.receiver_bank_account_number) === providerRef,
+    );
+    if (!hit) return { providerRef, status: "pending" };
     return {
       providerRef,
-      status: res?.data?.status === "success" ? "confirmed" : "pending",
-      amount: res?.data?.amount,
+      status: "confirmed",
+      amount: hit.amount,
+      rawEventId: String(hit.id ?? ""),
     };
   }
 

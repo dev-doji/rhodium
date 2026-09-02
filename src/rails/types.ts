@@ -62,6 +62,13 @@ export interface PaymentStatusResult {
   providerRef: string;
   status: "pending" | "confirmed" | "failed";
   amount?: Kobo;
+  /**
+   * The provider's transaction id. A polled confirmation must be idempotent on
+   * the TRANSACTION, not on the payment row: a dedicated account is reused
+   * across orders, so keying on the payment alone lets one real transfer
+   * confirm two different orders.
+   */
+  rawEventId?: string;
 }
 
 export interface WebhookPayload {
