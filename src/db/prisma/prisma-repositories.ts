@@ -329,6 +329,7 @@ class PgPaymentRepo implements PaymentRepo {
       instructionType: r.instructionType as InstructionType,
       amount: r.amount as number,
       status: r.status as PaymentStatus,
+      instructionJson: (r.instructionJson as string | null) ?? undefined,
       confirmedAt: (r.confirmedAt as Date | null) ?? undefined,
       createdAt: r.createdAt as Date,
     };

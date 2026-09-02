@@ -93,3 +93,37 @@ d("magic moment against live Postgres", () => {
     expect(report.clean).toBe(true);
   });
 });
+
+d("payment repository round-trips every field", () => {
+  it("preserves instructionJson through Postgres", async () => {
+    const repos = createPrismaRepositories(prisma());
+    const merchant = await repos.merchants.create({
+      id: ref("mch"), phone: `+234${Date.now() % 10_000_000_000}`,
+      businessName: "Roundtrip Co", status: "active", kycState: "verified",
+      cryptoEnabled: false,
+    });
+    const order = await repos.orders.create({
+      id: ref("ord"), merchantId: merchant.id, buyerRef: "+2349032621846",
+      items: [], amount: 650_000, rail: "fiat", status: "awaiting_payment",
+    });
+    const snapshot = JSON.stringify({
+      railId: "paystack", instructionType: "dva", providerRef: order.id,
+      amount: 650_000, accountNumber: "9816867854", bankName: "Wema Bank",
+      accountName: "FONIOLABS/BUYER RHODIUM",
+    });
+
+    await repos.payments.create({
+      id: ref("pay"), orderId: order.id, railId: "paystack",
+      providerRef: order.id, instructionType: "dva", amount: 650_000,
+      status: "pending", instructionJson: snapshot,
+    });
+
+    // The in-memory repo spreads the whole object, so it carries any new field
+    // for free. The Postgres map lists fields by hand — which is how a missing
+    // `instructionJson` there passed the whole suite and still showed buyers a
+    // blank account number in production. Assert the real database.
+    const read = await repos.payments.byOrderId(order.id);
+    expect(read?.instructionJson).toBe(snapshot);
+    expect(JSON.parse(read!.instructionJson!).accountNumber).toBe("9816867854");
+  });
+});
