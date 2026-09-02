@@ -409,20 +409,54 @@
       return txHash;
     }
 
+    /**
+     * Wait for the SERVER to say the order is paid. Never assume it.
+     *
+     * This loop used to call paid() when it ran out of attempts, so a bank
+     * transfer — which takes minutes, not the ~14s the loop allowed — showed
+     * "Payment confirmed" to a buyer who had transferred nothing. A vendor
+     * could ship goods against a screenshot of that screen.
+     *
+     * Now it polls indefinitely with a widening interval and only ever reports
+     * success on the server's word. A page left open is fine; a false
+     * confirmation is not.
+     */
     async function pollPaid() {
-      for (let i = 0; i < 20; i++) {
-        const d = await (await fetch(`/api/checkout/${orderId}`)).json();
-        if (d.order.status === "paid") { paid(); return; }
-        await new Promise((r) => setTimeout(r, 700));
+      let attempt = 0;
+      for (;;) {
+        try {
+          const d = await (await fetch(`/api/checkout/${orderId}`)).json();
+          if (d.order.status === "paid") { paid(); return; }
+          if (d.order.status === "expired" || d.order.status === "cancelled") {
+            stillWaiting(`This order is ${d.order.status}. Ask the seller for a new link.`);
+            return;
+          }
+        } catch { /* transient network — keep waiting */ }
+        attempt++;
+        // 0.7s while a card-speed confirmation is plausible, then back off to
+        // 5s so a page left open overnight is not hammering the server.
+        await new Promise((r) => setTimeout(r, attempt < 20 ? 700 : 5000));
+        if (attempt === 20) {
+          stillWaiting("Still waiting for your transfer. Bank transfers can take a few minutes — keep this page open.");
+        }
       }
-      paid();
+    }
+
+    /** Honest interim state: waiting is not failure, and it is not success. */
+    function stillWaiting(message) {
+      const el = $("waiting");
+      if (el) el.innerHTML = `<span class="spinner"></span> ${message}`;
     }
 
     function paid() {
       const explorer = data.quaiExplorer;
-      const txLink = (lastTx && explorer && data.quaiMode === "live")
+      // Only ever show chain links for a CHAIN payment. A bank transfer was
+      // offering "View contract on Quaiscan", which is meaningless to a buyer
+      // who just moved naira and makes the receipt look fraudulent.
+      const isCrypto = data.order?.rail === "crypto";
+      const txLink = (isCrypto && lastTx && explorer && data.quaiMode === "live")
         ? `<a class="explorer" href="${explorer}/tx/${lastTx}" target="_blank" rel="noopener">${ICON.link} View transaction on Quaiscan</a>`
-        : (data.quaiExplorer && data.instruction && data.quaiMode === "live"
+        : (isCrypto && explorer && data.instruction?.contractAddress && data.quaiMode === "live"
             ? `<a class="explorer" href="${explorer}/address/${data.instruction.contractAddress}" target="_blank" rel="noopener">${ICON.link} View contract on Quaiscan</a>`
             : "");
       const txHashLine = lastTx ? `<div class="txhash">${lastTx}</div>` : "";
