@@ -74,6 +74,9 @@ export class PaymentsOrchestrator {
       instructionType: instruction.instructionType,
       amount: order.amount,
       status: "pending",
+      // Snapshot the provider's answer. Issuing a DVA has side effects, so the
+      // checkout page must never re-issue one just to redraw the screen.
+      instructionJson: JSON.stringify(instruction),
     });
 
     if (order.status === "draft") {
@@ -215,13 +218,26 @@ export class PaymentsOrchestrator {
   }
 
   /** Rebuild the buyer-facing DVA view for an idempotent re-request. */
+  /**
+   * Re-present a previously issued instruction.
+   *
+   * This used to return only `{ amount }`, so the account number, bank and
+   * account name vanished on every reload: the WhatsApp message carried the
+   * real details while the checkout page showed an empty box. The instruction
+   * is now snapshotted at issue time and replayed verbatim.
+   */
   private async recreateInstructionView(
     _rail: unknown,
     payment: Payment,
   ): Promise<Partial<PaymentInstruction>> {
-    // In mock/live, the DVA details persist provider-side; for the MVP we only
-    // need the stable providerRef + amount to re-present. Real adapters can
-    // re-fetch account details here if desired.
+    if (payment.instructionJson) {
+      try {
+        return JSON.parse(payment.instructionJson) as Partial<PaymentInstruction>;
+      } catch {
+        // Corrupt snapshot must not blank the page; fall through to the amount.
+        log.warn({ paymentId: payment.id }, "unreadable instruction snapshot");
+      }
+    }
     return { amount: payment.amount };
   }
 }

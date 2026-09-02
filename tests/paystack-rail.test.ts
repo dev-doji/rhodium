@@ -202,3 +202,35 @@ describe("attach / detach a settlement subaccount", () => {
     expect(await app.repos.merchants.byWaPhoneNumberId("PNID_X")).toBeNull();
   });
 });
+
+describe("checkout page reload", () => {
+  it("keeps the account number across reloads instead of blanking it", async () => {
+    process.env.FIAT_PROVIDER = "paystack";
+    process.env.FIAT_ADAPTER_MODE = "mock";
+    const { makeApp, seedMerchant, seedProduct } = await import("./helpers/harness.js");
+    const app = makeApp();
+    try {
+      const merchant = await seedMerchant(app);
+      const product = await seedProduct(app, merchant.id, 650_000);
+      const order = await app.commerce.createOrder({
+        merchantId: merchant.id,
+        buyerRef: "+2349032621846",
+        lines: [{ productId: product.id, qty: 1 }],
+      });
+
+      const first = await app.payments.requestPayment(order.id);
+      expect(first.accountNumber).toMatch(/^\d{10}$/);
+
+      // What the checkout page does on every load. It used to come back with
+      // only `amount`, so the buyer saw an empty box and no way to pay while
+      // their WhatsApp message held the real account number.
+      const reload = await app.payments.requestPayment(order.id);
+      expect(reload.accountNumber).toBe(first.accountNumber);
+      expect(reload.bankName).toBe(first.bankName);
+      expect(reload.accountName).toBe(first.accountName);
+      expect(reload.providerRef).toBe(first.providerRef);
+    } finally {
+      delete process.env.FIAT_PROVIDER;
+    }
+  });
+});

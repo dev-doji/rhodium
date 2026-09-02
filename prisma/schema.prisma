@@ -84,6 +84,11 @@ model Payment {
   instructionType String    @map("instruction_type")
   amount          Int // kobo
   status          String    @default("pending")
+  // The instruction exactly as the provider issued it — account number, bank,
+  // deposit address. Creating a DVA has side effects, so it must not be
+  // re-issued on every page load; without this the checkout page showed a
+  // blank account number on reload while the WhatsApp message had the real one.
+  instructionJson String?   @map("instruction_json")
   confirmedAt     DateTime? @map("confirmed_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 

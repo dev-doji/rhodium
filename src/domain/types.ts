@@ -97,6 +97,12 @@ export interface Payment {
   amount: Kobo;
   status: PaymentStatus;
   confirmedAt?: Date;
+  /**
+   * The instruction as the provider issued it, serialised. Re-issuing a DVA
+   * has side effects, so the checkout page must re-read this rather than ask
+   * the provider again.
+   */
+  instructionJson?: string;
   createdAt: Date;
 }
 
