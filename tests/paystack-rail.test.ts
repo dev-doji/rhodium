@@ -35,14 +35,14 @@ describe("Paystack bank rail", () => {
     expect(inst.instructionType).toBe("dva");
     expect(inst.accountNumber).toMatch(/^\d{10}$/);
     expect(inst.accountName).toContain("CIRCUIT CITY");
-    // providerRef is OUR order id, never Paystack's transaction reference —
-    // that is what maps an inbound transfer back to one order.
-    expect(inst.providerRef).toBe(order.id);
+    // providerRef is the ACCOUNT NUMBER. A DVA webhook can only identify
+    // itself by where the money landed; our order id never reaches Paystack.
+    expect(inst.providerRef).toBe(inst.accountNumber);
   });
 
   it("confirms a signed charge.success and reads kobo without converting", async () => {
     const r = rail();
-    await r.createPaymentInstruction(order, merchant);
+    const inst = await r.createPaymentInstruction(order, merchant);
     const hook = r.mock!.simulateTransfer(order.id);
 
     const event = await r.handleWebhook({
@@ -54,7 +54,7 @@ describe("Paystack bank rail", () => {
     // Paystack sends kobo already. Monnify sends naira strings; conflating the
     // two would credit this merchant ₦65,000,000 instead of ₦6,500.
     expect(event.amount).toBe(650_000);
-    expect(event.providerRef).toBe(order.id);
+    expect(event.providerRef).toBe(inst.accountNumber);
   });
 
   it("rejects a forged signature", async () => {
@@ -100,7 +100,7 @@ describe("Paystack bank rail", () => {
     const r = rail();
     const body = JSON.stringify({
       event: "charge.failed",
-      data: { id: 1, amount: 650_000, status: "failed", metadata: { order_id: order.id } },
+      data: { id: 1, amount: 650_000, status: "failed", metadata: { receiver_account_number: "9816867854" } },
     });
     const { createHmac } = await import("node:crypto");
     const sig = createHmac("sha512", SECRET).update(body).digest("hex");
@@ -232,5 +232,43 @@ describe("checkout page reload", () => {
     } finally {
       delete process.env.FIAT_PROVIDER;
     }
+  });
+});
+
+describe("matching a DVA transfer to its order", () => {
+  it("matches on the receiving account number, as the real webhook does", async () => {
+    const r = rail();
+    const inst = await r.createPaymentInstruction(order, merchant);
+    const hook = r.mock!.simulateTransfer(order.id);
+
+    const event = await r.handleWebhook({
+      headers: { "x-paystack-signature": hook.signature },
+      rawBody: hook.rawBody,
+    });
+
+    // A live DVA payload carries only receiver details — Paystack owns
+    // `metadata` for these events and our order id never reaches it. Matching
+    // on anything else means a real transfer arrives and finds no order.
+    expect(event.providerRef).toBe(inst.accountNumber);
+    expect(event.providerRef).not.toBe(order.id);
+    expect(JSON.parse(hook.rawBody).data.metadata.order_id).toBeUndefined();
+  });
+
+  it("falls back to authorization.receiver_bank_account_number", async () => {
+    const r = rail();
+    const body = JSON.stringify({
+      event: "charge.success",
+      data: {
+        id: 99, amount: 650_000, status: "success",
+        authorization: { receiver_bank_account_number: "9816867854" },
+      },
+    });
+    const { createHmac } = await import("node:crypto");
+    const sig = createHmac("sha512", SECRET).update(body).digest("hex");
+    const event = await r.handleWebhook({
+      headers: { "x-paystack-signature": sig },
+      rawBody: body,
+    });
+    expect(event.providerRef).toBe("9816867854");
   });
 });

@@ -28,6 +28,11 @@
              background:linear-gradient(135deg,#4b7bec,#3059d6); color:#fff; cursor:pointer; }
     button svg { width:19px; height:19px; }
     button:disabled { opacity:.6; cursor:default; }
+    /* Quieter than the primary action: this only asks the bank to look again,
+       so it must not compete with "Copy account number", which is the thing a
+       buyer actually needs to do. */
+    button.secondary { background:transparent; border:1px solid #26303d; color:#9fb0c4;
+                       font-weight:600; font-size:14px; padding:12px; margin-top:10px; }
     .hint { font-size:12px; color:#7c8798; margin-top:14px; text-align:center; line-height:1.55; }
     .ok { text-align:center; margin-top:14px; }
     .ok .checkwrap { width:56px; height:56px; margin:6px auto 12px; border-radius:50%; background:#123021;
@@ -179,6 +184,9 @@
         <div class="waiting" id="waiting">
           <span class="spinner"></span> Waiting for your transfer…
         </div>
+        <button class="secondary" id="sent">
+          I've sent the money — check now
+        </button>
         <div class="hint">This account belongs to <b>this order only</b>, so we detect your
           transfer automatically — no screenshot needed. Keep this page open; it updates
           itself, and your receipt arrives on WhatsApp.</div>`;
@@ -190,6 +198,26 @@
           setTimeout(() => { $("copy").innerHTML = `${ICON.link} Copy account number`; }, 1800);
         } catch { /* clipboard blocked — the number is on screen anyway */ }
       };
+      const sentBtn = $("sent");
+      if (sentBtn) {
+        sentBtn.onclick = async () => {
+          sentBtn.disabled = true;
+          const original = sentBtn.textContent;
+          sentBtn.textContent = "Checking with the bank…";
+          try {
+            // Asks the PROVIDER, not the buyer. Pressing this on an unpaid
+            // order changes nothing — a claim is not a payment.
+            const r = await fetch(`/api/checkout/${orderId}/verify`, { method: "POST" });
+            const j = await r.json();
+            if (j.status === "paid") { paid(); return; }
+            stillWaiting("Not showing yet. Transfers can take a few minutes — we're still watching.");
+          } catch {
+            stillWaiting("Could not check just now. We're still watching for your transfer.");
+          }
+          sentBtn.disabled = false;
+          sentBtn.textContent = original;
+        };
+      }
       pollPaid();
     }
 

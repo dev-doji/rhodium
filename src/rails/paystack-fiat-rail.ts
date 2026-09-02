@@ -73,7 +73,11 @@ export class PaystackFiatRail implements PaymentRail {
       return {
         railId: this.id,
         instructionType: "dva",
-        providerRef: order.id,
+        // The ACCOUNT NUMBER, not the order id. A DVA webhook identifies itself
+        // by the receiving account; our order id never reaches Paystack. Live
+        // DVAs are also per-customer and reused, which is exactly why the repo
+        // matches the oldest PENDING payment on this ref.
+        providerRef: acct.accountNumber,
         amount: order.amount,
         accountNumber: acct.accountNumber,
         bankName: acct.bankName,
@@ -114,12 +118,16 @@ export class PaystackFiatRail implements PaymentRail {
       }),
     });
 
+    const accountNumber = dva.data?.account_number;
+    if (!accountNumber) {
+      throw new AppError("paystack: no account_number on dedicated account", "provider_error", 502);
+    }
     return {
       railId: this.id,
       instructionType: "dva",
-      providerRef: order.id,
+      providerRef: accountNumber, // see the mock branch above
       amount: order.amount,
-      accountNumber: dva.data?.account_number,
+      accountNumber,
       bankName: dva.data?.bank?.name,
       accountName: dva.data?.account_name,
     };
@@ -137,13 +145,19 @@ export class PaystackFiatRail implements PaymentRail {
         amount: number; // KOBO — no conversion needed
         status: string;
         reference?: string;
-        metadata?: { order_id?: string };
+        metadata?: { receiver_account_number?: string };
+        authorization?: { receiver_bank_account_number?: string };
       };
     };
     const data = body.data ?? ({} as never);
-    // Our order id travels in metadata; Paystack's own `reference` belongs to
-    // the transaction, not to us, so it must never be used to match an order.
-    const providerRef = data.metadata?.order_id ?? "unknown";
+    // A DVA transfer identifies itself by the account the money landed in.
+    // Paystack owns `metadata` for these events — it holds receiver details,
+    // never anything we set — and its `reference` belongs to the transaction
+    // rather than to our order, so neither can identify which order was paid.
+    const providerRef =
+      data.metadata?.receiver_account_number ??
+      data.authorization?.receiver_bank_account_number ??
+      "unknown";
     const eventId = String(data.id ?? data.reference ?? "unknown");
 
     if (body.event !== "charge.success" || data.status !== "success") {

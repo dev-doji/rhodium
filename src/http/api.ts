@@ -233,6 +233,36 @@ export function buildApi(app: App): Express {
   // JSON for everything below.
   server.use(express.json());
 
+  /**
+   * "I've sent the money" — ask the PROVIDER, right now.
+   *
+   * It cannot make a bank transfer arrive sooner, but it removes the wait on a
+   * webhook that may be delayed, retried, or lost. The buyer's claim is never
+   * itself evidence: this polls Paystack and confirms only on their answer, so
+   * pressing it on an unpaid order changes nothing.
+   */
+  server.post(
+    "/api/checkout/:orderId/verify",
+    asyncRoute(async (req, res) => {
+      const order = await app.repos.orders.byId(req.params.orderId!);
+      if (!order) throw new NotFoundError("order", { id: req.params.orderId });
+      if (order.status === "paid") {
+        res.json({ status: "paid" });
+        return;
+      }
+      const payment = await app.repos.payments.byOrderId(order.id);
+      if (!payment) throw new NotFoundError("payment", { orderId: order.id });
+      const confirmed = await app.payments
+        .reconcileByPolling(payment.providerRef)
+        .catch((err) => {
+          // A mismatch (wrong amount) is information, not a server fault.
+          log.info({ orderId: order.id, err: (err as Error).message }, "verify poll failed");
+          return false;
+        });
+      res.json({ status: confirmed ? "paid" : "pending" });
+    }),
+  );
+
   // --- Crypto (Quai/BlipPay) buyer-facing checkout ---
   // Public order + payment instruction for the checkout page (no auth: buyer-facing).
   server.get(

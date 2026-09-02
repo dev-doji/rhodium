@@ -50,23 +50,33 @@ export class MockPaystackServer {
     return acct;
   }
 
+  /**
+   * Resolve by order id OR by account number. Callers hold whichever they have:
+   * the rail knows the account number (that is the providerRef a webhook can
+   * carry), while tests usually hold the order id.
+   */
   getByReference(reference: string): MockDedicatedAccount | undefined {
-    return this.accounts.get(reference);
+    const direct = this.accounts.get(reference);
+    if (direct) return direct;
+    for (const a of this.accounts.values()) {
+      if (a.accountNumber === reference) return a;
+    }
+    return undefined;
   }
 
   /** Simulate a buyer transfer → Paystack posts a signed `charge.success`. */
-  simulateTransfer(orderId: string, overrideAmount?: Kobo): SignedPaystackWebhook {
-    const acct = this.accounts.get(orderId);
-    if (!acct) throw new Error(`unknown dedicated account ${orderId}`);
+  simulateTransfer(reference: string, overrideAmount?: Kobo): SignedPaystackWebhook {
+    const acct = this.getByReference(reference);
+    if (!acct) throw new Error(`unknown dedicated account ${reference}`);
     acct.status = "paid";
     acct.txId = this.nextTxId++;
     return this.buildWebhook(acct, overrideAmount ?? acct.amount);
   }
 
   /** Same transaction id again — must collapse to one ledger entry. */
-  replayLastTransfer(orderId: string): SignedPaystackWebhook {
-    const acct = this.accounts.get(orderId);
-    if (!acct?.txId) throw new Error(`no prior transfer for ${orderId}`);
+  replayLastTransfer(reference: string): SignedPaystackWebhook {
+    const acct = this.getByReference(reference);
+    if (!acct?.txId) throw new Error(`no prior transfer for ${reference}`);
     return this.buildWebhook(acct, acct.amount);
   }
 
@@ -82,7 +92,15 @@ export class MockPaystackServer {
         status: "success",
         reference: ref("psk").replace("psk_", ""),
         channel: "dedicated_nuban",
-        metadata: { order_id: acct.reference },
+        // Mirrors the REAL payload: Paystack owns metadata on DVA events and
+        // fills it with receiver details. Our order id is nowhere in it — the
+        // mock said otherwise, so the suite passed while production could not
+        // match a single live transfer.
+        metadata: {
+          receiver_account_number: acct.accountNumber,
+          receiver_bank: acct.bankName,
+        },
+        authorization: { receiver_bank_account_number: acct.accountNumber },
         customer: { customer_code: `CUS_${acct.reference.slice(-10)}` },
       },
     };
