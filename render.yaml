@@ -58,10 +58,11 @@ services:
       - key: WHATSAPP_VERIFY_TOKEN
         value: rhodium-verify
       - key: WHATSAPP_WA_NUMBER   # bot's wa.me digits, for buyer shop links
-        # Real Fonio Labs number (+234 803 680 3974). Was the Meta test number
-        # 15551405536, which is no longer attached to the WABA — buyer shop
-        # links pointing at it go nowhere.
-        value: "2348036803974"
+        # Current live bot: +234 911 046 1379. Previously 2348036803974, and
+        # before that the Meta test number 15551405536 — both are off the WABA,
+        # so any wa.me link pointing at them goes nowhere. Keep this in step
+        # with WHATSAPP_PHONE_NUMBER_ID or buyers get a dead shop link.
+        value: "2349110461379"
       - key: MONNIFY_BASE_URL
         value: https://sandbox.monnify.com
       - key: FIAT_ADAPTER_MODE

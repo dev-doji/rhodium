@@ -12,67 +12,140 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 
 ---
 
-## ⚡ START HERE — state as of 2026-08-30
+## ⚡ START HERE — state as of 2026-09-03
 
-**Nothing is broken except one thing.** A previous session deregistered the
-WhatsApp number while attempting a WABA migration. Every other asset survived.
+**Nothing is broken.** The system is live and took real money. A demo ran on
+2026-09-02; three pieces of feedback came out of it and they are the work.
 
 | Thing | State |
 |---|---|
-| Meta app `1534245258196461` ("Rhodium") | **ALIVE** — was thought deleted, it is not. Its SYSTEM_USER token still works, valid to **2026-10-10** |
-| WABA `1057107730180826` ("Rhodium") | **ALIVE**, `account_review_status: APPROVED` |
-| Number `+234 803 680 3974` (`1198640330004714`) | **DISCONNECTED** ← the one broken thing. `quality_rating` still GREEN |
-| Template `buyer_receipt` | **APPROVED**, still on the WABA |
-| Live app | up, commit `50a7e93` |
-| Landing + `/privacy` + `/terms` | up on Cloudflare Pages |
-| Tests | **105 passing** |
+| Live app | up on Render, commit `aab4033` |
+| Tests | **149 passing** |
+| WhatsApp bot | **+234 911 046 1379** (`phone_number_id` in Render env) — live, answers buyers |
+| Bank rail | **Paystack, LIVE key**, dedicated virtual accounts. Two real ₦100 payments confirmed end to end |
+| Stablecoin rail | `evm_stable` built (USDC/USDT), contract not yet deployed to Arbitrum Sepolia |
+| Receipts | PNG + PDF with Rhodium and vendor logos, attached to both WhatsApp messages |
+| Dashboard login | fixed (phone normalisation) — `09032621846`, `+2349032621846`, `2349032621846` all resolve to one merchant |
 
-### The one fix — restores the bot in ~1 minute
-```bash
-T=$(grep '^WHATSAPP_ACCESS_TOKEN=' .env | cut -d= -f2)
-curl -X POST "https://graph.facebook.com/v26.0/1198640330004714/request_code" \
-  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
-  -d '{"code_method":"SMS","language":"en"}'
-# → SMS arrives on +234 803 680 3974
-curl -X POST "https://graph.facebook.com/v26.0/1198640330004714/verify_code" \
-  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
-  -d '{"code":"<6 DIGITS FROM SMS>"}'
-curl -X POST "https://graph.facebook.com/v26.0/1198640330004714/register" \
-  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
-  -d '{"messaging_product":"whatsapp","pin":"204815"}'
+### ⚠️ Check this first — Paystack webhook URL
+
+Both real payments confirmed only via the **manual `/api/checkout/:orderId/verify`
+poll**, never via a `charge.success` webhook. That strongly suggests the **Live
+Webhook URL is not saved** in the Paystack dashboard.
+
+Set it at Paystack → Settings → API Keys & Webhooks → **Live Webhook URL**:
+
 ```
-PIN **`204815`** — two-step verification was off before this; registering turns
-it on. Record it: losing it means a support ticket.
+https://app.userhodium.xyz/webhooks/rails/paystack
+```
 
-### The Meta mess, explained
-There are **two business portfolios with near-identical names**, which caused
-every symptom:
+Signature is HMAC-SHA512 over the raw body using the **secret key** — Paystack
+has no separate webhook secret. Until this is saved, every payment depends on
+the buyer's browser polling, which stops the moment they close the tab.
 
-| Portfolio | Name | Holds |
-|---|---|---|
-| `972224245869574` | `"Fonio Labs "` (**trailing space**) | the WABA, the number, the template |
-| `1847657433251972` | `"Fonio Labs"` | the new app `1782305146230634`, an empty WABA |
+---
 
-The browser login can reach the second but **not** the first; the system-user
-token can reach the first. That mismatch is why "migrate" and "disconnect"
-links kept 404ing, and why each attempt minted another empty WABA (there are
-now three: `1057107730180826` real, `2059584464807156` and `1523889746086292`
-empty).
+## 🔴 NEXT UP — demo feedback, 2026-09-02
 
-**Do not create more WABAs.** Either regain access to `972224245869574` (likely
-a different Facebook login — check `business.facebook.com` top-right), or use
-the number where it already lives. Meta Direct Support can restore portfolio
-access with proof of ownership.
+Three items, verbatim from the demo:
 
-### New Meta app (`1782305146230634`) — configured but not in use
-- config_id `2564764790611751`, ES **v4**, featureType
-  `whatsapp_business_app_onboarding` (Coexistence)
-- Meta-**hosted** signup URL goes in `WHATSAPP_SIGNUP_URL`; `connect` appends
-  only the signed state (never re-encode the `extras` blob)
-- Its redirect_uri is baked as the **onrender** origin, so
-  `WHATSAPP_OAUTH_REDIRECT_URI` must be pinned to match exactly, or the token
-  exchange fails
-- Embedded Signup only works for **app admins** until Tech Provider approval
+> "when a merchant is onboarding and enters a non-existing or invalid account
+> number, the system currently accepts it without verifying the account details."
+
+> "I bought a wireless mouse everything went through but then after the payment
+> I didn't get a receipt"
+
+> "someone suggested if it'll be possible for them to see a picture of what they
+> are ordering. Probably the vendor/merchant can add the picture when creating a
+> product to sell."
+
+### 1. Validate the bank account at onboarding — ~1 hour ⬅ the real work
+
+**Today:** [`whatsapp-service.ts`](src/modules/whatsapp/whatsapp-service.ts)
+case `onboard:account_number` checks only `/^\d{10}$/`. Any ten digits are
+accepted, and the merchant finds out their money has nowhere to go on their
+first sale.
+
+**Fix:** after the bank is picked (case `onboard:bank`, where both the account
+number and the bank code are known), call Paystack:
+
+```
+GET https://api.paystack.co/bank/resolve?account_number=<10 digits>&bank_code=<code>
+Authorization: Bearer <PAYSTACK_SECRET_KEY>
+```
+
+**This is already proven** — it was used to resolve `9032621846` to
+`EMMANUEL GONI DOJI`. It returns `{ status: true, data: { account_name } }`,
+or `status: false` with a message for a bad pair.
+
+Then confirm the name back rather than silently accepting it — a typo that
+resolves to a *different real person* is the dangerous case:
+
+```
+We found: *EMMANUEL GONI DOJI*
+Is that you? Reply *yes* to confirm, or *no* to re-enter.
+```
+
+Notes:
+- Resolution is what Paystack itself needs to create the DVA, so a merchant who
+  fails here would have failed later anyway — just after their first sale.
+- Add a new conversation state (`onboard:confirm_account`), don't overload one.
+- Paystack can be slow or down. Do **not** hard-block onboarding on a network
+  error: on a non-`false` failure, let them through and flag the merchant for
+  review. Blocking signup on someone else's uptime is worse than the bug.
+
+### 2. The missing receipt — **already fixed; verify, don't rebuild**
+
+Investigated on 2026-09-03. **The receipt code was never at fault.**
+
+Facts:
+- Every wireless-mouse order in production is `status = awaiting_payment` with a
+  `pending` payment — including `ord_c6a9b031-…afcff` (₦12,000, paystack,
+  2026-09-02 13:15:16).
+- Paystack's live account has **exactly two transactions ever, both ₦100**.
+  There is no ₦12,000 payment. **The money never arrived.**
+- That order's `provider_ref` is the *order id*, not a DVA account number —
+  it predates the webhook-matching fix, so it could not have confirmed even if
+  it had been paid.
+
+**What the buyer actually saw:** the old checkout page called `paid()` when its
+poll loop expired, so it displayed *"Payment confirmed · Receipt sent via
+WhatsApp"* to someone who had not paid. They reasonably expected a receipt.
+
+Both causes are fixed and deployed:
+- `pollPaid()` in [`checkout.html`](public/checkout.html) polls indefinitely and
+  never calls `paid()` on timeout.
+- The Paystack webhook now matches on `metadata.receiver_account_number` ??
+  `authorization.receiver_bank_account_number` (real payloads carry no
+  `order_id`), and `providerRef` is the DVA account number.
+
+**To close this out:** save the Live Webhook URL (top of this file), then run one
+real ₦100 purchase through and confirm a receipt image lands on WhatsApp. Do not
+rewrite receipt code — it works.
+
+### 3. Product images — ~half a day
+
+Most of it exists already:
+- `Product.imageUrl` is on the type ([`types.ts:54`](src/domain/types.ts#L54))
+- `CommerceService.createProduct` already accepts an image and stores it via
+  `ObjectStore` ([`commerce-service.ts:47-60`](src/modules/commerce/commerce-service.ts#L47-L60))
+
+Missing:
+- **The webhook drops non-text messages.** [`api.ts`](src/http/api.ts) only
+  handles `msg?.type === "text"`, so a photo a vendor sends is silently
+  discarded. Handle `type === "image"`, pull `image.id`, then
+  `GET /{media-id}` → follow the returned URL **with the bearer token attached**
+  (Meta's media URLs are not public) to fetch the bytes.
+- **Add a photo step** to the add-product flow: after the price, "Send a photo of
+  it, or type *skip*."
+- **Show it to buyers.** The catalogue is text today. `sendImage` already exists
+  on the transport ([`cloud-transport.ts:73`](src/modules/whatsapp/cloud-transport.ts#L73))
+  and takes a public URL — the same mechanism receipts use. Also render it on
+  [`checkout.html`](public/checkout.html), where a buyer is deciding whether to
+  actually pay.
+
+Trap: media ids expire and the bytes are Meta's, not ours. Download and put them
+in the `ObjectStore` at receive time; never store a Meta URL in `imageUrl`.
 
 ---
 
@@ -87,7 +160,7 @@ access with proof of ownership.
 | **App (Render origin)** | https://rhodium-8ocg.onrender.com — keep enabled; old checkout links point here |
 | **GitHub** | github.com/dev-doji/rhodium (branch `main`) |
 | **DB** | Render Postgres `rhodium-db` (external URL in Render dashboard) |
-| **WhatsApp bot number** | **+234 803 680 3974** "Fonio Labs" → `wa.me/2348036803974`, phone_number_id `1198640330004714` — **real** number, no allowlist |
+| **WhatsApp bot number** | **+234 911 046 1379** → `wa.me/2349110461379`. `WHATSAPP_PHONE_NUMBER_ID` is in the Render dashboard. The old +234 803 680 3974 (`1198640330004714`) is retired — links to it are dead |
 | **Meta app (in use)** | `1534245258196461` "Rhodium" — **NOT deleted**, still alive, owns the working WABA + system-user token |
 | **Meta app (new, spare)** | `1782305146230634`, config_id `2564764790611751` — created during the failed migration; usable but its portfolio has no assets |
 | **OAuth redirect** | Derives from `MERCHANT_BASE_URL`. Both `https://app.userhodium.xyz/oauth/whatsapp/callback` and the onrender equivalent are live (400 on GET = route healthy). Must match the Meta app's registered URI **character for character**, including whichever is baked into `WHATSAPP_SIGNUP_URL`. |
@@ -272,15 +345,20 @@ One thing to re-check when review clears: we build the signup URL as a plain
 `/dialog/oauth` link with `config_id` (shareable in chat) rather than the JS-SDK
 popup Meta's docs lead with.
 
-## NEXT UP — MVP, week of 2026-08-31
+## ✅ DONE — MVP week of 2026-08-31 (kept for context)
 
-Ordered by what blocks what. (1) is the only true blocker.
+Items 1 and 2 are complete. 3 and 4 are still open.
 
-### 1. Re-register the number — 1 minute
+### 1. ~~Re-register the number~~ — DONE
+Replaced with a new number, **+234 911 046 1379**. Old note below.
+
+<details><summary>original</summary>
 See "START HERE". Until this runs, the bot answers nobody and nothing else can
 be demoed.
 
-### 2. Switch the bank rail to Paystack — ~half a day
+</details>
+
+### 2. ~~Switch the bank rail to Paystack~~ — DONE, live key, real money through it
 A **live** Paystack key is now approved, so Paystack replaces Monnify sandbox as
 the bank rail. The architecture was built for this: `PaymentRail` is a 4-method
 interface (`createPaymentInstruction`, `handleWebhook`, `verifyPayment`,

@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { NotificationService } from "../src/modules/notification/notification-service.js";
-import { CaptureTransport, type SendOptions } from "../src/modules/notification/transport.js";
+import {
+  CaptureTransport,
+  type NotificationTransport,
+  type SendOptions,
+} from "../src/modules/notification/transport.js";
 import { createInMemoryRepositories } from "../src/db/memory/in-memory-repositories.js";
 import { InMemoryMetrics } from "../src/modules/metrics/metrics.js";
 
@@ -84,10 +88,18 @@ describe("receipt image delivery", () => {
 
   it("sends plain text on a channel that cannot do images at all", async () => {
     const { repos, merchant, order } = await fixture();
-    class TextOnly extends CaptureTransport {
-      sendImage = undefined as unknown as undefined; // e.g. SMS or email
+    // A channel with NO sendImage at all — the shape SMS and email really
+    // have. Built from the interface rather than by blanking the method out of
+    // CaptureTransport, which is not a legal override of it.
+    class TextOnly implements NotificationTransport {
+      readonly channel = "sms" as const;
+      readonly sent: { to: string; message: string }[] = [];
+      async send(to: string, message: string): Promise<{ ok: boolean }> {
+        this.sent.push({ to, message });
+        return { ok: true };
+      }
     }
-    const ch = new TextOnly("sms");
+    const ch = new TextOnly();
     const svc = new NotificationService(repos, [ch], new InMemoryMetrics(), URLS);
 
     await svc.sendReceiptToBuyer({
