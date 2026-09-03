@@ -37,3 +37,12 @@ jobs:
       - run: npm run prisma:migrate
       - run: npm run typecheck
       - run: npm test
+
+      # The dashboard is a separate workspace that the job above deliberately
+      # skips. It still needs typechecking: Vite does NOT typecheck, so a
+      # dashboard that references a missing import builds cleanly and throws in
+      # the browser — which is exactly how a broken download button shipped.
+      - name: Typecheck dashboard
+        run: |
+          npm --prefix dashboard ci || npm --prefix dashboard install
+          npm --prefix dashboard run typecheck
