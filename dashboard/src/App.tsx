@@ -9,6 +9,11 @@ import {
   Filter, Calendar, Rows, Grid, X, Download, Phone, ExternalLink, Receipt, Plus,
 } from "./icons.js";
 
+/** Same short reference the server prints on the receipt. */
+function ref(orderId: string): string {
+  return orderId.slice(-6).toUpperCase();
+}
+
 export function App() {
   const [authed, setAuthed] = useState<boolean>(!!getToken());
   return authed
@@ -370,11 +375,33 @@ function OrderDrawer({ order, biz, phone, onClose }: {
           <div className="kv"><div className="kv-k">Settlement</div>
             <div className="kv-v">Merchant-direct · no custody</div></div>
           <div className="kv"><div className="kv-k">Rails</div>
-            <div className="kv-v">Bank transfer · USDT · QUAI</div></div>
+            <div className="kv-v">Bank transfer · stablecoin</div></div>
         </div>
         <div className="drawer-foot">
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn" onClick={() => downloadFile("/api/ledger/statement.txt", "rhodium-statement.txt")}><Download /> Download</button>
+          <button className="btn ghost" onClick={onClose}>Close</button>
+          {/* This drawer is ONE order, so its download must be that order's
+              receipt. It used to fetch the whole ledger statement as .txt,
+              which is a different document about a different thing. */}
+          {order.status === "paid" ? (
+            <>
+              <button
+                className="btn ghost"
+                onClick={() => downloadFile(`/api/receipt/${order.id}/image.png`, `receipt-${ref(order.id)}.png`)}
+              >
+                <Download /> PNG
+              </button>
+              <button
+                className="btn"
+                onClick={() => downloadFile(`/api/receipt/${order.id}/document.pdf`, `receipt-${ref(order.id)}.pdf`)}
+              >
+                <Download /> PDF
+              </button>
+            </>
+          ) : (
+            <button className="btn" disabled title="A receipt exists once the order is paid">
+              <Download /> Receipt
+            </button>
+          )}
         </div>
       </aside>
     </>
