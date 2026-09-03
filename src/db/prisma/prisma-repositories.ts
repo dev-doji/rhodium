@@ -59,6 +59,7 @@ class PgMerchantRepo implements MerchantRepo {
         processorSubaccountCode: m.processorSubaccountCode ?? null,
         quaiAddress: m.quaiAddress ?? null,
         slug: m.slug ?? null,
+        logoUrl: m.logoUrl ?? null,
         waPhoneNumberId: m.waPhoneNumberId ?? null,
         waBusinessAccountId: m.waBusinessAccountId ?? null,
         waDisplayPhone: m.waDisplayPhone ?? null,
@@ -114,6 +115,8 @@ class PgMerchantRepo implements MerchantRepo {
     const clearable = (v: string | undefined) => (v === undefined ? undefined : v || null);
     const sub = clearable(patch.processorSubaccountCode);
     if (sub !== undefined) data.processorSubaccountCode = sub;
+    const logo = clearable(patch.logoUrl);
+    if (logo !== undefined) data.logoUrl = logo;
     const slug = clearable(patch.slug);
     if (slug !== undefined) data.slug = slug ? slug.toLowerCase() : null;
     const pnid = clearable(patch.waPhoneNumberId);
@@ -163,6 +166,7 @@ class PgMerchantRepo implements MerchantRepo {
       processorSubaccountCode: (r.processorSubaccountCode as string | null) ?? undefined,
       quaiAddress: (r.quaiAddress as string | null) ?? undefined,
       slug: (r.slug as string | null) ?? undefined,
+      logoUrl: (r.logoUrl as string | null) ?? undefined,
       waPhoneNumberId: (r.waPhoneNumberId as string | null) ?? undefined,
       waBusinessAccountId: (r.waBusinessAccountId as string | null) ?? undefined,
       waDisplayPhone: (r.waDisplayPhone as string | null) ?? undefined,

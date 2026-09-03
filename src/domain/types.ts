@@ -30,6 +30,8 @@ export interface Merchant {
   quaiAddress?: string;
   /** Human-readable buyer-link handle, e.g. "circuitcity" → `shop-circuitcity`. */
   slug?: string;
+  /** Vendor's logo for receipts. Absent => initials fallback. */
+  logoUrl?: string;
   /**
    * The vendor's OWN WhatsApp Cloud API number, connected through Embedded
    * Signup. Everything multi-tenant keys off `waPhoneNumberId` (a Meta id):

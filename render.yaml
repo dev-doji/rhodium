@@ -16,6 +16,9 @@ services:
       npm --prefix dashboard run build &&
       npm run build:prod
     startCommand: npx prisma migrate deploy && npm run start:prod
+    # NOTE: assets/fonts/ ships DejaVu with the repo. Receipt PNGs are rendered
+    # server-side by resvg, and this container has almost no system fonts — the
+    # naira sign in particular would render as a tofu box without them.
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

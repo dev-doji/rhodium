@@ -400,3 +400,62 @@ describe("shareable receipt", () => {
     expect(html).toContain("Receipt");
   });
 });
+
+describe("receipt as an image and a document", () => {
+  async function paidOrder(name: string, priceKobo: number) {
+    const merchant = await app.repos.merchants.byId("mch_http");
+    const product = await app.commerce.createProduct({
+      merchantId: merchant!.id, name, price: priceKobo,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: merchant!.id, buyerRef: "+2349032621846",
+      lines: [{ productId: product.id, qty: 1 }],
+    });
+    const instruction = await app.payments.requestPayment(order.id);
+    const fiat = app.rails.fiat() as MonnifyFiatRail;
+    const signed = fiat.mock!.simulateTransfer(instruction.providerRef);
+    await fetch(`${base}/webhooks/rails/monnify`, {
+      method: "POST",
+      headers: { "monnify-signature": signed.signature, "content-type": "application/json" },
+      body: signed.rawBody,
+    });
+    return order;
+  }
+
+  it("renders a real PNG with the right filename", async () => {
+    const order = await paidOrder("Desk Lamp", 320_000);
+    const res = await fetch(`${base}/api/receipt/${order.id}/image.png`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-disposition")).toContain(
+      `receipt-${order.id.slice(-6).toUpperCase()}.png`,
+    );
+    const bytes = Buffer.from(await res.arrayBuffer());
+    // PNG magic number — proves a real image came back, not an error page.
+    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(bytes.length).toBeGreaterThan(2000);
+  });
+
+  it("renders a real PDF", async () => {
+    const order = await paidOrder("Wall Clock", 450_000);
+    const res = await fetch(`${base}/api/receipt/${order.id}/document.pdf`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it("refuses both formats until the order is paid", async () => {
+    const merchant = await app.repos.merchants.byId("mch_http");
+    const product = await app.commerce.createProduct({
+      merchantId: merchant!.id, name: "Unpaid Thing", price: 100_00,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: merchant!.id, buyerRef: "+2349032621846",
+      lines: [{ productId: product.id, qty: 1 }],
+    });
+    // Same rule as the JSON: a receipt is never a way to watch an open order.
+    expect((await fetch(`${base}/api/receipt/${order.id}/image.png`)).status).toBe(404);
+    expect((await fetch(`${base}/api/receipt/${order.id}/document.pdf`)).status).toBe(404);
+  });
+});

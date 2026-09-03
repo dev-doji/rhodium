@@ -273,6 +273,80 @@ export function buildApi(app: App): Express {
    * is masked — a receipt is forwarded to family, group chats and accountants,
    * and neither party should leak the other's number by sharing it.
    */
+  /**
+   * One builder behind the JSON, the PNG and the PDF. Three renderers reading
+   * three different shapes is how a receipt ends up saying one thing on screen
+   * and another in the file someone keeps.
+   */
+  const buildReceipt = async (orderId: string) => {
+    const order = await app.repos.orders.byId(orderId);
+    if (!order) throw new NotFoundError("order", { id: orderId });
+    if (order.status !== "paid") return null;
+
+    const merchant = await app.repos.merchants.byId(order.merchantId);
+    const payment = await app.repos.payments.byOrderId(order.id);
+
+    let buyer = order.buyerRef || "";
+    if (buyer.startsWith("buy_")) {
+      buyer = (await app.repos.buyers.byId(buyer).catch(() => null))?.phoneOrRef ?? "";
+    }
+    const items = [];
+    for (const line of order.items) {
+      const product = await app.repos.products.byId(line.productId).catch(() => null);
+      const unit = product?.price ?? line.unitPrice ?? 0;
+      items.push({
+        name: product?.name ?? "Item",
+        qty: line.qty,
+        unitPrice: unit,
+        unitPriceFormatted: formatNaira(unit),
+      });
+    }
+    return {
+      orderRef: order.id.slice(-6).toUpperCase(),
+      orderId: order.id,
+      merchantName: merchant?.businessName ?? "Merchant",
+      merchantLogoUrl: merchant?.logoUrl,
+      amount: order.amount,
+      amountFormatted: formatNaira(order.amount),
+      items,
+      buyerMasked: maskPhone(buyer),
+      method: payment?.railId === "quai" || payment?.railId === "evm_stable" ? "Crypto" : "Bank transfer",
+      paidAt: payment?.confirmedAt ?? null,
+    };
+  };
+
+  server.get(
+    "/api/receipt/:orderId/image.png",
+    asyncRoute(async (req, res) => {
+      const data = await buildReceipt(req.params.orderId!);
+      if (!data) {
+        res.status(404).json({ error: "receipt not available until the order is paid" });
+        return;
+      }
+      const { receiptPng } = await import("../modules/receipt/receipt-image.js");
+      res.set("Content-Type", "image/png");
+      res.set("Content-Disposition", `inline; filename="receipt-${data.orderRef}.png"`);
+      res.set("Cache-Control", "public, max-age=31536000, immutable");
+      res.send(receiptPng(data));
+    }),
+  );
+
+  server.get(
+    "/api/receipt/:orderId/document.pdf",
+    asyncRoute(async (req, res) => {
+      const data = await buildReceipt(req.params.orderId!);
+      if (!data) {
+        res.status(404).json({ error: "receipt not available until the order is paid" });
+        return;
+      }
+      const { receiptPdf } = await import("../modules/receipt/receipt-image.js");
+      res.set("Content-Type", "application/pdf");
+      res.set("Content-Disposition", `attachment; filename="receipt-${data.orderRef}.pdf"`);
+      res.set("Cache-Control", "public, max-age=31536000, immutable");
+      res.send(await receiptPdf(data));
+    }),
+  );
+
   server.get(
     "/api/receipt/:orderId",
     asyncRoute(async (req, res) => {

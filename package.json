@@ -49,8 +49,10 @@
   "dependencies": {
     "@noble/hashes": "^2.4.0",
     "@prisma/client": "^5.22.0",
+    "@resvg/resvg-js": "^2.6.2",
     "express": "^4.21.2",
     "js-sha3": "^0.9.3",
+    "pdf-lib": "^1.17.1",
     "pino": "^9.5.0",
     "quais": "^1.0.0-alpha.56",
     "zod": "^3.24.1"

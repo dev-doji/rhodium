@@ -23,6 +23,9 @@ model Merchant {
   // Human-readable handle for buyer links: `shop-circuitcity` instead of
   // `shop-mch_e562196b4b76ad5b`. Nullable so pre-existing merchants stay valid.
   slug                    String?  @unique @map("slug")
+  // Vendor's own mark, shown on receipts. Absent => initials on a tinted disc,
+  // which every merchant has for free and looks deliberate rather than broken.
+  logoUrl                 String?  @map("logo_url")
   walletMnemonicEnc       String?  @map("wallet_mnemonic_enc") // encrypted embedded-wallet secrets
   walletPrivateKeyEnc     String?  @map("wallet_private_key_enc")
   // Multi-tenant WhatsApp: the vendor's OWN Cloud API number, connected via
