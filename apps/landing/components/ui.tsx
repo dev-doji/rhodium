@@ -28,7 +28,7 @@ export function Wordmark({ dark = false }: { dark?: boolean }) {
   return (
     <Link
       href="#top"
-      className="flex items-center gap-2.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-500 rounded-lg"
+      className="flex items-center gap-2.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-500 rounded-none"
     >
       <Logo className={dark ? "h-7 w-7 text-white" : "h-7 w-7 text-brand-500"} />
       <span
@@ -57,14 +57,14 @@ type ButtonProps = ComponentProps<typeof Link> & {
 };
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 active:scale-[0.98]";
+  "inline-flex items-center justify-center gap-2 rounded-none px-5 py-3 text-sm font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 active:scale-[0.98]";
 
 const variants = {
-  primary: "bg-brand-500 text-white hover:bg-brand-600 shadow-lg shadow-brand-500/25",
-  light: "bg-white text-brand-950 hover:bg-brand-50 ring-1 ring-brand-100",
+  primary: "bg-brand-500 text-white border border-brand-600 hover:bg-brand-600 hover:border-brand-700",
+  light: "bg-white text-brand-950 hover:bg-brand-50 border border-brand-100",
   ghost:
-    "bg-transparent text-white ring-1 ring-white/25 hover:bg-white/10 hover:ring-white/40",
-  accent: "bg-accent-500 text-white hover:bg-accent-600 shadow-lg shadow-accent-500/25",
+    "bg-transparent text-white border border-white/25 hover:bg-white/10 hover:border-white/40",
+  accent: "bg-accent-500 text-white border border-accent-600 hover:bg-accent-600",
 } as const;
 
 export function Button({
@@ -129,7 +129,7 @@ export function PhotoSlot({
   className = "",
   sizes = "(max-width: 1024px) 100vw, 50vw",
   priority = false,
-  rounded = "rounded-4xl",
+  rounded = "rounded-none",
 }: {
   src?: string;
   alt: string;
@@ -139,7 +139,9 @@ export function PhotoSlot({
   rounded?: string;
 }) {
   return (
-    <div className={`relative overflow-hidden ${rounded} ${className}`}>
+    <div
+      className={`relative overflow-hidden border border-brand-950/15 ${rounded} ${className}`}
+    >
       {src ? (
         <Image
           src={src}
@@ -177,7 +179,7 @@ export function FloatCard({
 }) {
   return (
     <div
-      className={`rounded-2xl bg-white/95 p-4 shadow-xl shadow-brand-950/15 ring-1 ring-brand-950/5 backdrop-blur-sm ${className}`}
+      className={`rounded-none border border-brand-950 bg-white p-4 backdrop-blur-sm ${className}`}
     >
       <p className="text-[11px] font-medium text-brand-950/65">{title}</p>
       <p className="mt-0.5 text-xl font-bold tracking-tight text-brand-950 tabular-nums">

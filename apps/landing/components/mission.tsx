@@ -39,7 +39,7 @@ export function Mission() {
                 key={point}
                 className="flex items-center gap-3 border-b border-brand-950/8 py-3 text-[15px] text-brand-950/80 last:border-b-0"
               >
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-500">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-none bg-brand-500">
                   <Check className="h-3 w-3 text-white" strokeWidth={3} />
                 </span>
                 {point}

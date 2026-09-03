@@ -24,16 +24,16 @@ export function Pricing() {
           {plans.map((plan) => (
             <article
               key={plan.name}
-              className={`flex flex-col rounded-4xl p-7 ring-1 ${
+              className={`flex flex-col rounded-none border p-7 ${
                 plan.featured
-                  ? "bg-panel ring-brand-400/40"
-                  : "bg-white/[0.04] ring-white/10"
+                  ? "bg-panel border-brand-400/40"
+                  : "bg-white/[0.04] border-white/10"
               }`}
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">{plan.name}</h3>
                 {plan.featured && (
-                  <span className="rounded-full bg-accent-500 px-2.5 py-1 text-[11px] font-semibold text-white">
+                  <span className="rounded-none bg-accent-500 px-2.5 py-1 text-[11px] font-semibold text-white">
                     Most popular
                   </span>
                 )}
@@ -80,7 +80,7 @@ export function Pricing() {
         </div>
 
         {/* Wide third card, as in the reference design */}
-        <div className="mt-4 rounded-4xl bg-brand-900 p-7 text-center ring-1 ring-brand-400/30 sm:p-9">
+        <div className="mt-4 rounded-none bg-brand-900 p-7 text-center border border-brand-400/30 sm:p-9">
           <h3 className="text-lg font-semibold text-white">
             {enterprisePlan.name}
           </h3>

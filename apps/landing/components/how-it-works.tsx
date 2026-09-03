@@ -10,7 +10,7 @@ export function HowItWorks() {
     <section id="how" className="bg-white px-5 py-16 sm:px-8 sm:py-24">
       <div className="mx-auto max-w-7xl">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-          <div className="relative order-2 overflow-hidden rounded-4xl lg:order-1">
+          <div className="relative order-2 overflow-hidden rounded-none lg:order-1">
             <Image
               src="/img/woman_one.jpg"
               alt="A shopkeeper handing a wrapped order to a customer"
@@ -21,9 +21,9 @@ export function HowItWorks() {
             />
 
             {/* The confirmation the merchant actually sees, floated over the photo */}
-            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-white/95 p-4 shadow-xl shadow-brand-950/15 backdrop-blur sm:right-auto sm:max-w-xs">
+            <div className="absolute bottom-4 left-4 right-4 rounded-none border border-brand-950 bg-white p-4 backdrop-blur sm:right-auto sm:max-w-xs">
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-brand-500" />
+                <span className="h-2 w-2 rounded-none bg-brand-500" />
                 <p className="text-xs font-semibold text-brand-950">
                   Payment confirmed
                 </p>
@@ -50,7 +50,7 @@ export function HowItWorks() {
                 const Icon = stepIcons[i] ?? MessageSquare;
                 return (
                   <li key={step.step} className="flex gap-4">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-50 ring-1 ring-brand-100">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-none bg-brand-50 border border-brand-100">
                       <Icon className="h-5 w-5 text-brand-500" />
                     </span>
                     <div>

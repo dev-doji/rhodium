@@ -28,7 +28,7 @@ export function Integrations() {
           {integrations.map((item) => (
             <li
               key={item.name}
-              className="flex items-center gap-3 rounded-2xl bg-white/70 p-4 text-left ring-1 ring-brand-950/6 transition-colors duration-200 hover:bg-white"
+              className="flex items-center gap-3 rounded-none bg-white/70 p-4 text-left border border-brand-950/6 transition-colors duration-200 hover:bg-white"
             >
               {marks[item.mark]}
               <span className="min-w-0">

@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 
 function BrandImage({ src, alt }: { src: string; alt: string }) {
   return (
-    <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-brand-100/70">
+    <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-none bg-white border border-brand-100/70">
       <Image
         src={src}
         alt={alt}
@@ -28,7 +28,7 @@ function BrandImage({ src, alt }: { src: string; alt: string }) {
 export function WhatsAppMark() {
   return (
     <span
-      className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#25D366]"
+      className="flex h-11 w-11 items-center justify-center rounded-none bg-[#25D366]"
       aria-hidden
     >
       <svg viewBox="0 0 24 24" fill="#fff" className="h-6 w-6">

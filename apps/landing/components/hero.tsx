@@ -55,7 +55,7 @@ export function Hero() {
             className="aspect-[16/11] w-full sm:aspect-[16/9]"
             sizes="(max-width: 1024px) 100vw, 1024px"
             priority
-            rounded="rounded-4xl"
+            rounded="rounded-none"
           />
 
           <FloatCard

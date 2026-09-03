@@ -6,7 +6,8 @@
      #0033e7 (blue, primary)   #ff3131 (red, accent)
    --------------------------------------------------------------------------- */
 @theme {
-  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), var(--font-inter), ui-sans-serif, sans-serif;
 
   --color-brand-50: #eef2fe;
   --color-brand-100: #d9e2fd;
@@ -38,8 +39,11 @@
   --color-cream-deep: #f4ecdd; /* cards inside the cream band */
   --color-tint: #eceafc; /* soft lilac band (rails / trust) */
 
-  --radius-4xl: 2rem;
-  --radius-5xl: 2.5rem;
+  /* Flat geometry: every corner is square. Kept as tokens rather than
+     scattered `rounded-none` so the decision lives in one place and can be
+     reversed in one place. */
+  --radius-4xl: 0;
+  --radius-5xl: 0;
 }
 
 html {
@@ -51,8 +55,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Every heading is Outfit; body copy stays Inter. Setting it on the elements
+   rather than per-component means a new section cannot forget to opt in. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
+
 /* Headings in the reference design are tightly tracked and optically balanced. */
 @utility display {
+  font-family: var(--font-display);
   letter-spacing: -0.035em;
   line-height: 1.06;
   text-wrap: balance;

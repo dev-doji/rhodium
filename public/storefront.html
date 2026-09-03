@@ -7,7 +7,7 @@
   <meta name="description" content="Browse and buy. Pay by bank transfer, confirmed in seconds." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
     /* ------------------------------------------------------------------
        A vendor's public shop.
@@ -17,9 +17,10 @@
        pick items and pay — so nothing on this page competes with the
        product grid and the pay button.
 
-       Plus Jakarta Sans matches the Rhodium landing page, so a buyer
-       arriving from an ad and a buyer arriving from a wa.me link see one
-       brand rather than two.
+       Outfit for headings and Inter for body, matching the Rhodium landing
+       page, so a buyer arriving from an ad and a buyer arriving from a wa.me
+       link see one brand rather than two. Every surface is flat: square
+       corners, solid borders, no shadows.
        ------------------------------------------------------------------ */
     :root {
       color-scheme: light dark;
@@ -34,9 +35,12 @@
       --good-bg:#eaf7ef; --good-ink:#0f5132;
       --bad-bg:#fdeceb;  --bad-ink:#8a2019;
 
-      --radius:18px;     --radius-sm:12px;     --radius-pill:999px;
-      --shadow:0 1px 2px rgba(5,6,26,.04), 0 14px 34px -14px rgba(5,6,26,.16);
-      --shadow-lg:0 2px 6px rgba(5,6,26,.06), 0 28px 60px -20px rgba(5,6,26,.28);
+      /* Flat: square corners everywhere, so the radii are zero rather than
+         each rule being rewritten. */
+      --radius:0px;      --radius-sm:0px;      --radius-pill:0px;
+      /* Flat design: separation comes from borders, never from elevation. */
+      --shadow:none;
+      --shadow-lg:none;
       --tap:44px;
       /* Gutters widen with the viewport rather than jumping at breakpoints. */
       --gutter:clamp(1rem, 4vw, 3.5rem);
@@ -50,8 +54,8 @@
         --brand-50:#131938;
         --good-bg:#122a1c; --good-ink:#7ee6a6;
         --bad-bg:#2a1616;  --bad-ink:#f0a3a3;
-        --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 40px -16px rgba(0,0,0,.7);
-        --shadow-lg:0 2px 8px rgba(0,0,0,.6), 0 30px 70px -20px rgba(0,0,0,.8);
+        --shadow:none;
+        --shadow-lg:none;
       }
     }
 
@@ -59,10 +63,11 @@
     html { -webkit-text-size-adjust:100%; }
     body {
       margin:0; background:var(--bg); color:var(--ink);
-      font-family:"Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-family:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
       font-size:16px; line-height:1.55;
       -webkit-font-smoothing:antialiased;
     }
+    h1,h2,h3 { font-family:"Outfit", "Inter", system-ui, sans-serif; }
     img { max-width:100%; display:block; }
     button { font:inherit; color:inherit; }
 
@@ -71,7 +76,7 @@
     :where(a,button,input,select,[tabindex]):focus-visible {
       outline:3px solid var(--brand);
       outline-offset:2px;
-      border-radius:6px;
+      border-radius:0;
     }
 
     .wrap { max-width:var(--maxw); margin-inline:auto; padding-inline:var(--gutter); }
@@ -93,7 +98,7 @@
     }
     .shopmark { display:flex; align-items:center; gap:10px; min-width:0; }
     .shopmark img, .shopmark .initials {
-      width:38px; height:38px; border-radius:11px; flex:none;
+      width:38px; height:38px; border-radius:0; flex:none;
       object-fit:cover; background:var(--brand); color:var(--on-brand);
       display:grid; place-items:center; font-weight:700; font-size:15px;
     }
@@ -111,7 +116,7 @@
       transition:background-color .18s ease, border-color .18s ease, transform .18s ease;
     }
     .btn:active { transform:scale(.97); }
-    .btn-primary { background:var(--brand); color:var(--on-brand); }
+    .btn-primary { background:var(--brand); color:var(--on-brand); border-color:var(--brand-600); }
     .btn-primary:hover { background:var(--brand-600); }
     .btn-ghost { background:transparent; border-color:var(--line); color:var(--ink); }
     .btn-ghost:hover { background:var(--surface-2); }
@@ -141,7 +146,7 @@
       max-width:52ch;
     }
     .hero-cta { margin-top:26px; display:flex; flex-wrap:wrap; gap:10px; }
-    .btn-onpanel { background:#fff; color:var(--panel); }
+    .btn-onpanel { background:#fff; color:var(--panel); border-color:#fff; }
     .btn-onpanel:hover { background:#e8ecfa; }
     .btn-outline-panel { background:transparent; border-color:rgba(255,255,255,.32); color:#fff; }
     .btn-outline-panel:hover { background:rgba(255,255,255,.1); }
@@ -165,11 +170,13 @@
       background:var(--surface); border:1px solid var(--line);
       border-radius:var(--radius); overflow:hidden;
       display:flex; flex-direction:column;
-      transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      transition:border-color .18s ease, background-color .18s ease;
     }
-    .card:hover { border-color:var(--brand); box-shadow:var(--shadow); transform:translateY(-2px); }
+    /* Flat: hover darkens the edge rather than lifting the card off the page. */
+    .card:hover { border-color:var(--brand); }
     .thumb {
       aspect-ratio:1/1; width:100%; object-fit:cover; background:var(--surface-2);
+      border-bottom:1px solid var(--line);
     }
     .thumb-ph {
       aspect-ratio:1/1; display:grid; place-items:center;
@@ -212,11 +219,11 @@
     .sheet {
       position:fixed; z-index:60; background:var(--surface);
       display:flex; flex-direction:column;
-      box-shadow:var(--shadow-lg);
+      border:1px solid var(--ink);
       transition:transform .26s cubic-bezier(.32,.72,0,1);
       /* Phone: a bottom sheet, thumb-reachable. */
       left:0; right:0; bottom:0; max-height:88dvh;
-      border-radius:22px 22px 0 0;
+      border-radius:0;
       transform:translateY(101%);
       padding-bottom:env(safe-area-inset-bottom);
     }
@@ -225,7 +232,7 @@
     @media (min-width:768px) {
       .sheet {
         left:auto; top:0; bottom:0; width:min(420px, 92vw); max-height:none;
-        border-radius:22px 0 0 22px; transform:translateX(101%);
+        border-radius:0; transform:translateX(101%);
       }
     }
     .sheet-head {
@@ -246,7 +253,7 @@
     .row { display:flex; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
     .row:last-child { border-bottom:0; }
     .row img, .row .ph {
-      width:56px; height:56px; border-radius:10px; flex:none;
+      width:56px; height:56px; border-radius:0; flex:none;
       object-fit:cover; background:var(--surface-2);
     }
     .row .nm { font-weight:600; font-size:14px; }

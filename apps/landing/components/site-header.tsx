@@ -38,7 +38,7 @@ export function SiteHeader() {
               <Link
                 key={item.label}
                 href={item.href}
-                className="rounded-full px-3.5 py-2 text-sm font-medium text-brand-950/70 transition-colors hover:bg-brand-50 hover:text-brand-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
+                className="rounded-none px-3.5 py-2 text-sm font-medium text-brand-950/70 transition-colors hover:bg-brand-50 hover:text-brand-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
               >
                 {item.label}
               </Link>
@@ -63,7 +63,7 @@ export function SiteHeader() {
               aria-label={open ? "Close menu" : "Open menu"}
               /* 44px minimum, so the control is reliably tappable rather than
                  merely visible. */
-              className="grid h-11 w-11 place-items-center rounded-xl text-brand-950 ring-1 ring-brand-950/10 transition-colors hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 lg:hidden"
+              className="grid h-11 w-11 place-items-center rounded-none text-brand-950 border border-brand-950/10 transition-colors hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 lg:hidden"
             >
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -81,7 +81,7 @@ export function SiteHeader() {
                   key={item.label}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="rounded-xl px-3 py-3 text-[15px] font-medium text-brand-950/80 transition-colors hover:bg-brand-50"
+                  className="rounded-none px-3 py-3 text-[15px] font-medium text-brand-950/80 transition-colors hover:bg-brand-50"
                 >
                   {item.label}
                 </Link>

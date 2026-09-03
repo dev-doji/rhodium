@@ -45,7 +45,7 @@ export function Features() {
             const Icon = icons[feature.icon] ?? MessageCircle;
             return (
               <div key={feature.title}>
-                <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-white text-brand-500 ring-1 ring-brand-950/8">
+                <span className="mb-4 grid h-11 w-11 place-items-center rounded-none bg-white text-brand-500 border border-brand-950/8">
                   <Icon className="h-5 w-5" strokeWidth={1.9} />
                 </span>
                 <h3 className="text-[15px] font-bold tracking-tight">

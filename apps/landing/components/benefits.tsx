@@ -39,13 +39,13 @@ export function Benefits() {
               return (
                 <article
                   key={benefit.title}
-                  className={`rounded-3xl bg-panel-soft/70 p-6 ring-1 ring-white/10 transition-colors duration-200 hover:bg-panel-soft ${
+                  className={`rounded-none bg-panel-soft/70 p-6 border border-white/10 transition-colors duration-200 hover:bg-panel-soft ${
                     // The first card spans both columns, so the bento reads as
                     // a composition rather than a plain three-up grid.
                     i === 0 ? "sm:col-span-2" : ""
                   }`}
                 >
-                  <span className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-white/10 text-brand-200">
+                  <span className="mb-4 grid h-10 w-10 place-items-center rounded-none bg-white/10 text-brand-200">
                     <Icon className="h-5 w-5" strokeWidth={1.9} />
                   </span>
                   <h3 className="text-base font-bold tracking-tight">
