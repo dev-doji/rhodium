@@ -1,102 +1,81 @@
-import { CircleCheck } from "lucide-react";
-import { benefits } from "@/lib/site";
+import { Coins, RefreshCcw, ShieldCheck, type LucideIcon } from "lucide-react";
+import { benefits, proofStats } from "@/lib/site";
 import { SectionLabel } from "./ui";
 
+const icons: LucideIcon[] = [ShieldCheck, RefreshCcw, Coins];
+
+/**
+ * The dark band: heading on the left, a bento of guarantees on the right, and
+ * three figures beneath.
+ *
+ * The figures are product facts — confirmation time, rail count, and the
+ * amount we ever hold — rather than traction numbers, because we have not
+ * launched. Inventing "12K+ sellers" here would be the single most damaging
+ * sentence on the page the first time a real one asked about it.
+ */
 export function Benefits() {
   return (
-    <section id="benefits" className="bg-brand-50/60 px-5 py-16 sm:px-8 sm:py-24">
-      <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-2 lg:gap-16">
-        <TractionMock />
+    <section
+      id="benefits"
+      className="bg-panel px-5 py-16 text-white sm:px-8 sm:py-24"
+    >
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">
+          <div>
+            <SectionLabel tone="dark">Why choose Rhodium</SectionLabel>
+            <h2 className="display mt-4 text-[1.85rem] font-extrabold sm:text-4xl lg:text-[2.75rem]">
+              The money moves
+              <br className="hidden sm:block" /> before you trust anyone.
+            </h2>
+            <p className="measure mt-5 max-w-md text-brand-100/60">
+              Three guarantees that hold whether you take one order a week or a
+              hundred a day.
+            </p>
+          </div>
 
-        <div>
-          <SectionLabel>Why it holds up</SectionLabel>
-          <h2 className="display mt-5 text-3xl font-bold sm:text-4xl">
-            Books you can hand to your accountant without apologising
-          </h2>
-          <p className="measure mt-4 text-sm text-brand-950/60 sm:text-base">
-            The guarantees below are enforced in code and covered by tests — not
-            promises in a help article.
-          </p>
-
-          <ul className="mt-8 space-y-6">
-            {benefits.map((benefit) => (
-              <li key={benefit.title} className="flex gap-3.5">
-                <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-500" />
-                <div>
-                  <h3 className="text-base font-semibold">{benefit.title}</h3>
-                  <p className="measure mt-1.5 text-sm leading-relaxed text-brand-950/60">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {benefits.map((benefit, i) => {
+              const Icon = icons[i] ?? ShieldCheck;
+              return (
+                <article
+                  key={benefit.title}
+                  className={`rounded-3xl bg-panel-soft/70 p-6 ring-1 ring-white/10 transition-colors duration-200 hover:bg-panel-soft ${
+                    // The first card spans both columns, so the bento reads as
+                    // a composition rather than a plain three-up grid.
+                    i === 0 ? "sm:col-span-2" : ""
+                  }`}
+                >
+                  <span className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-white/10 text-brand-200">
+                    <Icon className="h-5 w-5" strokeWidth={1.9} />
+                  </span>
+                  <h3 className="text-base font-bold tracking-tight">
+                    {benefit.title}
+                  </h3>
+                  <p className="measure mt-2 text-sm leading-relaxed text-brand-100/60">
                     {benefit.body}
                   </p>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </article>
+              );
+            })}
+          </div>
         </div>
+
+        <dl className="mt-14 grid grid-cols-1 gap-8 border-t border-white/10 pt-10 sm:grid-cols-3 sm:gap-4">
+          {proofStats.map((stat) => (
+            <div key={stat.label} className="text-center">
+              <dt className="sr-only">{stat.label}</dt>
+              <dd>
+                <p className="display text-5xl font-extrabold tabular-nums sm:text-6xl lg:text-7xl">
+                  {stat.value}
+                </p>
+                <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-100/70">
+                  {stat.label}
+                </p>
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </section>
-  );
-}
-
-/** A stylised traction dashboard — illustrative UI, not live data. */
-function TractionMock() {
-  const rails = [
-    { label: "Bank transfer", value: 72 },
-    { label: "Crypto (Quai)", value: 21 },
-    { label: "Pending", value: 7 },
-  ];
-  const bars = [42, 68, 55, 88, 74, 96];
-
-  return (
-    <div className="relative">
-      {/* Extra bottom padding so the floating card below overlaps padding
-          rather than covering the chart on narrow screens. */}
-      <div className="rounded-4xl bg-white p-6 pb-16 shadow-2xl shadow-brand-950/10 ring-1 ring-brand-100 sm:p-8 sm:pb-8">
-        <p className="text-xs font-medium text-brand-950/50">Gross merchandise value</p>
-        <p className="mt-1 text-3xl font-bold tracking-tight">₦4,182,600</p>
-
-        <ul className="mt-6 space-y-3.5">
-          {rails.map((rail) => (
-            <li key={rail.label}>
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-brand-950/70">{rail.label}</span>
-                <span className="font-semibold text-brand-950/50">
-                  {rail.value}%
-                </span>
-              </div>
-              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-brand-50">
-                <div
-                  className="h-full rounded-full bg-brand-500"
-                  style={{ width: `${rail.value}%` }}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        <div
-          aria-hidden
-          className="mt-7 flex h-24 items-end gap-2 border-t border-brand-100 pt-6"
-        >
-          {bars.map((height, i) => (
-            <div
-              key={i}
-              className={`flex-1 rounded-t-md ${
-                i === bars.length - 1 ? "bg-accent-500" : "bg-brand-900"
-              }`}
-              style={{ height: `${height}%` }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Floating card, echoing the reference layout */}
-      <div className="absolute bottom-4 right-4 w-44 rounded-2xl bg-white p-4 shadow-2xl shadow-brand-950/15 ring-1 ring-brand-100 sm:-bottom-6 sm:-left-6 sm:right-auto sm:w-52">
-        <p className="text-[11px] font-medium text-brand-950/50">Unique buyers</p>
-        <p className="mt-0.5 text-xl font-bold tracking-tight">1,204</p>
-        <p className="mt-1 text-[11px] font-semibold text-brand-500">
-          +128 this month
-        </p>
-      </div>
-    </div>
   );
 }

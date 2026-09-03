@@ -30,12 +30,12 @@ export function LegalPage({
       <h1 className="mt-6 text-3xl font-bold tracking-tight text-brand-950">
         {title}
       </h1>
-      <p className="mt-2 text-sm text-brand-950/50">Last updated: {updated}</p>
+      <p className="mt-2 text-sm text-brand-950/65">Last updated: {updated}</p>
       <div className="legal mt-10 space-y-6 text-[15px] leading-relaxed text-brand-950/80">
         {children}
       </div>
       <hr className="my-12 border-brand-950/10" />
-      <p className="text-sm text-brand-950/50">
+      <p className="text-sm text-brand-950/65">
         <Link href="/privacy" className="text-brand-500 hover:text-brand-600">
           Privacy Policy
         </Link>

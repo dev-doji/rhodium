@@ -26,12 +26,20 @@
   --color-accent-500: #ff3131;
   --color-accent-600: #e01a1a;
 
-  /* Section canvases */
+  /* Section canvases.
+     The page reads as a stack of full-bleed bands in a fixed rhythm —
+     white -> cream -> dark -> cream -> tint -> photo -> dark. The alternation
+     is what gives a long marketing page its sense of chapters, so these are
+     tokens rather than one-off classes. */
   --color-ink: #05061a; /* near-black band (pricing) */
   --color-panel: #04123f; /* deep blue band (features, CTA, footer) */
   --color-panel-soft: #0a2160; /* cards inside the deep blue band */
+  --color-cream: #fbf7ef; /* warm band, breaks up the blues */
+  --color-cream-deep: #f4ecdd; /* cards inside the cream band */
+  --color-tint: #eceafc; /* soft lilac band (rails / trust) */
 
   --radius-4xl: 2rem;
+  --radius-5xl: 2.5rem;
 }
 
 html {

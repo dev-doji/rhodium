@@ -1,58 +1,59 @@
 import { integrations, site } from "@/lib/site";
 import { marks } from "./logos";
-import { Button, SectionLabel, WhatsAppIcon } from "./ui";
+import { SectionLabel } from "./ui";
 
+/**
+ * The lilac band: what Rhodium is built on.
+ *
+ * Centred, because unlike the mission and story bands this is a list of peers
+ * with no narrative order — nothing here is more important than the rest, so
+ * nothing gets the left-hand starting position.
+ */
 export function Integrations() {
   return (
-    <section
-      id="integrations"
-      className="bg-white px-5 py-16 sm:px-8 sm:py-24"
-    >
-      <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-2 lg:gap-16">
-        <div>
-          <SectionLabel>Built on</SectionLabel>
-          <h2 className="display mt-5 text-3xl font-bold sm:text-4xl">
-            Rails your buyers already trust
-          </h2>
-          <p className="measure mt-4 text-sm text-brand-950/60 sm:text-base">
-            Rhodium sits on the WhatsApp Cloud API your customers use every day,
-            a licensed Nigerian bank rail for transfers, and Quai Network with
-            BlipPay for buyers who hold crypto. Every rail settles to you.
-          </p>
+    <section id="integrations" className="bg-tint px-5 py-16 sm:px-8 sm:py-24">
+      <div className="mx-auto max-w-5xl text-center">
+        <SectionLabel align="center">Built on</SectionLabel>
 
-          <Button
-            href={site.whatsappUrl}
+        <h2 className="display mt-4 text-[1.85rem] font-extrabold sm:text-4xl lg:text-[2.75rem]">
+          Rails your buyers
+          <br className="hidden sm:block" /> already trust
+        </h2>
+        <p className="measure mx-auto mt-4 max-w-lg text-brand-950/60">
+          Rhodium does not ask anyone to learn a new way to pay. It sits on the
+          networks and wallets Nigerian buyers and sellers use today.
+        </p>
+
+        <ul className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3">
+          {integrations.map((item) => (
+            <li
+              key={item.name}
+              className="flex items-center gap-3 rounded-2xl bg-white/70 p-4 text-left ring-1 ring-brand-950/6 transition-colors duration-200 hover:bg-white"
+            >
+              {marks[item.mark]}
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-bold tracking-tight">
+                  {item.name}
+                </span>
+                <span className="block truncate text-xs text-brand-950/65">
+                  {item.note}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-10 text-xs text-brand-950/60">
+          Operated by{" "}
+          <a
+            href={site.companyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-8"
+            className="font-semibold text-brand-600 underline underline-offset-2"
           >
-            <WhatsAppIcon />
-            Start selling
-          </Button>
-        </div>
-
-        <div className="rounded-4xl bg-brand-50 p-5 ring-1 ring-brand-100 sm:p-8">
-          {/* To use an official logo instead of a monogram, drop the SVG into
-              public/img/logos/ and swap the entry in components/logos.tsx. */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4">
-            {integrations.map((item) => (
-              <div
-                key={item.name}
-                className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl bg-white px-2 text-center shadow-sm shadow-brand-950/5 ring-1 ring-brand-100/70 transition-transform duration-200 hover:-translate-y-0.5"
-              >
-                {marks[item.mark]}
-                <div>
-                  <p className="text-xs font-bold tracking-tight text-brand-950 sm:text-sm">
-                    {item.name}
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-brand-950/45">
-                    {item.note}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+            {site.company}
+          </a>
+        </p>
       </div>
     </section>
   );

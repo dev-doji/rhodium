@@ -1,34 +1,55 @@
-import { site } from "@/lib/site";
+import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
+import { closingCta, site } from "@/lib/site";
 import { Button, WhatsAppIcon } from "./ui";
 
+/**
+ * Full-bleed photograph with the closing ask laid over it.
+ *
+ * The scrim is deliberately heavy. Text over a photograph is the easiest
+ * place on a page to fail contrast, and this is the one block that has to
+ * stay readable — it is where the visitor either acts or leaves.
+ */
 export function Cta() {
   return (
-    <section
-      id="cta"
-      className="relative overflow-hidden bg-panel px-5 py-16 text-center sm:px-8 sm:py-24"
-    >
+    <section className="relative isolate overflow-hidden bg-panel">
+      <Image
+        src="/img/woman_two.jpg"
+        alt=""
+        aria-hidden
+        fill
+        sizes="100vw"
+        className="object-cover"
+      />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_80%_at_50%_0%,rgba(0,51,231,0.45),transparent_70%)]"
+        className="absolute inset-0 bg-gradient-to-r from-brand-950/95 via-brand-950/85 to-brand-950/60"
       />
 
-      <div className="relative mx-auto max-w-2xl">
-        <h2 className="display text-3xl font-bold text-white sm:text-4xl lg:text-[2.75rem]">
-          From chat to cash, in seconds
-        </h2>
-        <p className="measure mx-auto mt-4 max-w-lg text-sm text-brand-100/60 sm:text-base">
-          Message the Rhodium bot, list your first product, and send a payment
-          request before you finish your next customer&apos;s order.
-        </p>
-        <Button
-          href={site.whatsappUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-8 w-full sm:w-auto"
-        >
-          <WhatsAppIcon />
-          Open on WhatsApp
-        </Button>
+      <div className="relative mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
+        <div className="max-w-xl">
+          <h2 className="display text-[1.95rem] font-extrabold text-white sm:text-4xl lg:text-[2.9rem]">
+            {closingCta.title}
+          </h2>
+          <p className="measure mt-4 text-brand-100/75">{closingCta.body}</p>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Button
+              href={site.whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="light"
+              className="w-full sm:w-auto"
+            >
+              <WhatsAppIcon />
+              {closingCta.cta}
+            </Button>
+            <Button href="#pricing" variant="ghost" className="w-full sm:w-auto">
+              See pricing
+              <ArrowUpRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     </section>
   );

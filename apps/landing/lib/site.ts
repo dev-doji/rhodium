@@ -89,6 +89,52 @@ export const heroStats = {
   },
 } as const;
 
+/**
+ * The "mission" band: image on one side, claim plus a checklist on the other.
+ * Every line here is a fact about the product as it stands today, not an
+ * aspiration — this section sits directly under the hero, where an overclaim
+ * would be most expensive.
+ */
+export const mission = {
+  label: "What we do",
+  title: "Your chat is already the shop. We made it the checkout.",
+  body: [
+    "Nigerian sellers close deals in WhatsApp every day, then lose an hour chasing transfer screenshots and typing sales into a notebook that never balances.",
+    "Rhodium keeps the conversation exactly where it is and does the awkward half for you: the asking, the confirming, the receipting, and the booking.",
+  ],
+  points: [
+    "Each order gets its own account number",
+    "Transfers confirm themselves in about two seconds",
+    "Receipts go out without you lifting a finger",
+    "Every sale lands in one naira ledger",
+  ],
+} as const;
+
+/** The "story" band — why this exists, in plain language. */
+export const story = {
+  label: "Why we built it",
+  title: "Built for the seller, not the spreadsheet.",
+  body: [
+    "The screenshot problem is not a payments problem, it is a trust problem. A seller cannot tell a real transfer from a doctored one, so she either ships and hopes, or makes a paying customer wait.",
+    "So we started at the money and worked backwards. Payments confirm against the rail itself, never against an image. Funds settle to the seller's own account — there is no custody path anywhere in the code to settle anywhere else.",
+  ],
+} as const;
+
+/** The three numbers on the dark band. Product facts; deliberately not vanity
+ *  metrics, because we have not launched and invented traction is a liability. */
+export const proofStats = [
+  { value: "~2s", label: "Transfer to confirmation" },
+  { value: "2", label: "Rails, one checkout" },
+  { value: "\u20a60", label: "Ever held by us" },
+] as const;
+
+/** Closing full-bleed photo band. */
+export const closingCta = {
+  title: "Start selling on WhatsApp today.",
+  body: "Message the bot and you can take your first confirmed payment in the next few minutes. No app to install, no store to build.",
+  cta: "Open on WhatsApp",
+} as const;
+
 export const features = [
   {
     icon: "MessageCircle",

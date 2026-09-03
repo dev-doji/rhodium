@@ -61,7 +61,7 @@ export function Pricing() {
                 {plan.cta}
               </Button>
 
-              <p className="mt-7 text-[11px] font-semibold uppercase tracking-wider text-white/35">
+              <p className="mt-7 text-[11px] font-semibold uppercase tracking-wider text-white/55">
                 Features
               </p>
               <ul className="mt-3 space-y-2.5">

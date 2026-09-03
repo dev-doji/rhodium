@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -108,6 +109,81 @@ export function SectionLabel({
         {children}
       </span>
       {align === "center" && <span className={`h-px w-7 ${rule}`} aria-hidden />}
+    </div>
+  );
+}
+
+/**
+ * A photograph slot.
+ *
+ * The design is photo-led, but the photography arrives on its own schedule, so
+ * a slot with no `src` renders a branded panel with the Rhodium mark rather
+ * than a broken image or a grey void. Dropping a file into `public/img` and
+ * passing its path is the only change needed later — no layout work, because
+ * the slot already reserves its aspect ratio and so cannot shift the page when
+ * the real image lands.
+ */
+export function PhotoSlot({
+  src,
+  alt,
+  className = "",
+  sizes = "(max-width: 1024px) 100vw, 50vw",
+  priority = false,
+  rounded = "rounded-4xl",
+}: {
+  src?: string;
+  alt: string;
+  className?: string;
+  sizes?: string;
+  priority?: boolean;
+  rounded?: string;
+}) {
+  return (
+    <div className={`relative overflow-hidden ${rounded} ${className}`}>
+      {src ? (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes={sizes}
+          className="object-cover"
+          priority={priority}
+        />
+      ) : (
+        // Decorative stand-in: it carries no information, so it is hidden from
+        // screen readers rather than announced as a meaningless image.
+        <div
+          aria-hidden
+          className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,var(--color-brand-50),var(--color-tint))]"
+        >
+          <Logo className="h-12 w-12 text-brand-500/25" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A floating figure card, laid over the hero photograph. */
+export function FloatCard({
+  title,
+  value,
+  note,
+  className = "",
+}: {
+  title: string;
+  value: string;
+  note?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-2xl bg-white/95 p-4 shadow-xl shadow-brand-950/15 ring-1 ring-brand-950/5 backdrop-blur-sm ${className}`}
+    >
+      <p className="text-[11px] font-medium text-brand-950/65">{title}</p>
+      <p className="mt-0.5 text-xl font-bold tracking-tight text-brand-950 tabular-nums">
+        {value}
+      </p>
+      {note && <p className="mt-0.5 text-[11px] text-brand-500">{note}</p>}
     </div>
   );
 }

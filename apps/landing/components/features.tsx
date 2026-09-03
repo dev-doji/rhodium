@@ -1,5 +1,4 @@
 import {
-  ArrowUpRight,
   BookOpen,
   Coins,
   MessageCircle,
@@ -20,46 +19,42 @@ const icons: Record<string, LucideIcon> = {
   TrendingUp,
 };
 
+/**
+ * The capability strip: a quiet, evenly weighted grid on the cream band.
+ *
+ * Every card carries the same visual weight on purpose. This is the section a
+ * visitor scans rather than reads, and promoting one card would send them
+ * looking for a hierarchy that does not exist.
+ */
 export function Features() {
   return (
-    <section id="features" className="bg-panel px-5 py-16 sm:px-8 sm:py-24">
+    <section
+      id="features"
+      className="border-y border-brand-950/8 bg-cream px-5 py-16 sm:px-8 sm:py-20"
+    >
       <div className="mx-auto max-w-7xl">
-        <div className="mx-auto max-w-2xl text-center">
-          <SectionLabel tone="dark" align="center">
-            What you get
-          </SectionLabel>
-          <h2 className="display mt-5 text-3xl font-bold text-white sm:text-4xl lg:text-[2.75rem]">
-            Everything a WhatsApp seller
-            <br className="hidden sm:block" /> needs to get paid
+        <div className="max-w-2xl">
+          <SectionLabel>What you get</SectionLabel>
+          <h2 className="display mt-4 text-[1.85rem] font-extrabold sm:text-4xl">
+            Everything a WhatsApp seller needs to get paid
           </h2>
-          <p className="measure mx-auto mt-4 max-w-lg text-sm text-brand-100/60 sm:text-base">
-            One chat, two payment rails, and a set of books that stay right
-            without you doing anything about it.
-          </p>
         </div>
 
-        <div className="mt-12 grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        <div className="mt-10 grid gap-x-8 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => {
             const Icon = icons[feature.icon] ?? MessageCircle;
             return (
-              <article
-                key={feature.title}
-                className="group relative rounded-3xl bg-panel-soft/60 p-6 ring-1 ring-white/10 transition-colors duration-200 hover:bg-panel-soft hover:ring-white/20"
-              >
-                <div className="flex items-start justify-between">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10">
-                    <Icon className="h-5 w-5 text-brand-200" />
-                  </span>
-                  <ArrowUpRight className="h-5 w-5 text-white/25 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent-400" />
-                </div>
-
-                <h3 className="mt-14 text-lg font-semibold text-white">
+              <div key={feature.title}>
+                <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-white text-brand-500 ring-1 ring-brand-950/8">
+                  <Icon className="h-5 w-5" strokeWidth={1.9} />
+                </span>
+                <h3 className="text-[15px] font-bold tracking-tight">
                   {feature.title}
                 </h3>
-                <p className="measure mt-2 text-sm leading-relaxed text-brand-100/55">
+                <p className="measure mt-1.5 text-sm leading-relaxed text-brand-950/60">
                   {feature.body}
                 </p>
-              </article>
+              </div>
             );
           })}
         </div>

@@ -1,95 +1,103 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { nav, site } from "@/lib/site";
-import { Button, WhatsAppIcon, Wordmark } from "./ui";
+import { Button, Wordmark } from "./ui";
 
+/**
+ * Thin announcement strip plus the main navigation.
+ *
+ * The strip is a real link rather than decoration — a bar that looks
+ * clickable and isn't is a small betrayal that costs trust on the first
+ * second of the page.
+ */
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
 
-  // A menu left open while the viewport grows would strand the page behind it.
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const close = () => mq.matches && setOpen(false);
-    mq.addEventListener("change", close);
-    return () => mq.removeEventListener("change", close);
-  }, []);
-
   return (
-    <header className="sticky top-0 z-50 border-b border-brand-100/70 bg-white/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
-        <Wordmark />
+    <header className="sticky top-0 z-50">
+      <Link
+        href="#how"
+        className="block bg-panel px-5 py-2 text-center text-[12.5px] font-medium text-brand-100 transition-colors hover:bg-brand-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-300"
+      >
+        Take your first confirmed WhatsApp payment today —{" "}
+        <span className="underline underline-offset-2">see how it works</span>
+      </Link>
 
-        <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
-          {nav.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="rounded-full px-4 py-2 text-sm font-medium text-brand-950/70 transition-colors hover:bg-brand-50 hover:text-brand-600"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+      <div className="border-b border-brand-950/8 bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3 sm:px-8">
+          <Wordmark />
 
-        <div className="flex items-center gap-2">
-          {/* Wrapped rather than given `hidden sm:inline-flex` — that would
-              fight the `inline-flex` already inside Button's base classes. */}
-          <div className="hidden sm:block">
-            <Button
-              href={site.whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2.5 whitespace-nowrap"
-            >
-              <WhatsAppIcon />
-              Open on WhatsApp
-            </Button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            aria-controls="mobile-nav"
-            aria-label={open ? "Close menu" : "Open menu"}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-brand-100 text-brand-950 transition-colors hover:bg-brand-50 lg:hidden"
+          <nav
+            aria-label="Primary"
+            className="ml-auto hidden items-center gap-1 lg:flex"
           >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-      </div>
-
-      {open && (
-        <div
-          id="mobile-nav"
-          className="border-t border-brand-100 bg-white px-5 pb-6 pt-3 sm:px-8 lg:hidden"
-        >
-          <nav className="flex flex-col" aria-label="Mobile">
             {nav.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}
-                onClick={() => setOpen(false)}
-                className="rounded-xl px-3 py-3 text-base font-medium text-brand-950 transition-colors hover:bg-brand-50"
+                className="rounded-full px-3.5 py-2 text-sm font-medium text-brand-950/70 transition-colors hover:bg-brand-50 hover:text-brand-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
               >
                 {item.label}
               </Link>
             ))}
           </nav>
-          <Button
-            href={site.whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 w-full"
-          >
-            <WhatsAppIcon />
-            Open on WhatsApp
-          </Button>
+
+          <div className="ml-auto flex items-center gap-2 lg:ml-2">
+            <Button
+              href={site.whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden px-5 py-2.5 sm:inline-flex"
+            >
+              Start free
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              aria-controls="mobile-nav"
+              aria-label={open ? "Close menu" : "Open menu"}
+              /* 44px minimum, so the control is reliably tappable rather than
+                 merely visible. */
+              className="grid h-11 w-11 place-items-center rounded-xl text-brand-950 ring-1 ring-brand-950/10 transition-colors hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 lg:hidden"
+            >
+              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
-      )}
+
+        {open && (
+          <div
+            id="mobile-nav"
+            className="border-t border-brand-950/8 bg-white px-5 pb-5 pt-2 sm:px-8 lg:hidden"
+          >
+            <nav aria-label="Mobile" className="flex flex-col">
+              {nav.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className="rounded-xl px-3 py-3 text-[15px] font-medium text-brand-950/80 transition-colors hover:bg-brand-50"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <Button
+              href={site.whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 w-full"
+            >
+              Start free
+            </Button>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
