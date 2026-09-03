@@ -15,4 +15,4 @@ apps/*/node_modules/
 apps/*/.next/
 apps/*/out/
 apps/*/next-env.d.ts
-apps/*/.tsbuildinfo
+apps/*/*.tsbuildinfo

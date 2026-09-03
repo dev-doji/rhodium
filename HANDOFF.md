@@ -27,21 +27,26 @@ swappable and all funnel into the same `order.paid → receipt → ledger` chain
 | Receipts | PNG + PDF with Rhodium and vendor logos, attached to both WhatsApp messages |
 | Dashboard login | fixed (phone normalisation) — `09032621846`, `+2349032621846`, `2349032621846` all resolve to one merchant |
 
-### ⚠️ Check this first — Paystack webhook URL
+### ~~Paystack webhook URL~~ — ✅ SAVED 2026-09-03
 
-Both real payments confirmed only via the **manual `/api/checkout/:orderId/verify`
-poll**, never via a `charge.success` webhook. That strongly suggests the **Live
-Webhook URL is not saved** in the Paystack dashboard.
-
-Set it at Paystack → Settings → API Keys & Webhooks → **Live Webhook URL**:
+The **Live Webhook URL** is now saved in the Paystack dashboard:
 
 ```
 https://app.userhodium.xyz/webhooks/rails/paystack
 ```
 
+Background: both real ₦100 payments had confirmed only via the manual
+`/api/checkout/:orderId/verify` poll, never via a `charge.success` webhook,
+because the URL was unsaved — so every payment depended on the buyer's browser
+staying open. That is fixed.
+
 Signature is HMAC-SHA512 over the raw body using the **secret key** — Paystack
-has no separate webhook secret. Until this is saved, every payment depends on
-the buyer's browser polling, which stops the moment they close the tab.
+has no separate webhook secret.
+
+**Not yet proven end to end.** No `charge.success` has been observed arriving
+since the URL was saved. Confirm with one real ₦100 purchase: the order should
+reach `paid` **without** the checkout tab open, and a receipt image should land
+on WhatsApp. That single run also closes out demo-feedback item 2.
 
 ---
 
@@ -161,8 +166,8 @@ in the `ObjectStore` at receive time; never store a Meta URL in `imageUrl`.
 | **GitHub** | github.com/dev-doji/rhodium (branch `main`) |
 | **DB** | Render Postgres `rhodium-db` (external URL in Render dashboard) |
 | **WhatsApp bot number** | **+234 911 046 1379** → `wa.me/2349110461379`. `WHATSAPP_PHONE_NUMBER_ID` is in the Render dashboard. The old +234 803 680 3974 (`1198640330004714`) is retired — links to it are dead |
-| **Meta app (in use)** | `1534245258196461` "Rhodium" — **NOT deleted**, still alive, owns the working WABA + system-user token |
-| **Meta app (new, spare)** | `1782305146230634`, config_id `2564764790611751` — created during the failed migration; usable but its portfolio has no assets |
+| **Meta app (in use)** | `1782305146230634`, config_id `2564764790611751` — **the new registration (2026-09-03)**, v4 hosted Embedded Signup. This is the live one |
+| **Meta app (previous)** | `1534245258196461` "Rhodium" with config_id `2976386586040947` (v2) — superseded, and no longer referenced anywhere in git |
 | **OAuth redirect** | Derives from `MERCHANT_BASE_URL`. Both `https://app.userhodium.xyz/oauth/whatsapp/callback` and the onrender equivalent are live (400 on GET = route healthy). Must match the Meta app's registered URI **character for character**, including whichever is baked into `WHATSAPP_SIGNUP_URL`. |
 | **WABA** | "Fonio Labs" `1057107730180826` (subscribed to the app, `messages` field) |
 | **Retired** | Meta test number +1 555‑140‑5536 (`1242060842323233`) — removed from the WABA; any `wa.me/15551405536` link is dead |
@@ -273,8 +278,10 @@ phone string (there is still no phone normalisation anywhere in this codebase).
   vendor's.
 
 **Embedded Signup** (`src/modules/whatsapp/embedded-signup.ts`):
-- app_id `1534245258196461` · config_id `2976386586040947` (both now in
-  `render.yaml`; redirect defaults to `${PUBLIC_BASE_URL}/oauth/whatsapp/callback`).
+- app_id `1782305146230634` · config_id `2564764790611751` — **v4**, used via
+  Meta's *hosted* signup page (`WHATSAPP_SIGNUP_URL`), not the self-built dialog
+  link. Redirect defaults to `${PUBLIC_BASE_URL}/oauth/whatsapp/callback`.
+  Both values are dashboard-set, not in git — see the drift note below.
 - Onboarding type: **Independent Tech Provider**.
 - `GET /oauth/whatsapp/callback` is live: code → token → `debug_token` for the
   WABA id → `/{waba}/phone_numbers` → `subscribed_apps` → merchant updated.
@@ -326,10 +333,44 @@ normal inbound — which is what keeps them out of the router:
   history sync — **irrelevant to us**, we have no agent inbox and her phone keeps
   everything regardless. Don't let it drive the timeline.
 
-**⚠️ Embedded Signup v2 is deprecated 2026-10-15 and coexistence needs v4.**
-Verify `config_id 2976386586040947` is a v4 config in the Meta dashboard — if it
-was created as v2 it must be redone, and better to learn that before review
-clears than after.
+### ~~Embedded Signup v2 deprecation~~ — ✅ RESOLVED by re-registering
+
+A **new Meta app was registered on 2026-09-03**: `1782305146230634` with
+config_id `2564764790611751`, a **v4** config served from Meta's hosted signup
+page. The old v2 config `2976386586040947` is superseded, so the
+2026-10-15 deprecation no longer bites. A **new WABA + the new number
++234 911 046 1379** came with it, replacing the retired +234 803 680 3974.
+
+### ~~DRIFT — the new registration was not wired into deploy config~~ — ✅ FIXED
+
+The re-registration had not reached deploy config, and nothing baked into git is
+allowed to carry these values any more. **No ids, config ids, signup URLs or
+phone numbers are hardcoded outside tests.** Everything is dashboard-set:
+
+| Where | Was | Now |
+|---|---|---|
+| `render.yaml` | `WHATSAPP_APP_ID` / `WHATSAPP_CONFIG_ID` pinned to the old app + v2 config; no `WHATSAPP_SIGNUP_URL` key at all | all three `sync: false`, plus `WHATSAPP_WA_NUMBER` |
+| `apps/landing/lib/site.ts` | defaulted to the dead `2348036803974` | no default — the build **throws** if `NEXT_PUBLIC_WHATSAPP_NUMBER` is unset |
+| `dashboard/src/App.tsx` | the WhatsApp nav link hardcoded the dead number | reads `waNumber` from `/api/me`, which now returns `config.WHATSAPP_WA_NUMBER` |
+| `src/smoke/seed-demo-stores.ts` | same dead fallback | throws rather than print dead shop links |
+
+**⚠️ Set these in the Render dashboard before the next deploy** — they are no
+longer in git, so a deploy without them leaves Embedded Signup unconfigured and
+`connect` will tell vendors it is off:
+
+- `WHATSAPP_APP_ID`, `WHATSAPP_CONFIG_ID` — the new app + v4 config
+- `WHATSAPP_SIGNUP_URL` — Meta's hosted page, pasted verbatim (the `extras`
+  blob is percent-encoded and must survive byte for byte)
+- `WHATSAPP_WA_NUMBER` — the bot's wa.me digits
+- and on **Cloudflare Pages**: `NEXT_PUBLIC_WHATSAPP_NUMBER`, same digits
+
+Also re-check `WHATSAPP_APP_SECRET` and `WHATSAPP_ACCESS_TOKEN`: they belong to
+an *app*, and the app changed. A leftover pair from the old app fails webhook
+signature verification and sending.
+
+**Also re-confirm the WABA id.** `1057107730180826` is hardcoded in the manual
+attach-number curl below and recorded in the table above. If the new
+registration created a new WABA, that id is stale too.
 
 **Still blocked on Meta review + Business Verification** (submitted 2026-08-14),
 so the OAuth leg is untested against real Meta. Until it clears, add the vendor

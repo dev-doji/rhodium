@@ -39,10 +39,25 @@ services:
       - key: WHATSAPP_APP_SECRET
         sync: false
       # --- Embedded Signup (vendors on their own number) ---
+      # All dashboard-set: the app was re-registered on 2026-09-03 (the previous
+      # config was ES v2, deprecated 2026-10-15, and Coexistence needs v4), and
+      # baking ids into git is what let the old ones go stale unnoticed.
+      # WHATSAPP_APP_SECRET / WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID
+      # above are dashboard secrets and MUST belong to THIS app and its WABA —
+      # a token or app secret left over from the old app fails webhook
+      # signature checks and sends.
       - key: WHATSAPP_APP_ID
-        value: "1534245258196461"
+        sync: false
       - key: WHATSAPP_CONFIG_ID
-        value: "2976386586040947"
+        sync: false
+      # Meta-hosted signup page, copied verbatim from the Meta dashboard. When
+      # set, `connect` hands the vendor THIS link instead of a self-built
+      # /dialog/oauth one, and Meta renders the whole journey including
+      # Coexistence. Paste it EXACTLY as Meta generated it — the `extras` blob
+      # carries the ES version percent-encoded, and the code appends only a
+      # signed `state`, never rebuilding the query string.
+      - key: WHATSAPP_SIGNUP_URL
+        sync: false
       # --- Monnify bank rail (sensitive) ---
       - key: MONNIFY_API_KEY
         sync: false
@@ -58,11 +73,12 @@ services:
       - key: WHATSAPP_VERIFY_TOKEN
         value: rhodium-verify
       - key: WHATSAPP_WA_NUMBER   # bot's wa.me digits, for buyer shop links
-        # Current live bot: +234 911 046 1379. Previously 2348036803974, and
-        # before that the Meta test number 15551405536 — both are off the WABA,
-        # so any wa.me link pointing at them goes nowhere. Keep this in step
-        # with WHATSAPP_PHONE_NUMBER_ID or buyers get a dead shop link.
-        value: "2349110461379"
+        # Set in the dashboard. Must match the number behind
+        # WHATSAPP_PHONE_NUMBER_ID: it is what builds every buyer
+        # wa.me/<digits>?text=shop-<id> link, so a stale value points buyers at
+        # a dead number while the vendor side keeps working. Mirror the same
+        # digits into NEXT_PUBLIC_WHATSAPP_NUMBER on Cloudflare Pages.
+        sync: false
       - key: MONNIFY_BASE_URL
         value: https://sandbox.monnify.com
       - key: FIAT_ADAPTER_MODE

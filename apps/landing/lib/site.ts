@@ -5,9 +5,24 @@
  * replace it before the site goes live.
  */
 
-/** wa.me digits for the Rhodium bot. Mirrors WHATSAPP_WA_NUMBER in render.yaml. */
-const WHATSAPP_NUMBER =
-  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "2348036803974";
+/**
+ * wa.me digits for the Rhodium bot. Mirrors WHATSAPP_WA_NUMBER on Render, and
+ * is set as NEXT_PUBLIC_WHATSAPP_NUMBER on Cloudflare Pages.
+ *
+ * Deliberately has no default. The number has already been changed once, and a
+ * baked-in fallback is not a safety net here — it is the failure: the build
+ * succeeds, every button still looks right, and every buyer who taps one is
+ * sent to a number that no longer answers, while the vendor side keeps working
+ * so nobody notices. Failing the build is the loud, cheap version of that.
+ */
+const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
+if (!WHATSAPP_NUMBER) {
+  throw new Error(
+    "NEXT_PUBLIC_WHATSAPP_NUMBER is not set. Set it to the bot's wa.me digits " +
+      "(the same value as WHATSAPP_WA_NUMBER on Render) in the Cloudflare Pages " +
+      "environment, or in .env.local for a local build.",
+  );
+}
 
 const WHATSAPP_GREETING = "Hi Rhodium — I want to start selling on WhatsApp.";
 

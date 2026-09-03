@@ -157,7 +157,12 @@ async function main(): Promise<void> {
     console.log("");
   }
 
-  const wa = cfg.WHATSAPP_WA_NUMBER || "2348036803974";
+  const wa = cfg.WHATSAPP_WA_NUMBER;
+  if (!wa) {
+    throw new Error(
+      "WHATSAPP_WA_NUMBER is not set — the shop links below would point nowhere.",
+    );
+  }
   console.log("─".repeat(66));
   console.log("SHARE THESE LINKS — anyone on WhatsApp can buy from them:\n");
   for (const s of seeded) {

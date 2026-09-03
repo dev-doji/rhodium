@@ -67,7 +67,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ phone, code }),
     }),
-  me: () => req<{ merchant: { businessName: string; phone: string } }>("/api/me"),
+  me: () => req<{ merchant: { businessName: string; phone: string }; waNumber?: string }>("/api/me"),
   products: () => req<{ products: Product[] }>("/api/products"),
   addProduct: (name: string, priceNaira: number, stockQty?: number) =>
     req<{ product: Product }>("/api/products", {

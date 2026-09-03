@@ -87,6 +87,7 @@ type Tab = "orders" | "products" | "ledger";
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [biz, setBiz] = useState("");
+  const [waNumber, setWaNumber] = useState("");
   const [phone, setPhone] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -104,6 +105,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         api.me(), api.products(), api.orders(), api.ledger(), api.summary(),
       ]);
       setBiz(me.merchant.businessName); setPhone(me.merchant.phone);
+      setWaNumber(me.waNumber ?? "");
       setProducts(p.products); setOrders(o.orders); setLedger(l); setSummary(s); setErr("");
     } catch (e) { setErr((e as Error).message); } finally { setLoading(false); }
   };
@@ -127,9 +129,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <button className={`navlink${tab === "ledger" ? " active" : ""}`} onClick={() => setTab("ledger")}>Ledger</button>
           <a className="navlink" href="/traction">Traction</a>
           <a className="navlink" href="/wallet">Wallet</a>
-          <a className="navlink" href={`https://wa.me/2348036803974`} target="_blank" rel="noopener">
-            WhatsApp <ExternalLink size={13} />
-          </a>
+          {waNumber && (
+            <a className="navlink" href={`https://wa.me/${waNumber}`} target="_blank" rel="noopener">
+              WhatsApp <ExternalLink size={13} />
+            </a>
+          )}
           <button className="navlink" onClick={onLogout}>Sign out</button>
         </div>
       </nav>
