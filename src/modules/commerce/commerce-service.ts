@@ -21,6 +21,13 @@ export interface CreateProductInput {
 export interface CreateOrderInput {
   merchantId: string;
   buyerRef: string;
+  /**
+   * Buyer's display name, when a channel collects one. The buyers table has
+   * always had the column; only the WhatsApp flow, which never asks, left it
+   * unset. The web storefront does ask, and a vendor packing an order is far
+   * better served by "Ada Okeke" than by a bare phone number.
+   */
+  buyerName?: string;
   lines: { productId: string; qty: number }[];
   ttlMs?: number;
   /** Payment rail: bank transfer (default) or crypto (Quai/BlipPay). */
@@ -94,7 +101,11 @@ export class CommerceService {
     }
     assertKobo(amount);
 
-    const buyer = await this.repos.buyers.upsert(input.merchantId, input.buyerRef);
+    const buyer = await this.repos.buyers.upsert(
+      input.merchantId,
+      input.buyerRef,
+      input.buyerName,
+    );
     const order = await this.repos.orders.create({
       id: id("ord"),
       merchantId: input.merchantId,

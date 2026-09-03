@@ -1,0 +1,271 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import type { Server } from "node:http";
+import { buildApp } from "../src/app.js";
+import { loadConfig, resetConfigCache } from "../src/config/index.js";
+import { CaptureTransport } from "../src/modules/notification/transport.js";
+import { buildApi } from "../src/http/api.js";
+
+/**
+ * The public web storefront — the front door that needs no Meta review.
+ *
+ * Two things are load-bearing here and both are about money rather than
+ * markup: the catalogue must not leak anything about the vendor that a
+ * stranger has no business seeing, and a hand-written cart must not be able
+ * to change what an item costs or whose shop it settles into.
+ */
+
+let server: Server;
+let base: string;
+let app: ReturnType<typeof buildApp>;
+let laptopId: string;
+let soldOutId: string;
+let rivalProductId: string;
+
+beforeAll(async () => {
+  resetConfigCache();
+  process.env.NODE_ENV = "test";
+  process.env.FIAT_ADAPTER_MODE = "mock";
+  process.env.WHATSAPP_MODE = "mock";
+  app = buildApp({ config: loadConfig(), notificationChannels: [new CaptureTransport("whatsapp")] });
+
+  await app.repos.merchants.create({
+    id: "mch_shop",
+    phone: "+2348030002222",
+    businessName: "Circuit City",
+    status: "active",
+    kycState: "verified",
+    cryptoEnabled: false,
+    slug: "circuitcity",
+    waDisplayPhone: "+234 911 046 1379",
+    settlementAccountNumber: "0123456789",
+    settlementBankCode: "058",
+    quaiAddress: "0x0000000000000000000000000000000000000001",
+  });
+
+  const laptop = await app.commerce.createProduct({
+    merchantId: "mch_shop",
+    name: "Refurbished ThinkPad",
+    price: 25_000_00,
+    stockQty: 4,
+  });
+  laptopId = laptop.id;
+
+  const soldOut = await app.commerce.createProduct({
+    merchantId: "mch_shop",
+    name: "Last Year's Phone",
+    price: 90_000_00,
+    stockQty: 0,
+  });
+  soldOutId = soldOut.id;
+
+  // A second shop, to prove carts cannot reach across tenants.
+  await app.repos.merchants.create({
+    id: "mch_rival",
+    phone: "+2348030003333",
+    businessName: "Jewel Box",
+    status: "active",
+    kycState: "verified",
+    cryptoEnabled: false,
+    slug: "jewelbox",
+  });
+  const rival = await app.commerce.createProduct({
+    merchantId: "mch_rival",
+    name: "Gold Bangle",
+    price: 5_000_00,
+  });
+  rivalProductId = rival.id;
+
+  await app.repos.merchants.create({
+    id: "mch_shut",
+    phone: "+2348030004444",
+    businessName: "Closed Down",
+    status: "suspended",
+    kycState: "verified",
+    cryptoEnabled: false,
+    slug: "closeddown",
+  });
+
+  const api = buildApi(app);
+  await new Promise<void>((r) => {
+    server = api.listen(0, () => r());
+  });
+  const addr = server.address();
+  base = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
+});
+
+afterAll(() => {
+  server?.close();
+});
+
+interface ShopProduct {
+  id: string;
+  name: string;
+  price: number;
+  priceFormatted: string;
+  imageUrl?: string;
+  inStock: boolean;
+  stockQty?: number;
+}
+interface ShopBody {
+  shop: {
+    handle?: string;
+    businessName: string;
+    whatsapp?: string;
+    products: ShopProduct[];
+    settlementAccountNumber?: string;
+    kycState?: string;
+  };
+}
+interface OrderBody {
+  orderId: string;
+  amount: number;
+  checkoutUrl: string;
+}
+interface ErrorBody {
+  error: string;
+  message: string;
+}
+
+const getShop = (handle: string) => fetch(`${base}/api/shop/${handle}`);
+const shopJson = async (handle: string): Promise<ShopBody> =>
+  (await getShop(handle)).json() as Promise<ShopBody>;
+const order = (handle: string, body: unknown) =>
+  fetch(`${base}/api/shop/${handle}/order`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+describe("public shop catalogue", () => {
+  it("serves the shop by its handle, with no login", async () => {
+    const res = await getShop("circuitcity");
+    expect(res.status).toBe(200);
+    const { shop } = (await res.json()) as ShopBody;
+    expect(shop.businessName).toBe("Circuit City");
+    expect(shop.products).toHaveLength(2);
+  });
+
+  it("never exposes the vendor's private details to a buyer", async () => {
+    const { shop } = await shopJson("circuitcity");
+    const blob = JSON.stringify(shop);
+    // Bank account, settlement wallet, phone and internal id are all things a
+    // stranger browsing a shop must never receive.
+    expect(blob).not.toContain("0123456789");
+    expect(blob).not.toContain("+2348030002222");
+    expect(blob).not.toContain("0x0000000000000000000000000000000000000001");
+    expect(blob).not.toContain("mch_shop");
+    expect(shop.settlementAccountNumber).toBeUndefined();
+    expect(shop.kycState).toBeUndefined();
+  });
+
+  it("reports availability without revealing stock levels", async () => {
+    const { shop } = await shopJson("circuitcity");
+    const laptop = shop.products.find((p) => p.id === laptopId)!;
+    const gone = shop.products.find((p) => p.id === soldOutId)!;
+    expect(laptop.inStock).toBe(true);
+    expect(gone.inStock).toBe(false);
+    expect(laptop.stockQty).toBeUndefined();
+  });
+
+  it("404s an unknown handle and a suspended shop alike", async () => {
+    expect((await getShop("nosuchshop")).status).toBe(404);
+    // Suspended shops 404 rather than 403: a closed shop should be
+    // indistinguishable from one that never existed.
+    expect((await getShop("closeddown")).status).toBe(404);
+  });
+});
+
+describe("ordering from the storefront", () => {
+  it("creates an order priced from the catalogue and returns a checkout link", async () => {
+    const res = await order("circuitcity", {
+      buyerName: "Ada Okeke",
+      buyerPhone: "08030001234",
+      lines: [{ productId: laptopId, qty: 2 }],
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as OrderBody;
+    expect(body.amount).toBe(50_000_00);
+    expect(body.checkoutUrl).toContain(`/checkout/${body.orderId}`);
+
+    const saved = await app.repos.orders.byId(body.orderId);
+    expect(saved?.merchantId).toBe("mch_shop");
+
+    // The order carries a buyer id; the contact details live on the buyer, so
+    // that is where the vendor's delivery information has to be.
+    const buyer = await app.repos.buyers.byId(saved!.buyerRef);
+    expect(buyer?.phoneOrRef).toBe("08030001234");
+    expect(buyer?.name).toBe("Ada Okeke");
+  });
+
+  it("keeps a repeat buyer as one customer rather than a new one each time", async () => {
+    const first = await order("circuitcity", {
+      buyerName: "Bola Ade",
+      buyerPhone: "08039998888",
+      lines: [{ productId: laptopId, qty: 1 }],
+    });
+    const second = await order("circuitcity", {
+      buyerName: "Bola Ade",
+      buyerPhone: "08039998888",
+      lines: [{ productId: laptopId, qty: 1 }],
+    });
+    const a = await app.repos.orders.byId(((await first.json()) as OrderBody).orderId);
+    const b = await app.repos.orders.byId(((await second.json()) as OrderBody).orderId);
+    expect(a!.buyerRef).toBe(b!.buyerRef);
+  });
+
+  it("ignores any price the client sends", async () => {
+    const res = await order("circuitcity", {
+      buyerPhone: "08030001234",
+      lines: [{ productId: laptopId, qty: 1, price: 1, priceNaira: 1 }],
+    });
+    const body = (await res.json()) as OrderBody;
+    // Server-side lookup wins: still full price, not the ₦0.01 the cart asked for.
+    expect(body.amount).toBe(25_000_00);
+  });
+
+  it("refuses a cart holding another shop's product", async () => {
+    const res = await order("circuitcity", {
+      buyerPhone: "08030001234",
+      lines: [{ productId: rivalProductId, qty: 1 }],
+    });
+    // Otherwise a crafted cart would settle Jewel Box's goods into Circuit
+    // City's bank account.
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as ErrorBody).message).toMatch(/not sold by this shop/i);
+  });
+
+  it("rejects carts that are empty, oversized, or badly quantified", async () => {
+    const phone = "08030001234";
+    expect((await order("circuitcity", { buyerPhone: phone, lines: [] })).status).toBe(422);
+    expect(
+      (await order("circuitcity", { buyerPhone: phone, lines: [{ productId: laptopId, qty: 0 }] }))
+        .status,
+    ).toBe(422);
+    expect(
+      (await order("circuitcity", { buyerPhone: phone, lines: [{ productId: laptopId, qty: -3 }] }))
+        .status,
+    ).toBe(422);
+    expect(
+      (await order("circuitcity", { buyerPhone: phone, lines: [{ productId: laptopId, qty: 2.5 }] }))
+        .status,
+    ).toBe(422);
+    expect(
+      (await order("circuitcity", { buyerPhone: phone, lines: [{ productId: laptopId, qty: 500 }] }))
+        .status,
+    ).toBe(422);
+  });
+
+  it("requires a phone number, since the vendor has to deliver to someone", async () => {
+    const res = await order("circuitcity", { lines: [{ productId: laptopId, qty: 1 }] });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as ErrorBody).message).toMatch(/phone/i);
+  });
+
+  it("will not take an order for a suspended shop", async () => {
+    const res = await order("closeddown", {
+      buyerPhone: "08030001234",
+      lines: [{ productId: laptopId, qty: 1 }],
+    });
+    expect(res.status).toBe(404);
+  });
+});

@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shop · Rhodium</title>
+  <meta name="description" content="Browse and buy. Pay by bank transfer, confirmed in seconds." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ------------------------------------------------------------------
+       A vendor's public shop.
+
+       Exaggerated-minimalist: oversized type, one accent, generous
+       whitespace, alternating light/dark bands. The buyer has one job —
+       pick items and pay — so nothing on this page competes with the
+       product grid and the pay button.
+
+       Plus Jakarta Sans matches the Rhodium landing page, so a buyer
+       arriving from an ad and a buyer arriving from a wa.me link see one
+       brand rather than two.
+       ------------------------------------------------------------------ */
+    :root {
+      color-scheme: light dark;
+      /* Rhodium brand, mirroring apps/landing/app/globals.css */
+      --brand:#0033e7;   --brand-600:#002bc4; --brand-50:#eef2fe;
+      --accent:#ff3131;
+      --panel:#04123f;   --panel-soft:#0a2160; --ink-band:#05061a;
+
+      --bg:#ffffff;      --surface:#ffffff;    --surface-2:#f7f8fc;
+      --line:#e4e7f2;    --ink:#05061a;        --ink-2:#4a4f68;
+      --ink-3:#767c96;   --on-brand:#ffffff;
+      --good-bg:#eaf7ef; --good-ink:#0f5132;
+      --bad-bg:#fdeceb;  --bad-ink:#8a2019;
+
+      --radius:18px;     --radius-sm:12px;     --radius-pill:999px;
+      --shadow:0 1px 2px rgba(5,6,26,.04), 0 14px 34px -14px rgba(5,6,26,.16);
+      --shadow-lg:0 2px 6px rgba(5,6,26,.06), 0 28px 60px -20px rgba(5,6,26,.28);
+      --tap:44px;
+      /* Gutters widen with the viewport rather than jumping at breakpoints. */
+      --gutter:clamp(1rem, 4vw, 3.5rem);
+      --maxw:1240px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:#0a0b18;      --surface:#12142a;   --surface-2:#161a33;
+        --line:#262b47;    --ink:#f2f4fb;       --ink-2:#b8bed6;
+        --ink-3:#868ca8;   --brand:#5478f2;     --brand-600:#8aa3f7;
+        --brand-50:#131938;
+        --good-bg:#122a1c; --good-ink:#7ee6a6;
+        --bad-bg:#2a1616;  --bad-ink:#f0a3a3;
+        --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 40px -16px rgba(0,0,0,.7);
+        --shadow-lg:0 2px 8px rgba(0,0,0,.6), 0 30px 70px -20px rgba(0,0,0,.8);
+      }
+    }
+
+    *,*::before,*::after { box-sizing:border-box; }
+    html { -webkit-text-size-adjust:100%; }
+    body {
+      margin:0; background:var(--bg); color:var(--ink);
+      font-family:"Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size:16px; line-height:1.55;
+      -webkit-font-smoothing:antialiased;
+    }
+    img { max-width:100%; display:block; }
+    button { font:inherit; color:inherit; }
+
+    /* Every interactive element keeps a visible focus ring — never remove it,
+       it is the only navigation aid a keyboard user has. */
+    :where(a,button,input,select,[tabindex]):focus-visible {
+      outline:3px solid var(--brand);
+      outline-offset:2px;
+      border-radius:6px;
+    }
+
+    .wrap { max-width:var(--maxw); margin-inline:auto; padding-inline:var(--gutter); }
+    .sr-only {
+      position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+    }
+
+    /* ---------- header ---------------------------------------------- */
+    header.bar {
+      position:sticky; top:0; z-index:40;
+      background:color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--line);
+    }
+    .bar-in {
+      display:flex; align-items:center; gap:12px;
+      min-height:64px; padding-block:10px;
+    }
+    .shopmark { display:flex; align-items:center; gap:10px; min-width:0; }
+    .shopmark img, .shopmark .initials {
+      width:38px; height:38px; border-radius:11px; flex:none;
+      object-fit:cover; background:var(--brand); color:var(--on-brand);
+      display:grid; place-items:center; font-weight:700; font-size:15px;
+    }
+    .shopmark b {
+      font-size:16px; font-weight:700; letter-spacing:-.01em;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .bar-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+
+    .btn {
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      min-height:var(--tap); padding:0 20px; border-radius:var(--radius-pill);
+      border:1px solid transparent; cursor:pointer; font-weight:600;
+      font-size:15px; text-decoration:none; white-space:nowrap;
+      transition:background-color .18s ease, border-color .18s ease, transform .18s ease;
+    }
+    .btn:active { transform:scale(.97); }
+    .btn-primary { background:var(--brand); color:var(--on-brand); }
+    .btn-primary:hover { background:var(--brand-600); }
+    .btn-ghost { background:transparent; border-color:var(--line); color:var(--ink); }
+    .btn-ghost:hover { background:var(--surface-2); }
+    .btn-block { width:100%; }
+    .btn[disabled] { opacity:.45; cursor:not-allowed; transform:none; }
+
+    .cartbtn { position:relative; }
+    .cartbtn .count {
+      position:absolute; top:2px; right:2px; min-width:19px; height:19px;
+      padding:0 5px; border-radius:var(--radius-pill);
+      background:var(--accent); color:#fff;
+      font-size:11px; font-weight:700; line-height:19px; text-align:center;
+    }
+
+    /* ---------- hero -------------------------------------------------- */
+    .hero { background:var(--panel); color:#fff; }
+    .hero-in { padding-block:clamp(2.5rem, 7vw, 5.5rem); }
+    .hero h1 {
+      margin:0 0 14px;
+      /* Oversized but clamped: it must not swallow a 375px screen. */
+      font-size:clamp(2.1rem, 7.5vw, 4.5rem);
+      font-weight:800; letter-spacing:-.035em; line-height:1.03;
+      max-width:16ch;
+    }
+    .hero p {
+      margin:0; color:#b9c4e8; font-size:clamp(1rem, 2vw, 1.15rem);
+      max-width:52ch;
+    }
+    .hero-cta { margin-top:26px; display:flex; flex-wrap:wrap; gap:10px; }
+    .btn-onpanel { background:#fff; color:var(--panel); }
+    .btn-onpanel:hover { background:#e8ecfa; }
+    .btn-outline-panel { background:transparent; border-color:rgba(255,255,255,.32); color:#fff; }
+    .btn-outline-panel:hover { background:rgba(255,255,255,.1); }
+
+    /* ---------- product grid ------------------------------------------ */
+    .section { padding-block:clamp(2rem, 5vw, 3.5rem); }
+    .section h2 {
+      margin:0 0 4px; font-size:clamp(1.5rem, 3.4vw, 2.25rem);
+      font-weight:800; letter-spacing:-.03em;
+    }
+    .section .sub { margin:0 0 26px; color:var(--ink-2); }
+
+    /* 1 col phone -> 2 tablet -> 3 laptop -> 4 wide. auto-fill would collapse
+       to one enormous card on a near-empty shop, so the columns are explicit. */
+    .grid { display:grid; gap:clamp(12px, 2.2vw, 22px); grid-template-columns:1fr; }
+    @media (min-width:560px)  { .grid { grid-template-columns:repeat(2,1fr); } }
+    @media (min-width:1024px) { .grid { grid-template-columns:repeat(3,1fr); } }
+    @media (min-width:1440px) { .grid { grid-template-columns:repeat(4,1fr); } }
+
+    .card {
+      background:var(--surface); border:1px solid var(--line);
+      border-radius:var(--radius); overflow:hidden;
+      display:flex; flex-direction:column;
+      transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+    .card:hover { border-color:var(--brand); box-shadow:var(--shadow); transform:translateY(-2px); }
+    .thumb {
+      aspect-ratio:1/1; width:100%; object-fit:cover; background:var(--surface-2);
+    }
+    .thumb-ph {
+      aspect-ratio:1/1; display:grid; place-items:center;
+      background:var(--surface-2); color:var(--ink-3);
+    }
+    .card-body { padding:16px; display:flex; flex-direction:column; gap:6px; flex:1; }
+    .card-name { font-weight:600; letter-spacing:-.01em; }
+    .card-price {
+      /* Tabular figures keep prices from shifting width as digits change. */
+      font-variant-numeric:tabular-nums;
+      font-size:1.1rem; font-weight:800; letter-spacing:-.02em;
+    }
+    .card-foot { margin-top:auto; padding-top:12px; }
+    .soldout {
+      display:inline-block; padding:3px 10px; border-radius:var(--radius-pill);
+      background:var(--bad-bg); color:var(--bad-ink); font-size:12px; font-weight:700;
+    }
+
+    .qty { display:flex; align-items:center; gap:2px; }
+    .qty button {
+      width:var(--tap); height:var(--tap); flex:none;
+      border:1px solid var(--line); background:var(--surface);
+      border-radius:var(--radius-sm); cursor:pointer; font-size:18px; font-weight:600;
+      display:grid; place-items:center;
+      transition:background-color .15s ease, border-color .15s ease;
+    }
+    .qty button:hover { background:var(--surface-2); border-color:var(--brand); }
+    .qty output {
+      min-width:38px; text-align:center; font-weight:700;
+      font-variant-numeric:tabular-nums;
+    }
+
+    /* ---------- cart sheet -------------------------------------------- */
+    .scrim {
+      position:fixed; inset:0; z-index:50; background:rgba(5,6,26,.55);
+      opacity:0; pointer-events:none; transition:opacity .22s ease;
+    }
+    .scrim[data-open="true"] { opacity:1; pointer-events:auto; }
+
+    .sheet {
+      position:fixed; z-index:60; background:var(--surface);
+      display:flex; flex-direction:column;
+      box-shadow:var(--shadow-lg);
+      transition:transform .26s cubic-bezier(.32,.72,0,1);
+      /* Phone: a bottom sheet, thumb-reachable. */
+      left:0; right:0; bottom:0; max-height:88dvh;
+      border-radius:22px 22px 0 0;
+      transform:translateY(101%);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    .sheet[data-open="true"] { transform:none; }
+    /* Tablet and up: a side drawer, so the grid stays visible while you shop. */
+    @media (min-width:768px) {
+      .sheet {
+        left:auto; top:0; bottom:0; width:min(420px, 92vw); max-height:none;
+        border-radius:22px 0 0 22px; transform:translateX(101%);
+      }
+    }
+    .sheet-head {
+      display:flex; align-items:center; gap:12px;
+      padding:18px 20px; border-bottom:1px solid var(--line);
+    }
+    .sheet-head h2 { margin:0; font-size:1.15rem; font-weight:800; letter-spacing:-.02em; }
+    .iconbtn {
+      width:var(--tap); height:var(--tap); flex:none; margin-left:auto;
+      border:1px solid var(--line); background:var(--surface);
+      border-radius:var(--radius-sm); cursor:pointer; display:grid; place-items:center;
+      transition:background-color .15s ease;
+    }
+    .iconbtn:hover { background:var(--surface-2); }
+    .sheet-body { overflow-y:auto; padding:16px 20px; flex:1; -webkit-overflow-scrolling:touch; }
+    .sheet-foot { border-top:1px solid var(--line); padding:16px 20px 20px; }
+
+    .row { display:flex; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
+    .row:last-child { border-bottom:0; }
+    .row img, .row .ph {
+      width:56px; height:56px; border-radius:10px; flex:none;
+      object-fit:cover; background:var(--surface-2);
+    }
+    .row .nm { font-weight:600; font-size:14px; }
+    .row .pr { color:var(--ink-2); font-size:13px; font-variant-numeric:tabular-nums; }
+    .row .rm {
+      margin-left:auto; background:none; border:0; cursor:pointer;
+      color:var(--ink-3); min-width:var(--tap); min-height:var(--tap);
+      display:grid; place-items:center; border-radius:var(--radius-sm);
+    }
+    .row .rm:hover { color:var(--bad-ink); background:var(--bad-bg); }
+
+    .total {
+      display:flex; align-items:baseline; gap:10px; margin-bottom:14px;
+      font-size:1.3rem; font-weight:800; letter-spacing:-.02em;
+    }
+    .total span:first-child { font-size:.95rem; font-weight:600; color:var(--ink-2); letter-spacing:0; }
+    .total b { margin-left:auto; font-variant-numeric:tabular-nums; }
+
+    /* ---------- form --------------------------------------------------- */
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
+    .field input {
+      width:100%; min-height:var(--tap); padding:10px 14px;
+      border:1px solid var(--line); border-radius:var(--radius-sm);
+      background:var(--surface); color:var(--ink); font:inherit; font-size:16px;
+    }
+    .field input:focus { border-color:var(--brand); }
+    .field .help { font-size:12px; color:var(--ink-3); margin-top:5px; }
+    .field .err { font-size:12.5px; color:var(--bad-ink); margin-top:5px; font-weight:600; }
+
+    .alert {
+      padding:11px 14px; border-radius:var(--radius-sm); font-size:14px;
+      background:var(--bad-bg); color:var(--bad-ink); font-weight:600; margin-bottom:12px;
+    }
+
+    /* ---------- states / footer ---------------------------------------- */
+    .empty { text-align:center; padding:clamp(2.5rem,8vw,5rem) 1rem; color:var(--ink-2); }
+    .empty svg { color:var(--ink-3); margin-bottom:14px; }
+    .empty h3 { margin:0 0 6px; font-size:1.15rem; font-weight:700; color:var(--ink); }
+
+    .skel {
+      background:linear-gradient(90deg,var(--surface-2) 25%,var(--line) 37%,var(--surface-2) 63%);
+      background-size:400% 100%; animation:sh 1.3s ease-in-out infinite;
+      border-radius:var(--radius);
+    }
+    @keyframes sh { 0%{background-position:100% 50%} 100%{background-position:0 50%} }
+
+    footer.foot {
+      border-top:1px solid var(--line); padding-block:26px;
+      color:var(--ink-3); font-size:14px;
+      display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center;
+    }
+    footer.foot a { color:var(--ink-2); }
+
+    /* Honour a system-level request for less motion: keep the interface,
+       drop the movement. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration:.01ms !important; animation-iteration-count:1 !important;
+        transition-duration:.01ms !important; scroll-behavior:auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="sr-only" href="#products">Skip to products</a>
+
+  <header class="bar">
+    <div class="wrap bar-in">
+      <div class="shopmark">
+        <div class="initials" id="mark" aria-hidden="true"></div>
+        <b id="shopname">Loading shop…</b>
+      </div>
+      <div class="bar-actions">
+        <a class="btn btn-ghost" id="wa" hidden target="_blank" rel="noopener noreferrer">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.15h-.01a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24a8.2 8.2 0 0 1 5.83 2.42 8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23Z"/></svg>
+          <span>Chat</span>
+        </a>
+        <button class="btn btn-primary cartbtn" id="cartbtn" aria-haspopup="dialog">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+          <span>Cart</span>
+          <span class="count" id="count" hidden>0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="wrap hero-in">
+      <h1 id="herotitle">&nbsp;</h1>
+      <p id="herosub">Pay by bank transfer or card. Your receipt arrives the moment payment clears.</p>
+      <div class="hero-cta">
+        <a class="btn btn-onpanel" href="#products">Browse items</a>
+        <a class="btn btn-outline-panel" id="wa2" hidden target="_blank" rel="noopener noreferrer">Message the seller</a>
+      </div>
+    </div>
+  </section>
+
+  <main class="wrap section" id="products">
+    <h2>Available now</h2>
+    <p class="sub" id="prodsub">Tap an item to add it to your cart.</p>
+    <div class="grid" id="grid" aria-busy="true">
+      <div class="skel" style="height:300px"></div>
+      <div class="skel" style="height:300px"></div>
+      <div class="skel" style="height:300px"></div>
+    </div>
+  </main>
+
+  <footer class="wrap foot">
+    <span>Powered by <strong>Rhodium</strong></span>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+  </footer>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheettitle" hidden>
+    <div class="sheet-head">
+      <h2 id="sheettitle">Your cart</h2>
+      <button class="iconbtn" id="close" aria-label="Close cart">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="cartbody"></div>
+    <div class="sheet-foot" id="cartfoot" hidden>
+      <div class="total"><span>Total</span><b id="total">₦0</b></div>
+      <div id="formerr"></div>
+      <form id="form" novalidate>
+        <div class="field">
+          <label for="bname">Your name <span style="color:var(--ink-3);font-weight:400">(optional)</span></label>
+          <input id="bname" name="bname" autocomplete="name" placeholder="Ada Okeke" />
+        </div>
+        <div class="field">
+          <label for="bphone">Phone number</label>
+          <input id="bphone" name="bphone" type="tel" inputmode="tel" autocomplete="tel"
+                 placeholder="0803 000 0000" required aria-describedby="phonehelp" />
+          <div class="help" id="phonehelp">So the seller can reach you about delivery.</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="pay" type="submit">Continue to payment</button>
+      </form>
+    </div>
+  </aside>
+
+  <script>
+  (function () {
+    "use strict";
+
+    // The handle is the last path segment of /s/:handle.
+    var handle = decodeURIComponent(
+      (location.pathname.split("/").filter(Boolean).pop() || "")
+    );
+
+    var $ = function (id) { return document.getElementById(id); };
+    var shop = null;
+    var cart = Object.create(null); // productId -> qty
+
+    var naira = function (kobo) {
+      return "₦" + (kobo / 100).toLocaleString("en-NG", {
+        minimumFractionDigits: 0, maximumFractionDigits: 2
+      });
+    };
+    var esc = function (s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    };
+
+    // ---- load -------------------------------------------------------
+    fetch("/api/shop/" + encodeURIComponent(handle))
+      .then(function (r) {
+        if (r.status === 404) throw new Error("notfound");
+        if (!r.ok) throw new Error("failed");
+        return r.json();
+      })
+      .then(function (data) { shop = data.shop; render(); })
+      .catch(function (e) { renderError(e.message); });
+
+    function render() {
+      document.title = shop.businessName + " · Rhodium";
+      $("shopname").textContent = shop.businessName;
+      $("herotitle").textContent = shop.businessName;
+
+      var mark = $("mark");
+      if (shop.logoUrl) {
+        var img = new Image();
+        img.src = shop.logoUrl; img.alt = "";
+        mark.replaceWith(img);
+      } else {
+        mark.textContent = shop.businessName.trim().slice(0, 2).toUpperCase();
+      }
+
+      if (shop.whatsapp) {
+        var href = "https://wa.me/" + shop.whatsapp;
+        [$("wa"), $("wa2")].forEach(function (a) { a.href = href; a.hidden = false; });
+      }
+
+      var grid = $("grid");
+      grid.setAttribute("aria-busy", "false");
+      var items = shop.products || [];
+
+      if (!items.length) {
+        $("prodsub").textContent = "";
+        grid.outerHTML =
+          '<div class="empty">' +
+          '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9h18M3 9l1.5 11h15L21 9M3 9l2.5-5h13L21 9"/></svg>' +
+          "<h3>Nothing listed yet</h3><p>This shop has not added any items. Check back soon.</p></div>";
+        return;
+      }
+
+      $("prodsub").textContent =
+        items.length + (items.length === 1 ? " item available." : " items available.");
+
+      grid.innerHTML = items.map(function (p) {
+        var media = p.imageUrl
+          ? '<img class="thumb" src="' + esc(p.imageUrl) + '" alt="' + esc(p.name) + '" loading="lazy" width="400" height="400" />'
+          : '<div class="thumb-ph" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
+
+        var action = p.inStock
+          ? '<button class="btn btn-primary btn-block" data-add="' + esc(p.id) + '">Add to cart</button>'
+          : '<span class="soldout">Sold out</span>';
+
+        return '<article class="card">' + media +
+          '<div class="card-body">' +
+          '<div class="card-name">' + esc(p.name) + "</div>" +
+          '<div class="card-price">' + esc(p.priceFormatted) + "</div>" +
+          '<div class="card-foot" data-foot="' + esc(p.id) + '">' + action + "</div>" +
+          "</div></article>";
+      }).join("");
+
+      grid.addEventListener("click", onGridClick);
+    }
+
+    function renderError(kind) {
+      var msg = kind === "notfound"
+        ? "We could not find that shop. Check the link and try again."
+        : "Something went wrong loading this shop. Please refresh.";
+      $("grid").outerHTML =
+        '<div class="empty">' +
+        '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>' +
+        "<h3>Shop unavailable</h3><p>" + esc(msg) + "</p></div>";
+      $("shopname").textContent = "Shop unavailable";
+      $("herotitle").textContent = "Shop unavailable";
+      $("herosub").textContent = msg;
+      $("cartbtn").hidden = true;
+    }
+
+    // ---- cart -------------------------------------------------------
+    function onGridClick(e) {
+      var add = e.target.closest("[data-add]");
+      if (add) { setQty(add.getAttribute("data-add"), 1); return; }
+      var step = e.target.closest("[data-step]");
+      if (step) {
+        var id = step.getAttribute("data-id");
+        setQty(id, (cart[id] || 0) + Number(step.getAttribute("data-step")));
+      }
+    }
+
+    function setQty(id, qty) {
+      var p = productById(id);
+      if (!p) return;
+      if (qty <= 0) delete cart[id];
+      else cart[id] = Math.min(qty, 99);
+      paintFoot(id);
+      paintCart();
+    }
+
+    function productById(id) {
+      return (shop.products || []).filter(function (p) { return p.id === id; })[0];
+    }
+
+    // Only the one card's footer is repainted, so adding an item never
+    // rebuilds the grid under the buyer's finger mid-scroll.
+    function paintFoot(id) {
+      var foot = document.querySelector('[data-foot="' + CSS.escape(id) + '"]');
+      if (!foot) return;
+      var n = cart[id] || 0;
+      foot.innerHTML = n === 0
+        ? '<button class="btn btn-primary btn-block" data-add="' + esc(id) + '">Add to cart</button>'
+        : '<div class="qty">' +
+            '<button data-step="-1" data-id="' + esc(id) + '" aria-label="Remove one">−</button>' +
+            '<output aria-live="polite">' + n + "</output>" +
+            '<button data-step="1" data-id="' + esc(id) + '" aria-label="Add one">+</button>' +
+          "</div>";
+    }
+
+    function lines() {
+      return Object.keys(cart).map(function (id) {
+        return { product: productById(id), qty: cart[id] };
+      }).filter(function (l) { return l.product; });
+    }
+    function totalKobo() {
+      return lines().reduce(function (s, l) { return s + l.product.price * l.qty; }, 0);
+    }
+
+    function paintCart() {
+      var ls = lines();
+      var n = ls.reduce(function (s, l) { return s + l.qty; }, 0);
+      var badge = $("count");
+      badge.textContent = n;
+      badge.hidden = n === 0;
+      $("cartbtn").setAttribute("aria-label", n ? "Cart, " + n + " items" : "Cart, empty");
+
+      $("cartfoot").hidden = ls.length === 0;
+      $("total").textContent = naira(totalKobo());
+
+      $("cartbody").innerHTML = ls.length
+        ? ls.map(function (l) {
+            var thumb = l.product.imageUrl
+              ? '<img src="' + esc(l.product.imageUrl) + '" alt="" loading="lazy" />'
+              : '<div class="ph" aria-hidden="true"></div>';
+            return '<div class="row">' + thumb +
+              "<div><div class='nm'>" + esc(l.product.name) + "</div>" +
+              "<div class='pr'>" + l.qty + " × " + esc(l.product.priceFormatted) + "</div></div>" +
+              '<button class="rm" data-rm="' + esc(l.product.id) + '" aria-label="Remove ' + esc(l.product.name) + '">' +
+              '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>' +
+              "</button></div>";
+          }).join("")
+        : '<div class="empty" style="padding:2.5rem 0"><h3>Your cart is empty</h3><p>Add an item to get started.</p></div>';
+    }
+
+    $("cartbody").addEventListener("click", function (e) {
+      var rm = e.target.closest("[data-rm]");
+      if (rm) setQty(rm.getAttribute("data-rm"), 0);
+    });
+
+    // ---- sheet ------------------------------------------------------
+    var lastFocus = null;
+    function openSheet() {
+      lastFocus = document.activeElement;
+      $("scrim").hidden = false; $("sheet").hidden = false;
+      requestAnimationFrame(function () {
+        $("scrim").dataset.open = "true"; $("sheet").dataset.open = "true";
+      });
+      document.body.style.overflow = "hidden";
+      $("close").focus();
+    }
+    function closeSheet() {
+      $("scrim").dataset.open = "false"; $("sheet").dataset.open = "false";
+      document.body.style.overflow = "";
+      setTimeout(function () { $("scrim").hidden = true; $("sheet").hidden = true; }, 240);
+      if (lastFocus) lastFocus.focus();
+    }
+    $("cartbtn").addEventListener("click", openSheet);
+    $("close").addEventListener("click", closeSheet);
+    $("scrim").addEventListener("click", closeSheet);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && $("sheet").dataset.open === "true") closeSheet();
+    });
+
+    // ---- submit -----------------------------------------------------
+    $("form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var phone = $("bphone").value.trim();
+      var errBox = $("formerr");
+      errBox.innerHTML = "";
+
+      if (!phone) {
+        errBox.innerHTML = '<div class="alert">Please enter a phone number so the seller can reach you.</div>';
+        $("bphone").focus();
+        return;
+      }
+
+      var btn = $("pay");
+      btn.disabled = true;
+      btn.textContent = "Creating your order…";
+
+      fetch("/api/shop/" + encodeURIComponent(handle) + "/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerName: $("bname").value.trim(),
+          buyerPhone: phone,
+          lines: lines().map(function (l) { return { productId: l.product.id, qty: l.qty }; })
+        })
+      })
+        .then(function (r) {
+          return r.json().then(function (b) {
+            if (!r.ok) throw new Error(b.error || "We could not create your order.");
+            return b;
+          });
+        })
+        .then(function (b) { location.href = b.checkoutUrl; })
+        .catch(function (err) {
+          errBox.innerHTML = '<div class="alert">' + esc(err.message) + "</div>";
+          btn.disabled = false;
+          btn.textContent = "Continue to payment";
+        });
+    });
+  })();
+  </script>
+</body>
+</html>

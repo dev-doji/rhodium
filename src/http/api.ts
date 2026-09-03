@@ -9,7 +9,7 @@ import { nairaToKobo, formatNaira } from "../lib/money.js";
 import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
-import type { RailId } from "../domain/types.js";
+import type { Merchant, Product, RailId } from "../domain/types.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
 
@@ -716,6 +716,116 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // --- Public storefront: a vendor's shop on the web ---
+  //
+  // The web front door onto the SAME order chain the WhatsApp bot uses:
+  // `createOrder` -> rail -> `order.paid` -> receipt -> ledger. It deliberately
+  // adds no pricing or payment logic of its own, because a second path to money
+  // is a second set of money bugs.
+  //
+  // Both routes are public by necessity — a buyer has no account — so the shop
+  // is addressed by its handle and the response is a deliberate allow-list.
+
+  /** Everything the storefront may show a stranger. Never spread a Merchant. */
+  const publicShop = (m: Merchant, products: Product[]) => ({
+    handle: m.slug,
+    businessName: m.businessName,
+    logoUrl: m.logoUrl,
+    // The vendor's own number if she has connected one, else no chat link at
+    // all — we never hand out her personal phone as a fallback.
+    whatsapp: m.waDisplayPhone ? m.waDisplayPhone.replace(/[^0-9]/g, "") : undefined,
+    products: products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      priceFormatted: formatNaira(p.price),
+      imageUrl: p.imageUrl,
+      // Expose availability, not the count: stock levels are commercially
+      // sensitive, and `undefined` legitimately means "untracked", not "none".
+      inStock: p.stockQty === undefined || p.stockQty > 0,
+    })),
+  });
+
+  /** Shared lookup: a shop is sellable only if it exists and isn't suspended. */
+  const sellableShop = async (handle: string): Promise<Merchant> => {
+    const merchant = await app.repos.merchants.bySlug(handle);
+    if (!merchant) throw new NotFoundError("shop", { handle });
+    if (merchant.status === "suspended") throw new NotFoundError("shop", { handle });
+    return merchant;
+  };
+
+  server.get(
+    "/api/shop/:handle",
+    asyncRoute(async (req, res) => {
+      const merchant = await sellableShop(String(req.params.handle));
+      const products = await app.repos.products.listByMerchant(merchant.id);
+      res.json({ shop: publicShop(merchant, products) });
+    }),
+  );
+
+  server.post(
+    "/api/shop/:handle/order",
+    asyncRoute(async (req, res) => {
+      const merchant = await sellableShop(String(req.params.handle));
+      const rawLines = req.body?.lines;
+      if (!Array.isArray(rawLines) || rawLines.length === 0) {
+        throw new ValidationError("cart is empty");
+      }
+      if (rawLines.length > 50) throw new ValidationError("too many items in one order");
+
+      // Normalise the cart before it reaches commerce. Note what is NOT taken
+      // from the client: price. `createOrder` looks every product up by id and
+      // prices it server-side, so a tampered cart can change quantities but
+      // never what an item costs.
+      const lines = rawLines.map((l: unknown) => {
+        const line = l as { productId?: unknown; qty?: unknown };
+        const productId = String(line?.productId ?? "");
+        const qty = Number(line?.qty ?? 0);
+        if (!productId) throw new ValidationError("each line needs a productId");
+        if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
+          throw new ValidationError("qty must be a whole number between 1 and 99");
+        }
+        return { productId, qty };
+      });
+
+      // Every product must belong to THIS shop. Without this check a crafted
+      // cart could price items from another vendor's catalogue into this
+      // vendor's order — and settle the money into the wrong bank account.
+      const owned = new Set(
+        (await app.repos.products.listByMerchant(merchant.id)).map((p) => p.id),
+      );
+      for (const line of lines) {
+        if (!owned.has(line.productId)) {
+          throw new ValidationError("that item is not sold by this shop");
+        }
+      }
+
+      const buyerName = String(req.body?.buyerName ?? "").trim().slice(0, 80);
+      const buyerPhone = String(req.body?.buyerPhone ?? "").trim().slice(0, 20);
+      if (!buyerPhone) throw new ValidationError("a phone number is required");
+
+      const order = await app.commerce.createOrder({
+        merchantId: merchant.id,
+        // The phone alone is the buyer's identity, deliberately un-prefixed:
+        // `buyers.upsert` keys on it, so someone who buys once on the web and
+        // again over WhatsApp stays ONE customer in the vendor's book rather
+        // than splitting into two.
+        buyerRef: buyerPhone,
+        buyerName: buyerName || undefined,
+        lines,
+        rail: req.body?.rail === "crypto" ? "crypto" : "fiat",
+      });
+
+      res.status(201).json({
+        orderId: order.id,
+        amount: order.amount,
+        amountFormatted: formatNaira(order.amount),
+        // Buyers belong on the pay origin, which is not always this host.
+        checkoutUrl: `${app.config.PUBLIC_BASE_URL}/checkout/${order.id}`,
+      });
+    }),
+  );
+
   // --- Auth: phone-OTP ---
   server.post(
     "/auth/otp/request",
@@ -873,6 +983,10 @@ export function buildApi(app: App): Express {
   });
   server.get("/receipt/:orderId", (_req, res) => {
     res.sendFile(resolve("public/receipt.html"));
+  });
+  // A vendor's public shop. The handle is read client-side from the path.
+  server.get("/s/:handle", (_req, res) => {
+    res.sendFile(resolve("public/storefront.html"));
   });
   server.get("/traction", (_req, res) => {
     res.sendFile(resolve("public/traction.html"));
