@@ -16,11 +16,24 @@ export interface SendOptions {
 export interface NotificationTransport {
   readonly channel: "whatsapp" | "sms" | "email";
   send(to: string, message: string, opts?: SendOptions): Promise<{ ok: boolean; ref?: string }>;
+  /**
+   * Deliver an image by public URL, with the text as its caption.
+   *
+   * Optional: SMS and email have no equivalent, and a channel without it simply
+   * falls back to sending the caption as text — a receipt must never go missing
+   * because a picture could not be attached.
+   */
+  sendImage?(
+    to: string,
+    imageUrl: string,
+    caption: string,
+    opts?: SendOptions,
+  ): Promise<{ ok: boolean; ref?: string }>;
 }
 
 /** Test/demo double — captures everything sent, never leaves the process. */
 export class CaptureTransport implements NotificationTransport {
-  readonly sent: { to: string; message: string; from?: string }[] = [];
+  readonly sent: { to: string; message: string; from?: string; imageUrl?: string }[] = [];
   constructor(readonly channel: "whatsapp" | "sms" | "email" = "whatsapp") {}
   async send(
     to: string,
@@ -29,5 +42,15 @@ export class CaptureTransport implements NotificationTransport {
   ): Promise<{ ok: boolean; ref?: string }> {
     this.sent.push({ to, message, from: opts?.phoneNumberId });
     return { ok: true, ref: `capture_${this.sent.length}` };
+  }
+
+  async sendImage(
+    to: string,
+    imageUrl: string,
+    caption: string,
+    opts?: SendOptions,
+  ): Promise<{ ok: boolean; ref?: string }> {
+    this.sent.push({ to, message: caption, from: opts?.phoneNumberId, imageUrl });
+    return { ok: true, ref: `capture_img_${this.sent.length}` };
   }
 }

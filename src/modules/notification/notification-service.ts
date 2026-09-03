@@ -31,6 +31,12 @@ export class NotificationService {
     return base ? `${base}/receipt/${orderId}` : null;
   }
 
+  /** The rendered receipt Meta will fetch and attach. */
+  private receiptImageUrl(orderId: string): string | null {
+    const base = this.urls.buyerBaseUrl;
+    return base ? `${base}/api/receipt/${orderId}/image.png` : null;
+  }
+
   async notifyMerchantPaid(input: {
     merchantId: string;
     orderId: string;
@@ -63,7 +69,13 @@ export class NotificationService {
       "",
       "Or type *ledger* to see your books here.",
     ].join("\n");
-    await this.deliver(merchant.phone, msg, "merchant_confirmation", merchant.waPhoneNumberId);
+    await this.deliver(
+      merchant.phone,
+      msg,
+      "merchant_confirmation",
+      merchant.waPhoneNumberId,
+      this.receiptImageUrl(input.orderId) ?? undefined,
+    );
   }
 
   async sendReceiptToBuyer(input: {
@@ -93,7 +105,13 @@ export class NotificationService {
     // From the vendor's own number when they have one: the buyer's 24-hour
     // messaging window was opened there, and a receipt arriving from a number
     // they never messaged reads as spam even when Meta does let it through.
-    await this.deliver(to, msg, "buyer_receipt", merchant?.waPhoneNumberId);
+    await this.deliver(
+      to,
+      msg,
+      "buyer_receipt",
+      merchant?.waPhoneNumberId,
+      this.receiptImageUrl(input.orderId) ?? undefined,
+    );
   }
 
   /**
@@ -131,15 +149,37 @@ export class NotificationService {
     }
   }
 
-  /** Try channels in priority order; first success wins. */
+  /**
+   * Try channels in priority order; first success wins.
+   *
+   * With an `imageUrl` the channel is asked for a picture carrying the text as
+   * its caption — one message, so a buyer sees the receipt without tapping
+   * anything. If the image cannot be sent the SAME text goes as a plain
+   * message: a receipt must never go missing because a picture failed to
+   * attach, and on a free tier that sleeps, Meta fetching a cold URL is a real
+   * way for that to happen.
+   */
   private async deliver(
     to: string,
     message: string,
     kind: string,
     phoneNumberId?: string,
+    imageUrl?: string,
   ): Promise<void> {
     for (const channel of this.channels) {
       try {
+        if (imageUrl && channel.sendImage) {
+          const img = await channel.sendImage(to, imageUrl, message, { phoneNumberId });
+          if (img.ok) {
+            if (channel.channel === "whatsapp") {
+              this.metrics.increment("whatsapp_conversations_total");
+            }
+            this.metrics.increment(`notification_sent_${kind}`);
+            return;
+          }
+          log.warn({ kind, imageUrl }, "image send failed, falling back to text");
+          this.metrics.increment(`notification_image_fallback_${kind}`);
+        }
         const res = await channel.send(to, message, { phoneNumberId });
         if (res.ok) {
           // WhatsApp conversation cost is a first-class metric from day one.

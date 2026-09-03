@@ -59,4 +59,46 @@ export class WhatsAppCloudTransport implements NotificationTransport {
     const body = (await res.json()) as { messages?: { id: string }[] };
     return { ok: true, ref: body.messages?.[0]?.id };
   }
+
+  /**
+   * Send an image by URL, with the text as its caption.
+   *
+   * `link` rather than an uploaded media id: the receipt already lives at a
+   * public, unguessable URL, so uploading it first would be a second round trip
+   * to store a copy of something we are already serving.
+   *
+   * Meta fetches that URL itself. On a free tier that sleeps, a cold instance
+   * can make the fetch time out — hence the caller keeps a text fallback.
+   */
+  async sendImage(
+    to: string,
+    imageUrl: string,
+    caption: string,
+    opts?: SendOptions,
+  ): Promise<{ ok: boolean; ref?: string }> {
+    const from = opts?.phoneNumberId || this.cfg.phoneNumberId;
+    if (this.cfg.mode === "mock") {
+      this.outbox.push({ to, message: caption, from });
+      return { ok: true, ref: `wa_mock_img_${this.outbox.length}` };
+    }
+    const res = await fetch(`${this.graphBase}/${from}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.cfg.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "image",
+        image: { link: imageUrl, caption },
+      }),
+    });
+    if (!res.ok) {
+      log.error({ status: res.status, from, text: await res.text() }, "whatsapp image send failed");
+      return { ok: false };
+    }
+    const body = (await res.json()) as { messages?: { id: string }[] };
+    return { ok: true, ref: body.messages?.[0]?.id };
+  }
 }
