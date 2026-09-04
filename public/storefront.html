@@ -485,18 +485,48 @@
       grid.addEventListener("click", onGridClick);
     }
 
+    /**
+     * One failure, said once.
+     *
+     * This used to print "Shop unavailable" three times — in the header, the
+     * hero and the grid — while leaving the hero's Browse/Message buttons, the
+     * "Available now — tap an item to add it to your cart" heading and the cart
+     * button all in place, inviting the buyer to shop a shop that isn't there.
+     * A dead end should look like a dead end.
+     */
     function renderError(kind) {
       var msg = kind === "notfound"
-        ? "We could not find that shop. Check the link and try again."
-        : "Something went wrong loading this shop. Please refresh.";
-      $("grid").outerHTML =
-        '<div class="empty">' +
-        '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>' +
-        "<h3>Shop unavailable</h3><p>" + esc(msg) + "</p></div>";
-      $("shopname").textContent = "Shop unavailable";
+        ? "We could not find that shop. The link may be wrong or the shop may have closed."
+        : "Something went wrong loading this shop. Please refresh and try again.";
+
+      document.title = "Shop unavailable · Rhodium";
+      // The header falls back to plain Rhodium branding rather than repeating
+      // the error: the hero below says it once, properly.
+      $("shopname").textContent = "Rhodium";
+      var mark = $("mark");
+      if (mark) mark.textContent = "R";
+
+      // Strip every control that implies there is something to buy.
+      $("cartbtn").hidden = true;
+      var chat = $("wa");
+      if (chat) chat.hidden = true;
+
+      // Collapse the hero to the message itself.
       $("herotitle").textContent = "Shop unavailable";
       $("herosub").textContent = msg;
-      $("cartbtn").hidden = true;
+      var cta = document.querySelector(".hero-cta");
+      if (cta) cta.remove();
+
+      // And replace the whole products section, headings included, rather than
+      // repeating the message underneath an invitation to browse.
+      var main = document.getElementById("products");
+      if (main) {
+        main.innerHTML =
+          '<div class="empty">' +
+          '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>' +
+          "<h3>Nothing to show here</h3>" +
+          "<p>Ask the seller for an up-to-date link.</p></div>";
+      }
     }
 
     // ---- cart -------------------------------------------------------
