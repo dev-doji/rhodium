@@ -101,3 +101,85 @@ describe("creating the payout account", () => {
     ).rejects.toThrow(/bank details/i);
   });
 });
+
+/**
+ * Routing, not just custody.
+ *
+ * Paystack reuses ONE dedicated account per customer, and an account carries a
+ * single subaccount. So the identity a dedicated account is keyed on decides
+ * whose bank the money reaches — get it wrong and a buyer's second shop is paid
+ * into her first shop's account.
+ */
+describe("a dedicated account settles to the right shop", () => {
+  /** Records every Paystack call and answers them plausibly. */
+  function fakePaystack() {
+    const calls: { path: string; body: Record<string, unknown> }[] = [];
+    const rail = new PaystackFiatRail({
+      mode: "live",
+      secretKey: "sk_test",
+      baseUrl: "https://paystack.test",
+      dvaBank: "wema-bank",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rail as any).api = async (path: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>;
+      calls.push({ path, body });
+      if (path === "/customer") return { data: { customer_code: "CUS_" + String(body.email) } };
+      if (path === "/dedicated_account") {
+        return { data: { account_number: "9900112233", account_name: "RHODIUM", bank: { name: "Wema" } } };
+      }
+      return { data: {} };
+    };
+    return { rail, calls };
+  }
+
+  const withSub = (over: Partial<Merchant> = {}) =>
+    merchant({ processorSubaccountCode: "ACCT_circuit", ...over });
+
+  it("keys the buyer's account per shop, so two shops never share one account", async () => {
+    const { rail, calls } = fakePaystack();
+
+    await rail.createPaymentInstruction(order, withSub({ id: "mch_circuit" }));
+    await rail.createPaymentInstruction(
+      { ...order, merchantId: "mch_diadem" },
+      withSub({ id: "mch_diadem", processorSubaccountCode: "ACCT_diadem" }),
+    );
+
+    const emails = calls
+      .filter((c) => c.path === "/customer")
+      .map((c) => String(c.body.email));
+    expect(emails).toHaveLength(2);
+    // Same buyer, different shops => different Paystack customers.
+    expect(emails[0]).not.toBe(emails[1]);
+    expect(emails[0]).toContain("mchcircuit");
+    expect(emails[1]).toContain("mchdiadem");
+  });
+
+  it("binds the account to the shop's subaccount, at creation and explicitly", async () => {
+    const { rail, calls } = fakePaystack();
+    await rail.createPaymentInstruction(order, withSub());
+
+    const created = calls.find((c) => c.path === "/dedicated_account");
+    expect(created?.body.subaccount).toBe("ACCT_circuit");
+
+    // And re-bound afterwards, which is what repairs an account Paystack
+    // returned that already existed with someone else's subaccount on it.
+    const split = calls.find((c) => c.path === "/dedicated_account/split");
+    expect(split?.body.subaccount).toBe("ACCT_circuit");
+  });
+
+  it("refuses the payment if the split cannot be bound", async () => {
+    const { rail } = fakePaystack();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const original = (rail as any).api;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rail as any).api = async (path: string, init: RequestInit) => {
+      if (path === "/dedicated_account/split") throw new Error("paystack api 400");
+      return original(path, init);
+    };
+    // Better no payment than one that settles to the wrong shop.
+    await expect(rail.createPaymentInstruction(order, withSub())).rejects.toThrow(
+      /could not route this payment/i,
+    );
+  });
+});

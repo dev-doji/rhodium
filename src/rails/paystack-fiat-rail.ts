@@ -105,13 +105,20 @@ export class PaystackFiatRail implements PaymentRail {
     }
 
     // Paystack needs a customer before it will issue a dedicated account, so
-    // this is two calls. The buyer's phone is the customer identity; the email
-    // is synthesised because WhatsApp buyers do not give one and Paystack
-    // requires the field.
+    // this is two calls. The email is synthesised because WhatsApp buyers do
+    // not give one and Paystack requires the field.
+    //
+    // The identity is the buyer AND the merchant, not the buyer alone. Paystack
+    // reuses one dedicated account per customer, and a dedicated account
+    // carries a single subaccount — so a buyer keyed on phone only would get
+    // one account, permanently pointed at whichever shop she bought from
+    // first, and her second shop's money would settle to the first shop.
+    // Keying per pair gives each shop its own account, bound to its own
+    // subaccount, and removes the race entirely.
     const customer = await this.api<{ data?: { customer_code?: string } }>("/customer", {
       method: "POST",
       body: JSON.stringify({
-        email: `${digits(order.buyerRef)}@buyers.userhodium.xyz`,
+        email: `${digits(order.buyerRef)}.${merchantTag(merchant.id)}@buyers.userhodium.xyz`,
         phone: order.buyerRef,
         first_name: "Rhodium",
         last_name: "Buyer",
@@ -137,6 +144,35 @@ export class PaystackFiatRail implements PaymentRail {
     if (!accountNumber) {
       throw new AppError("paystack: no account_number on dedicated account", "provider_error", 502);
     }
+
+    // Bind the split explicitly, even though it was passed at creation.
+    // Creation only applies it to a NEW account; where Paystack returned an
+    // account this customer already had, the old binding would otherwise
+    // survive and route the money to the previous shop. This endpoint updates
+    // the subaccount on an existing account, so it repairs that case and is a
+    // no-op when the account was just created correctly.
+    try {
+      await this.api("/dedicated_account/split", {
+        method: "POST",
+        body: JSON.stringify({
+          customer: customerCode,
+          subaccount: merchant.processorSubaccountCode,
+        }),
+      });
+    } catch (err) {
+      // Failing here would leave an account settling to the wrong place, which
+      // is worse than no payment at all: refuse rather than take the money.
+      log.error(
+        { err: (err as Error).message, merchantId: merchant.id, accountNumber },
+        "could not bind dedicated account to merchant subaccount",
+      );
+      throw new AppError(
+        "could not route this payment to the seller",
+        "provider_error",
+        502,
+      );
+    }
+
     return {
       railId: this.id,
       instructionType: "dva",
@@ -301,6 +337,15 @@ export class PaystackFiatRail implements PaymentRail {
     }
     return (await res.json()) as T;
   }
+}
+
+/**
+ * A short, stable, email-safe tag for a merchant, so a synthesised buyer email
+ * is unique per shop. Not a secret: it only ever appears in an address on our
+ * own domain that nobody receives mail at.
+ */
+function merchantTag(merchantId: string): string {
+  return merchantId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toLowerCase() || "shop";
 }
 
 /** Digits only — a synthesised customer email must not carry a `+`. */
