@@ -852,10 +852,16 @@ export function buildApi(app: App): Express {
     guard,
     asyncRoute(async (req: AuthedRequest, res) => {
       const merchant = await app.repos.merchants.byId(req.merchantId!);
-      // `waNumber` rides along so the dashboard never bakes the bot's digits
-      // into its bundle: the number has changed once already, and a rebuilt
-      // SPA is a far worse place to discover that than one env var.
-      res.json({ merchant, waNumber: app.config.WHATSAPP_WA_NUMBER });
+      // `waNumber` and `shopUrl` ride along so the dashboard never bakes the
+      // bot's digits or the public origin into its bundle: the number has
+      // changed once already, and a rebuilt SPA is a far worse place to
+      // discover that than one env var.
+      const handle = merchant?.slug ?? merchant?.id;
+      res.json({
+        merchant,
+        waNumber: app.config.WHATSAPP_WA_NUMBER,
+        shopUrl: handle ? `${app.config.PUBLIC_BASE_URL}/s/${handle}` : undefined,
+      });
     }),
   );
 

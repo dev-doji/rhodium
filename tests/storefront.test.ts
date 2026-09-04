@@ -17,6 +17,7 @@ import { buildApi } from "../src/http/api.js";
 let server: Server;
 let base: string;
 let app: ReturnType<typeof buildApp>;
+let otpChannel: CaptureTransport;
 let laptopId: string;
 let soldOutId: string;
 let rivalProductId: string;
@@ -26,7 +27,8 @@ beforeAll(async () => {
   process.env.NODE_ENV = "test";
   process.env.FIAT_ADAPTER_MODE = "mock";
   process.env.WHATSAPP_MODE = "mock";
-  app = buildApp({ config: loadConfig(), notificationChannels: [new CaptureTransport("whatsapp")] });
+  otpChannel = new CaptureTransport("whatsapp");
+  app = buildApp({ config: loadConfig(), notificationChannels: [otpChannel] });
 
   await app.repos.merchants.create({
     id: "mch_shop",
@@ -267,5 +269,46 @@ describe("ordering from the storefront", () => {
       lines: [{ productId: laptopId, qty: 1 }],
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("finding the shop in the first place", () => {
+  it("hands the vendor her web shop link when she asks the bot for it", async () => {
+    const reply = await app.whatsapp.handleInbound({
+      from: "+2348030002222",
+      text: "link",
+    });
+    // The storefront exists, but until this reply carried it there was no way
+    // for a vendor to discover her own URL — which made the whole page
+    // unreachable in practice.
+    expect(reply).toContain("/s/circuitcity");
+  });
+
+  it("puts the shop link on /api/me so the dashboard can show it", async () => {
+    // Sign in the way the dashboard does. `issueToken` is private, so the OTP
+    // is read off the transport rather than reaching past the public API — a
+    // test that shortcuts the real login proves nothing about the real login.
+    await fetch(`${base}/auth/otp/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: "+2348030002222" }),
+    });
+    const sent = otpChannel.sent.map((m) => m.message).join(" ");
+    const code = /\b(\d{6})\b/.exec(sent)?.[1];
+    expect(code, "no OTP reached the transport").toBeTruthy();
+
+    const auth = await fetch(`${base}/auth/otp/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: "+2348030002222", code }),
+    });
+    const { token } = (await auth.json()) as { token: string };
+    expect(token, "login did not return a token").toBeTruthy();
+
+    const res = await fetch(`${base}/api/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = (await res.json()) as { shopUrl?: string };
+    expect(body.shopUrl).toContain("/s/circuitcity");
   });
 });

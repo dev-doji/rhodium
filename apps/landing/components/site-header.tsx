@@ -46,13 +46,22 @@ export function SiteHeader() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2 lg:ml-2">
+            {/* Returning vendors need a way back in that is not "message the
+                bot again". Text link, not a second button: only one control
+                up here should read as the primary action. */}
+            <a
+              href={site.dashboardUrl}
+              className="hidden px-3.5 py-2 text-sm font-medium text-brand-950/70 transition-colors hover:text-brand-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 sm:inline-flex"
+            >
+              Sign in
+            </a>
             <Button
-              href={site.whatsappUrl}
+              href={site.registerUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden px-5 py-2.5 sm:inline-flex"
             >
-              Start free
+              Create your shop
             </Button>
 
             <button
@@ -88,13 +97,19 @@ export function SiteHeader() {
               ))}
             </nav>
             <Button
-              href={site.whatsappUrl}
+              href={site.registerUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-3 w-full"
             >
-              Start free
+              Create your shop
             </Button>
+            <a
+              href={site.dashboardUrl}
+              className="mt-2 block rounded-none px-3 py-3 text-center text-[15px] font-medium text-brand-950/70 transition-colors hover:bg-brand-50"
+            >
+              Sign in
+            </a>
           </div>
         )}
       </div>

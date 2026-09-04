@@ -35,7 +35,7 @@ export function Cta() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button
-              href={site.whatsappUrl}
+              href={site.registerUrl}
               target="_blank"
               rel="noopener noreferrer"
               variant="light"

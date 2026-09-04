@@ -33,13 +33,13 @@ export function Hero() {
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button
-              href={site.whatsappUrl}
+              href={site.registerUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full sm:w-auto"
             >
               <WhatsAppIcon />
-              Open on WhatsApp
+              Create your shop — free
             </Button>
             <Button href="#how" variant="light" className="w-full sm:w-auto">
               See how it works

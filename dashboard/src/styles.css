@@ -79,6 +79,48 @@ a { color: inherit; }
 }
 
 /* ------------------------------------------------------------ greeting bar */
+/* --- Shop link banner ------------------------------------------------
+   Sits directly under the nav, above the greeting, because sharing the shop
+   is the single most valuable thing a new vendor can do and it should not be
+   something she has to go looking for. Brand-tinted rather than white so it
+   reads as a prompt rather than another data row. */
+.shoplink {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 14px 32px;
+  background: var(--brand-tint);
+  border-bottom: 1px solid var(--brand-tint-2);
+}
+.shoplink-text { min-width: 0; flex: 1 1 240px; }
+.shoplink-label {
+  font-size: 12px; font-weight: 600; color: var(--brand-dark);
+  letter-spacing: 0.01em;
+}
+.shoplink-url {
+  display: block; margin-top: 2px;
+  font-size: 14px; font-weight: 700; color: var(--ink);
+  text-decoration: none; word-break: break-all;
+}
+.shoplink-url:hover { text-decoration: underline; }
+.btn-copy, .btn-open {
+  display: inline-flex; align-items: center; gap: 6px;
+  /* 44px keeps these reliably tappable on the phone a vendor actually runs
+     her shop from. */
+  min-height: 40px; padding: 0 16px;
+  border: 1px solid var(--brand); border-radius: 0;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  text-decoration: none; white-space: nowrap;
+  transition: background-color .15s ease, color .15s ease;
+}
+.btn-copy { background: var(--brand); color: #fff; }
+.btn-copy:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+.btn-open { background: transparent; color: var(--brand-dark); }
+.btn-open:hover { background: var(--brand-tint-2); }
+
+@media (max-width: 640px) {
+  .shoplink { padding: 12px 18px; }
+  .btn-copy, .btn-open { flex: 1 1 auto; justify-content: center; }
+}
+
 .greet {
   display: flex; align-items: center; gap: 14px;
   padding: 10px 32px 22px;

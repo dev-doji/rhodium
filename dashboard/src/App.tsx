@@ -88,6 +88,8 @@ type Tab = "orders" | "products" | "ledger";
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [biz, setBiz] = useState("");
   const [waNumber, setWaNumber] = useState("");
+  const [shopUrl, setShopUrl] = useState("");
+  const [copied, setCopied] = useState(false);
   const [phone, setPhone] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -106,6 +108,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       ]);
       setBiz(me.merchant.businessName); setPhone(me.merchant.phone);
       setWaNumber(me.waNumber ?? "");
+      setShopUrl(me.shopUrl ?? "");
       setProducts(p.products); setOrders(o.orders); setLedger(l); setSummary(s); setErr("");
     } catch (e) { setErr((e as Error).message); } finally { setLoading(false); }
   };
@@ -137,6 +140,43 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <button className="navlink" onClick={onLogout}>Sign out</button>
         </div>
       </nav>
+
+      {/* The shop link, given its own card directly under the nav.
+          A storefront nobody can find is the same as no storefront, and until
+          this existed the only way a vendor could get her URL was to ask the
+          bot for it in a chat she may have scrolled past days ago. */}
+      {shopUrl && (
+        <div className="shoplink">
+          <div className="shoplink-text">
+            <div className="shoplink-label">Your shop link — share it with buyers</div>
+            <a href={shopUrl} target="_blank" rel="noopener" className="shoplink-url">
+              {shopUrl.replace(/^https?:\/\//, "")}
+            </a>
+          </div>
+          <button
+            className="btn-copy"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(shopUrl);
+              } catch {
+                // Clipboard is blocked on insecure origins and in some
+                // browsers. Selecting the text is a worse experience than
+                // copying, but far better than a button that silently does
+                // nothing.
+                window.prompt("Copy your shop link:", shopUrl);
+                return;
+              }
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+          >
+            {copied ? "Copied" : "Copy link"}
+          </button>
+          <a className="btn-open" href={shopUrl} target="_blank" rel="noopener">
+            Open <ExternalLink size={13} />
+          </a>
+        </div>
+      )}
 
       <div className="greet">
         <div className="avatar">{initials(biz)}</div>

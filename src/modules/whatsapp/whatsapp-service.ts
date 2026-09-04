@@ -548,29 +548,64 @@ export class WhatsAppService {
    * any message to it opens their catalogue, so it needs no `?text=shop-<id>`
    * payload — and a buyer who saves the contact still lands in the right shop.
    */
+  /**
+   * The links a vendor shares to get buyers.
+   *
+   * The web storefront leads. It is the only link that shows a browsable
+   * catalogue with pictures and prices before the buyer has to talk to
+   * anybody, and unlike the WhatsApp routes it needs no Meta review to work
+   * for a vendor on her own number. The chat link follows it, because plenty
+   * of buyers would still rather ask a question than tap Add to cart.
+   */
   private shopLink(merchant: Merchant): string {
+    const handle = merchant.slug ?? merchant.id;
+    const lines: string[] = ["Your shop links — share either with buyers:"];
+
+    if (this.opts.publicBaseUrl) {
+      lines.push(
+        "",
+        "🛒 *Your shop page* — pictures, prices, pay by card or transfer:",
+        `${this.opts.publicBaseUrl}/s/${handle}`,
+      );
+    }
+
+    let hasChatLink = false;
     const own = digits(merchant.waDisplayPhone);
     if (merchant.waPhoneNumberId && own) {
-      return [
-        "Your shop link — share it with buyers:",
+      hasChatLink = true;
+      lines.push(
+        "",
+        "💬 *Chat with you directly:*",
         `https://wa.me/${own}`,
         "",
-        "It opens a chat with your own number. Whatever they say, they'll see your products and can pay in a couple of taps.",
-      ].join("\n");
-    }
-    if (this.opts.waNumber) {
+        "The chat link opens a conversation on your own number. Either way they see your products and can pay in a couple of taps.",
+      );
+    } else if (this.opts.waNumber) {
+      hasChatLink = true;
       // Prefer the handle: buyers read these aloud and retype them, and
       // "shop-mch_e562196b4b76ad5b" is unusable the moment it leaves a tap.
-      const handle = merchant.slug ?? merchant.id;
-      return [
-        "Your shop link — share it with buyers:",
+      lines.push(
+        "",
+        "💬 *Chat to order:*",
         `https://wa.me/${this.opts.waNumber}?text=shop-${handle}`,
         "",
-        "When a buyer opens it, they'll see your products and can pay in a couple of taps.",
-      ].join("\n");
+        "Either link shows buyers your products so they can pay in a couple of taps.",
+      );
     }
-    return `Your shop id: *shop-${merchant.slug ?? merchant.id}*\nBuyers message this number with that to see your catalogue.`;
+
+    // No chat route available (no connected number, no platform number). The
+    // handle still has to reach her: it is what a buyer types to this number to
+    // open her catalogue, and it is the one part of every link above that she
+    // may need to read down a phone line.
+    if (lines.length === 1) {
+      return `Your shop id: *shop-${handle}*\nBuyers message this number with that to see your catalogue.`;
+    }
+    if (!hasChatLink) {
+      lines.push("", `Your shop id is *shop-${handle}*.`);
+    }
+    return lines.join("\n");
   }
+
 
   private async listProducts(merchantId: string): Promise<string> {
     const products = await this.commerce.listProducts(merchantId);

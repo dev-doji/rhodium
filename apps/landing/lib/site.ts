@@ -26,6 +26,15 @@ if (!WHATSAPP_NUMBER) {
 
 const WHATSAPP_GREETING = "Hi Rhodium — I want to start selling on WhatsApp.";
 
+/**
+ * Where returning vendors sign in. The dashboard is served by the API on the
+ * merchant origin, not by this static site, so it cannot be a relative link.
+ * Falls back to the marketing origin's /dashboard, which is right for a
+ * single-domain deployment.
+ */
+const DASHBOARD_URL =
+  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "https://app.userhodium.xyz";
+
 export const site = {
   name: "Rhodium",
   tagline: "Sell on WhatsApp. Get paid without the screenshot.",
@@ -34,6 +43,11 @@ export const site = {
   whatsappUrl: `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
     WHATSAPP_GREETING,
   )}`,
+  /** Vendors register by messaging the bot — there is no separate signup form. */
+  registerUrl: `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+    "Hi Rhodium — I want to register my shop.",
+  )}`,
+  dashboardUrl: DASHBOARD_URL,
   email: "hello@userhodium.xyz", // [PLACEHOLDER]
   /** Where data-protection and legal requests go — cited in the policies. */
   legalEmail: "admin@foniolabs.xyz",
@@ -132,7 +146,7 @@ export const proofStats = [
 export const closingCta = {
   title: "Start selling on WhatsApp today.",
   body: "Message the bot and you can take your first confirmed payment in the next few minutes. No app to install, no store to build.",
-  cta: "Open on WhatsApp",
+  cta: "Create your shop — free",
 } as const;
 
 export const features = [
@@ -210,7 +224,7 @@ export const plans = [
     blurb: "Everything you need to take your first WhatsApp payment.",
     price: "₦0",
     period: "/ month",
-    cta: "Open on WhatsApp",
+    cta: "Create your shop — free",
     featured: false,
     features: [
       "Up to 50 confirmed orders a month",
@@ -224,7 +238,7 @@ export const plans = [
     blurb: "For sellers running both rails and watching the numbers.",
     price: "₦9,500",
     period: "/ month",
-    cta: "Open on WhatsApp",
+    cta: "Create your shop — free",
     featured: true,
     features: [
       "Unlimited confirmed orders",
