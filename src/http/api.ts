@@ -10,6 +10,7 @@ import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
 import type { Merchant, Product, RailId } from "../domain/types.js";
+import { demoImageByName } from "../domain/demo-catalogue.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
 
@@ -562,6 +563,59 @@ export function buildApi(app: App): Express {
   // the order, ledger.recordSale for the entry — so balances, the weekly summary
   // and CSV export all reconcile exactly as they would for genuine traffic.
   // Body: { merchantId, count?, days? }. Undo with /admin/cleanup.
+  /**
+   * Backfill photographs onto demo products created before the catalogue
+   * carried them.
+   *
+   * Deliberately conservative: it only ever fills a BLANK imageUrl, so it can
+   * be run repeatedly and can never overwrite a photograph a real vendor
+   * uploaded. Matching is by product name against the shared demo catalogue,
+   * so a merchant's own products are left alone entirely.
+   */
+  server.post(
+    "/admin/backfill-product-images",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const { merchantId, dryRun = false } = req.body ?? {};
+
+      const merchants = merchantId
+        ? [await app.repos.merchants.byId(String(merchantId))]
+        : await app.repos.merchants.list();
+      if (merchantId && !merchants[0]) {
+        throw new NotFoundError("merchant", { id: merchantId });
+      }
+
+      const patched: { id: string; name: string; imageUrl: string }[] = [];
+      let alreadyHad = 0;
+      let unmatched = 0;
+
+      for (const merchant of merchants) {
+        if (!merchant) continue;
+        for (const product of await app.repos.products.listByMerchant(merchant.id)) {
+          const url = demoImageByName.get(product.name.trim().toLowerCase());
+          if (!url) {
+            unmatched += 1;
+            continue;
+          }
+          if (product.imageUrl) {
+            alreadyHad += 1;
+            continue;
+          }
+          if (!dryRun) await app.repos.products.update(product.id, { imageUrl: url });
+          patched.push({ id: product.id, name: product.name, imageUrl: url });
+        }
+      }
+
+      res.json({
+        dryRun: Boolean(dryRun),
+        patched: patched.length,
+        alreadyHadImage: alreadyHad,
+        notInDemoCatalogue: unmatched,
+        products: patched,
+      });
+    }),
+  );
+
   server.post(
     "/admin/seed-demo",
     asyncRoute(async (req, res) => {

@@ -337,3 +337,75 @@ describe("finding the shop in the first place", () => {
     expect(body.shopUrl).toContain("/s/circuitcity");
   });
 });
+
+describe("backfilling demo product images", () => {
+  // Read lazily from the built app: a module-scope process.env read runs at
+  // collection time, before beforeAll has loaded the environment, and would
+  // silently send an empty secret.
+  const backfill = (body: unknown) =>
+    fetch(`${base}/admin/backfill-product-images`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${app.config.APP_SECRET}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+  it("refuses without the admin secret", async () => {
+    const res = await fetch(`${base}/admin/backfill-product-images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("fills a blank image and never overwrites an existing one", async () => {
+    const merchant = await app.repos.merchants.create({
+      id: "mch_backfill",
+      phone: "+2348030007777",
+      businessName: "Backfill Shop",
+      status: "active",
+      kycState: "verified",
+      cryptoEnabled: false,
+      slug: "backfillshop",
+    });
+    // One demo product with no image, one already photographed, one that is
+    // not in the demo catalogue at all.
+    const blank = await app.commerce.createProduct({
+      merchantId: merchant.id, name: "Smart Watch", price: 55_000_00,
+    });
+    const owned = await app.commerce.createProduct({
+      merchantId: merchant.id, name: "Wireless Mouse", price: 12_000_00,
+      imageUrl: "/media/the-vendors-own-photo.jpg",
+    });
+    const foreign = await app.commerce.createProduct({
+      merchantId: merchant.id, name: "Handmade Soap", price: 2_000_00,
+    });
+
+    const dry = await backfill({ merchantId: merchant.id, dryRun: true });
+    expect(((await dry.json()) as { patched: number }).patched).toBe(1);
+    // A dry run must not have written anything.
+    expect((await app.repos.products.byId(blank.id))?.imageUrl).toBeUndefined();
+
+    const res = await backfill({ merchantId: merchant.id });
+    const body = (await res.json()) as {
+      patched: number; alreadyHadImage: number; notInDemoCatalogue: number;
+    };
+    expect(body.patched).toBe(1);
+    expect(body.alreadyHadImage).toBe(1);
+    expect(body.notInDemoCatalogue).toBe(1);
+
+    expect((await app.repos.products.byId(blank.id))?.imageUrl).toBe("/img/products/smart-watch.jpg");
+    // The vendor's own photograph survives untouched — this is the guarantee
+    // that makes the endpoint safe to run against production.
+    expect((await app.repos.products.byId(owned.id))?.imageUrl).toBe("/media/the-vendors-own-photo.jpg");
+    expect((await app.repos.products.byId(foreign.id))?.imageUrl).toBeUndefined();
+  });
+
+  it("is idempotent", async () => {
+    const again = await backfill({ merchantId: "mch_backfill" });
+    expect(((await again.json()) as { patched: number }).patched).toBe(0);
+  });
+});
