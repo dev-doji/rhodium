@@ -746,9 +746,19 @@ export function buildApi(app: App): Express {
     })),
   });
 
-  /** Shared lookup: a shop is sellable only if it exists and isn't suspended. */
+  /**
+   * Shared lookup: a shop is sellable only if it exists and isn't suspended.
+   *
+   * Resolves by slug first, then by raw merchant id. Both forms have to work
+   * because both get handed out: `shopLink` and `/api/me` build their URLs
+   * from `slug ?? id`, and a merchant created outside the onboarding flow
+   * (seed scripts, an admin insert) has no slug at all — so a slug-only
+   * lookup 404s the exact link we just told the vendor to share.
+   */
   const sellableShop = async (handle: string): Promise<Merchant> => {
-    const merchant = await app.repos.merchants.bySlug(handle);
+    const merchant =
+      (await app.repos.merchants.bySlug(handle)) ??
+      (await app.repos.merchants.byId(handle));
     if (!merchant) throw new NotFoundError("shop", { handle });
     if (merchant.status === "suspended") throw new NotFoundError("shop", { handle });
     return merchant;

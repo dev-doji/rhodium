@@ -78,6 +78,20 @@ beforeAll(async () => {
   rivalProductId = rival.id;
 
   await app.repos.merchants.create({
+    id: "mch_noslug",
+    phone: "+2348030005555",
+    businessName: "No Slug Shop",
+    status: "active",
+    kycState: "verified",
+    cryptoEnabled: false,
+  });
+  await app.commerce.createProduct({
+    merchantId: "mch_noslug",
+    name: "Unslugged Widget",
+    price: 1_000_00,
+  });
+
+  await app.repos.merchants.create({
     id: "mch_shut",
     phone: "+2348030004444",
     businessName: "Closed Down",
@@ -167,6 +181,17 @@ describe("public shop catalogue", () => {
     expect(laptop.inStock).toBe(true);
     expect(gone.inStock).toBe(false);
     expect(laptop.stockQty).toBeUndefined();
+  });
+
+  it("resolves a shop by raw merchant id when it has no slug yet", async () => {
+    // `shopLink` and `/api/me` both build their URL from `slug ?? id`, and a
+    // merchant created outside onboarding (seed script, admin insert) has no
+    // slug. A slug-only lookup 404s the exact link the vendor was just told to
+    // share, which is how this shipped broken the first time.
+    const res = await getShop("mch_noslug");
+    expect(res.status).toBe(200);
+    const { shop } = (await res.json()) as ShopBody;
+    expect(shop.businessName).toBe("No Slug Shop");
   });
 
   it("404s an unknown handle and a suspended shop alike", async () => {
