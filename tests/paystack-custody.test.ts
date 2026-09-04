@@ -61,11 +61,17 @@ describe("no custody on the Paystack rail", () => {
   it("fails before making any network call", async () => {
     // The base URL is a dead port. If the guard did not fire first this would
     // surface as a connection error instead.
-    const err = await live
+    // `.catch(e => e)` widens the type to the union of the resolved value and
+    // the error, so narrow explicitly rather than reaching for `.message` on
+    // something TypeScript still believes might be a PaymentInstruction.
+    const outcome: unknown = await live
       .createPaymentInstruction(order, merchant())
-      .catch((e: Error) => e);
-    expect(err.message).toMatch(/not set up to receive payments/i);
-    expect(err.message).not.toMatch(/fetch|ECONNREFUSED|connect/i);
+      .then(() => null, (e: unknown) => e);
+
+    expect(outcome).toBeInstanceOf(Error);
+    const message = (outcome as Error).message;
+    expect(message).toMatch(/not set up to receive payments/i);
+    expect(message).not.toMatch(/fetch|ECONNREFUSED|connect/i);
   });
 
   it("names the merchant's own bank as the settlement target", () => {
