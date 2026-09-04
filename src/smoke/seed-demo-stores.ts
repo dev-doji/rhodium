@@ -29,7 +29,7 @@ import { ref } from "../lib/ids.js";
 interface StoreSpec {
   phone: string;
   businessName: string;
-  items: [string, number][]; // [name, naira]
+  items: [string, number, string][]; // [name, naira, image slug]
 }
 
 const CIRCUIT_CITY: Omit<StoreSpec, "phone"> = {
@@ -37,32 +37,32 @@ const CIRCUIT_CITY: Omit<StoreSpec, "phone"> = {
   // Deliberately spans ₦6,500 → ₦95,000. The cheap end matters: a buyer paying
   // in testnet QUAI needs an item they can actually afford from a faucet.
   items: [
-    ["HDMI Cable 2m", 6_500],
-    ["Wireless Mouse", 12_000],
-    ["Phone Tripod + Ring Light", 15_000],
-    ["Laptop Sleeve 15\"", 16_000],
-    ["65W GaN Fast Charger", 18_000],
-    ["Wireless Charging Pad", 20_000],
-    ["Laptop Stand (Aluminium)", 22_000],
-    ["USB-C Hub 6-in-1", 28_000],
-    ["Webcam 1080p", 32_000],
-    ["Power Bank 20,000mAh", 35_000],
-    ["Bluetooth Speaker", 40_000],
-    ["Mechanical Keyboard", 45_000],
-    ["Smart Watch", 55_000],
-    ["Noise-Cancelling Earbuds", 65_000],
-    ["External SSD 1TB", 95_000],
+    ["HDMI Cable 2m", 6_500, "hdmi-cable"],
+    ["Wireless Mouse", 12_000, "wireless-mouse"],
+    ["Phone Tripod + Ring Light", 15_000, "phone-tripod"],
+    ["Laptop Sleeve 15\"", 16_000, "laptop-sleeve"],
+    ["65W GaN Fast Charger", 18_000, "gan-charger"],
+    ["Wireless Charging Pad", 20_000, "wireless-charging-pad"],
+    ["Laptop Stand (Aluminium)", 22_000, "laptop-stand"],
+    ["USB-C Hub 6-in-1", 28_000, "usb-c-hub"],
+    ["Webcam 1080p", 32_000, "webcam"],
+    ["Power Bank 20,000mAh", 35_000, "power-bank"],
+    ["Bluetooth Speaker", 40_000, "bluetooth-speaker"],
+    ["Mechanical Keyboard", 45_000, "mechanical-keyboard"],
+    ["Smart Watch", 55_000, "smart-watch"],
+    ["Noise-Cancelling Earbuds", 65_000, "earbuds"],
+    ["External SSD 1TB", 95_000, "external-ssd"],
   ],
 };
 
 const DIADEM: Omit<StoreSpec, "phone"> = {
   businessName: "Diadem Store",
   items: [
-    ["Gold-Plated Hoop Earrings", 8_500],
-    ["Pearl Drop Necklace", 15_000],
-    ["Stainless Steel Bangle Set", 12_000],
-    ["Silver Anklet", 6_500],
-    ["Beaded Waist Chain", 4_000],
+    ["Gold-Plated Hoop Earrings", 8_500, "hoop-earrings"],
+    ["Pearl Drop Necklace", 15_000, "pearl-necklace"],
+    ["Stainless Steel Bangle Set", 12_000, "bangle-set"],
+    ["Silver Anklet", 6_500, "silver-anklet"],
+    ["Beaded Waist Chain", 4_000, "waist-chain"],
   ],
 };
 
@@ -114,11 +114,14 @@ async function seedStore(
   if (existing.length > 0) {
     console.log(`    ${existing.length} product(s) already — leaving catalogue alone`);
   } else {
-    for (const [name, naira] of spec.items) {
+    for (const [name, naira, image] of spec.items) {
       await commerce.createProduct({
         merchantId: merchant.id,
         name,
         price: naira * 100,
+        // Served by express.static from public/. Committed rather than fetched
+        // at seed time so the demo works offline and needs no image host.
+        imageUrl: `/img/products/${image}.jpg`,
       });
       console.log(`    • ${name} — ${formatNaira(naira * 100)}`);
     }

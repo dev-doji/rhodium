@@ -15,6 +15,13 @@ export interface CreateProductInput {
   name: string;
   price: Kobo;
   image?: { bytes: Buffer; contentType: string };
+  /**
+   * A ready-made image path, for products whose picture is already hosted —
+   * the seeded demo catalogue points at files committed under `public/`.
+   * Ignored when `image` bytes are supplied, since an actual upload is the
+   * more specific intent.
+   */
+  imageUrl?: string;
   stockQty?: number;
 }
 
@@ -51,7 +58,7 @@ export class CommerceService {
     const merchant = await this.repos.merchants.byId(input.merchantId);
     if (!merchant) throw new NotFoundError("merchant", { id: input.merchantId });
 
-    let imageUrl: string | undefined;
+    let imageUrl: string | undefined = input.imageUrl;
     if (input.image) {
       const { url } = await this.objects.put(
         input.image.bytes,

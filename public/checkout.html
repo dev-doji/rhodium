@@ -6,47 +6,46 @@
   <title>Pay securely · Rhodium</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
   <style>
     /* ------------------------------------------------------------------
        A screen where someone is about to move money. The job is confidence,
        not delight: one accent, no gradients, and nothing competing with the
        account number they have to copy correctly.
 
-       IBM Plex Sans is here for its figures — banks and buyers both read
-       digits better in a face designed for data than in system-ui.
+       Outfit and Inter match the storefront and the marketing site, so the
+       buyer stays inside one brand at the exact moment they decide whether to
+       trust it with money. IBM Plex Mono stays for the account number alone:
+       a misread digit there is a payment that never arrives, and a monospaced
+       face designed for data is what keeps 0/O and 1/l apart.
        ------------------------------------------------------------------ */
     :root {
-      color-scheme: light dark;
-      --bg:#faf9f7;      --surface:#ffffff;   --line:#e6e2dc;
-      --ink:#16130f;     --ink-2:#5c554c;     --ink-3:#8b8378;
-      --accent:#0f5132;  --accent-ink:#ffffff;
-      --good-bg:#eaf5ee; --good-line:#bcdcc8; --good-ink:#0f5132;
+      /* Light only, and the same Rhodium palette the storefront uses. A buyer
+         crossing from the shop to the pay screen must not feel handed off to
+         a different company — this is the moment they are deciding whether to
+         trust us with money. */
+      color-scheme: light;
+      --brand:#0033e7;   --brand-600:#002bc4;
+      --bg:#f7f8fc;      --surface:#ffffff;   --line:#e4e7f2;
+      --ink:#05061a;     --ink-2:#4a4f68;     --ink-3:#767c96;
+      --accent:#0033e7;  --accent-ink:#ffffff;
+      --good-bg:#eaf7ef; --good-line:#bcdcc8; --good-ink:#0f5132;
       --warn-bg:#fdf4e3; --warn-line:#e8d5a8; --warn-ink:#6b4e10;
       --bad-bg:#fdeceb;  --bad-line:#f2c4c0;  --bad-ink:#8a2019;
-      --radius:14px;
-      --shadow:0 1px 2px rgba(22,19,15,.05), 0 12px 32px -12px rgba(22,19,15,.14);
+      /* Flat: square corners, borders instead of elevation. */
+      --radius:0px;
+      --shadow:none;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg:#12110f;      --surface:#1b1917;   --line:#302c28;
-        --ink:#f5f2ee;     --ink-2:#b3aca3;     --ink-3:#847d74;
-        --accent:#4ade80;  --accent-ink:#0b1a12;
-        --good-bg:#132a1d; --good-line:#225034; --good-ink:#7ee6a6;
-        --warn-bg:#2a2418; --warn-line:#5c4a22; --warn-ink:#e0b968;
-        --bad-bg:#2a1616;  --bad-line:#5c2a2a;  --bad-ink:#f0a3a3;
-        --shadow:0 1px 2px rgba(0,0,0,.4), 0 16px 40px -16px rgba(0,0,0,.6);
-      }
-    }
+    h1,h2,h3 { font-family:"Outfit","Inter",system-ui,sans-serif; }
     * { box-sizing:border-box; }
     body { margin:0; padding:24px 20px; min-height:100dvh;
            display:flex; align-items:center; justify-content:center;
-           font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+           font-family:"Inter",system-ui,-apple-system,sans-serif;
            background:var(--bg); color:var(--ink);
            -webkit-font-smoothing:antialiased; }
     .card { width:100%; max-width:400px; background:var(--surface);
             border:1px solid var(--line); border-radius:var(--radius);
-            padding:28px 24px 22px; box-shadow:var(--shadow); }
+            padding:28px 24px 22px; box-shadow:none; }
 
     .brand { display:flex; align-items:center; gap:7px; font-size:11px;
              letter-spacing:.14em; text-transform:uppercase; font-weight:600;
@@ -65,7 +64,7 @@
     .crypto svg { width:14px; height:14px; color:var(--accent); }
 
     /* --- the account: the one thing that must be read perfectly --- */
-    .acct { margin-top:20px; border:1px solid var(--line); border-radius:12px;
+    .acct { margin-top:20px; border:1px solid var(--line); border-radius:0;
             padding:18px 16px 16px; text-align:center; background:var(--bg); }
     .acct-bank { font-size:11px; font-weight:600; color:var(--ink-3);
                  text-transform:uppercase; letter-spacing:.1em; }
@@ -76,7 +75,7 @@
                margin:9px 0 5px; color:var(--ink); font-variant-numeric:tabular-nums;
                user-select:all; }
     .acct-name { font-size:12px; color:var(--ink-2); }
-    .copybtn { margin-top:14px; width:100%; padding:12px; border:0; border-radius:10px;
+    .copybtn { margin-top:14px; width:100%; padding:12px; border:0; border-radius:0;
                background:var(--accent); color:var(--accent-ink); font:inherit;
                font-size:14px; font-weight:600; cursor:pointer;
                display:inline-flex; align-items:center; justify-content:center; gap:7px;
@@ -93,7 +92,7 @@
              font-variant-numeric:tabular-nums; }
 
     button { width:100%; margin-top:18px; padding:14px; font:inherit; font-size:15px;
-             font-weight:600; border:0; border-radius:11px; cursor:pointer;
+             font-weight:600; border:0; border-radius:0; cursor:pointer;
              display:flex; align-items:center; justify-content:center; gap:8px;
              background:var(--accent); color:var(--accent-ink);
              transition:opacity .15s ease; }
@@ -105,7 +104,7 @@
     button.secondary { background:transparent; border:1px solid var(--line);
                        color:var(--ink-2); font-size:13px; padding:11px; margin-top:8px; }
     button.secondary:hover { border-color:var(--ink-3); opacity:1; }
-    :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+    :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:0; }
 
     .hint { font-size:11.5px; color:var(--ink-3); margin-top:14px; text-align:center;
             line-height:1.6; }
@@ -124,22 +123,22 @@
     .ok h2 { font-size:19px; font-weight:600; margin:0 0 6px; letter-spacing:-.01em; }
     .badge { display:inline-flex; align-items:center; gap:6px; background:var(--good-bg);
              color:var(--good-ink); border:1px solid var(--good-line); font-size:11.5px;
-             font-weight:500; padding:5px 11px; border-radius:999px; }
+             font-weight:500; padding:5px 11px; border-radius:0; }
     .badge svg { width:12px; height:12px; }
     .explorer { display:inline-flex; align-items:center; gap:7px; margin-top:16px;
-                padding:10px 14px; border-radius:10px; background:var(--bg);
+                padding:10px 14px; border-radius:0; background:var(--bg);
                 border:1px solid var(--line); color:var(--ink-2); text-decoration:none;
                 font-size:12.5px; font-weight:600; }
     .explorer svg { width:14px; height:14px; }
     .txhash { font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
               color:var(--ink-3); margin-top:10px; word-break:break-all; }
     .mode { display:inline-flex; align-items:center; gap:6px; font-size:10.5px;
-            font-weight:500; padding:4px 10px; border-radius:999px; margin-top:14px; }
+            font-weight:500; padding:4px 10px; border-radius:0; margin-top:14px; }
     .mode.live { background:var(--good-bg); color:var(--good-ink); border:1px solid var(--good-line); }
     .mode.demo { background:var(--warn-bg); color:var(--warn-ink); border:1px solid var(--warn-line); }
     .mode svg { width:11px; height:11px; }
     .err { background:var(--bad-bg); border:1px solid var(--bad-line); color:var(--bad-ink);
-           padding:12px 14px; border-radius:10px; margin-top:14px; font-size:13px; line-height:1.55; }
+           padding:12px 14px; border-radius:0; margin-top:14px; font-size:13px; line-height:1.55; }
     .err a { color:inherit; font-weight:600; }
 
     @media (prefers-reduced-motion: reduce) {

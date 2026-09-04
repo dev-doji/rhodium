@@ -23,7 +23,8 @@
        corners, solid borders, no shadows.
        ------------------------------------------------------------------ */
     :root {
-      color-scheme: light dark;
+      /* Light only — see the note above the dark block's removal. */
+      color-scheme: light;
       /* Rhodium brand, mirroring apps/landing/app/globals.css */
       --brand:#0033e7;   --brand-600:#002bc4; --brand-50:#eef2fe;
       --accent:#ff3131;
@@ -45,18 +46,6 @@
       /* Gutters widen with the viewport rather than jumping at breakpoints. */
       --gutter:clamp(1rem, 4vw, 3.5rem);
       --maxw:1240px;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg:#0a0b18;      --surface:#12142a;   --surface-2:#161a33;
-        --line:#262b47;    --ink:#f2f4fb;       --ink-2:#b8bed6;
-        --ink-3:#868ca8;   --brand:#5478f2;     --brand-600:#8aa3f7;
-        --brand-50:#131938;
-        --good-bg:#122a1c; --good-ink:#7ee6a6;
-        --bad-bg:#2a1616;  --bad-ink:#f0a3a3;
-        --shadow:none;
-        --shadow-lg:none;
-      }
     }
 
     *,*::before,*::after { box-sizing:border-box; }
