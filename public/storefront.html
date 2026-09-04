@@ -178,7 +178,17 @@
       font-variant-numeric:tabular-nums;
       font-size:1.1rem; font-weight:800; letter-spacing:-.02em;
     }
-    .card-foot { margin-top:auto; padding-top:12px; }
+    /* Two actions per card, stacked. Side by side they would collide at the
+       4-column desktop width and force the labels to truncate, and a buyer
+       cannot choose between two buttons they cannot read. */
+    .card-foot {
+      margin-top:auto; padding-top:12px;
+      display:flex; flex-direction:column; gap:8px;
+    }
+    /* Buy now is the filled button: it is the shorter path to paying, which is
+       the thing this page exists to do. Add to cart stays available for the
+       buyer collecting several items. */
+    .btn-sm { min-height:40px; padding:0 12px; font-size:14px; }
     .soldout {
       display:inline-block; padding:3px 10px; border-radius:var(--radius-pill);
       background:var(--bad-bg); color:var(--bad-ink); font-size:12px; font-weight:700;
@@ -461,7 +471,7 @@
           : '<div class="thumb-ph" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
 
         var action = p.inStock
-          ? '<button class="btn btn-primary btn-block" data-add="' + esc(p.id) + '">Add to cart</button>'
+          ? actionsHtml(p.id, 0)
           : '<span class="soldout">Sold out</span>';
 
         return '<article class="card">' + media +
@@ -491,6 +501,8 @@
 
     // ---- cart -------------------------------------------------------
     function onGridClick(e) {
+      var buy = e.target.closest("[data-buy]");
+      if (buy) { buyNow(buy.getAttribute("data-buy")); return; }
       var add = e.target.closest("[data-add]");
       if (add) { setQty(add.getAttribute("data-add"), 1); return; }
       var step = e.target.closest("[data-step]");
@@ -498,6 +510,28 @@
         var id = step.getAttribute("data-id");
         setQty(id, (cart[id] || 0) + Number(step.getAttribute("data-step")));
       }
+    }
+
+    /**
+     * Buy now: this item alone, straight to the payment form.
+     *
+     * It REPLACES the cart rather than adding to it, because "buy now" means
+     * this one thing — quietly carrying along whatever was already in the cart
+     * would charge the buyer for items they did not mean to order right now.
+     * Anything they had collected is not silently destroyed either: the sheet
+     * opens showing exactly what they are about to pay for.
+     */
+    function buyNow(id) {
+      var p = productById(id);
+      if (!p) return;
+      cart = Object.create(null);
+      cart[id] = 1;
+      (shop.products || []).forEach(function (item) { paintFoot(item.id); });
+      paintCart();
+      openSheet();
+      // Straight to the one field that stands between them and paying.
+      var phone = $("bphone");
+      if (phone) phone.focus();
     }
 
     function setQty(id, qty) {
@@ -515,17 +549,24 @@
 
     // Only the one card's footer is repainted, so adding an item never
     // rebuilds the grid under the buyer's finger mid-scroll.
-    function paintFoot(id) {
-      var foot = document.querySelector('[data-foot="' + CSS.escape(id) + '"]');
-      if (!foot) return;
-      var n = cart[id] || 0;
-      foot.innerHTML = n === 0
-        ? '<button class="btn btn-primary btn-block" data-add="' + esc(id) + '">Add to cart</button>'
+    /** The Buy now / Add to cart pair for one product, at a given quantity. */
+    function actionsHtml(id, n) {
+      var buy =
+        '<button class="btn btn-primary btn-block btn-sm" data-buy="' + esc(id) + '">Buy now</button>';
+      var add = n === 0
+        ? '<button class="btn btn-ghost btn-block btn-sm" data-add="' + esc(id) + '">Add to cart</button>'
         : '<div class="qty">' +
             '<button data-step="-1" data-id="' + esc(id) + '" aria-label="Remove one">−</button>' +
             '<output aria-live="polite">' + n + "</output>" +
             '<button data-step="1" data-id="' + esc(id) + '" aria-label="Add one">+</button>' +
           "</div>";
+      return buy + add;
+    }
+
+    function paintFoot(id) {
+      var foot = document.querySelector('[data-foot="' + CSS.escape(id) + '"]');
+      if (!foot) return;
+      foot.innerHTML = actionsHtml(id, cart[id] || 0);
     }
 
     function lines() {
