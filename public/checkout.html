@@ -183,11 +183,42 @@
     async function load() {
       try {
         const res = await fetch(`/api/checkout/${orderId}`);
-        if (!res.ok) throw new Error("order not found");
+        if (!res.ok) {
+          // Report what actually went wrong. This used to say "order not
+          // found" for EVERY failure, so a payment provider being down —
+          // a 500 — was indistinguishable from a bad link, and sent whoever
+          // was debugging it looking for a missing order that existed all
+          // along.
+          let detail = "";
+          try {
+            const body = await res.json();
+            detail = body.message || body.error || "";
+          } catch { /* not JSON; the status is all we have */ }
+
+          if (res.status === 404) {
+            throw new Error(
+              "We couldn't find this order. The link may be wrong or expired — " +
+                "please ask the seller for a new one."
+            );
+          }
+          if (res.status >= 500) {
+            throw new Error(
+              "We couldn't set up your payment just now. Please refresh in a " +
+                "moment, or ask the seller to resend the link." +
+                (detail ? ` (${detail})` : "")
+            );
+          }
+          throw new Error(detail || `Something went wrong (${res.status}).`);
+        }
         data = await res.json();
         render();
       } catch (e) {
-        $("body").innerHTML = `<div class="err">${e.message}</div>`;
+        // A network failure lands here with a useless "Failed to fetch".
+        const msg =
+          e instanceof TypeError
+            ? "We couldn't reach the server. Check your connection and refresh."
+            : e.message;
+        $("body").innerHTML = `<div class="err">${msg}</div>`;
       }
     }
 
