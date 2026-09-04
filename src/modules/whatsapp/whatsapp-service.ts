@@ -298,6 +298,21 @@ export class WhatsAppService {
           settlementBankCode: bank.code,
           settlementAccountNumber: String(data.accountNumber),
         });
+        // Create the processor subaccount that bank payments settle into.
+        // Without it the fiat rail refuses to issue an account number, because
+        // money would otherwise land in the platform balance rather than hers.
+        // Onboarding still completes if this fails — she can sell on crypto,
+        // and `retryPayoutSetup` repairs the bank side — but it is logged loudly
+        // because until it succeeds she cannot take a transfer.
+        try {
+          await this.payments.ensurePayoutAccount(merchant);
+        } catch (err) {
+          log.error(
+            { err: (err as Error).message, merchantId: merchant.id },
+            "payout subaccount creation failed during onboarding",
+          );
+        }
+
         // Generate an embedded Quai wallet so they can accept crypto instantly.
         // Resilient: if generation fails, onboarding still succeeds (bank only).
         let walletLine = "";

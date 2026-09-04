@@ -564,6 +564,63 @@ export function buildApi(app: App): Express {
   // and CSV export all reconcile exactly as they would for genuine traffic.
   // Body: { merchantId, count?, days? }. Undo with /admin/cleanup.
   /**
+   * Give existing merchants the payout account the bank rail needs.
+   *
+   * Every merchant onboarded before payout accounts were created has none, so
+   * on Paystack their payments would be refused (or, before the guard, settle
+   * into the platform balance). This closes that gap for the existing book.
+   *
+   * Idempotent — a merchant who already has a code is left alone — and
+   * dryRun reports who would be touched without calling the processor.
+   */
+  server.post(
+    "/admin/backfill-payout-accounts",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const { merchantId, dryRun = false } = req.body ?? {};
+
+      const merchants = merchantId
+        ? [await app.repos.merchants.byId(String(merchantId))]
+        : await app.repos.merchants.list();
+      if (merchantId && !merchants[0]) throw new NotFoundError("merchant", { id: merchantId });
+
+      const created: { id: string; businessName: string; code?: string }[] = [];
+      const skipped: { id: string; businessName: string; why: string }[] = [];
+
+      for (const m of merchants) {
+        if (!m) continue;
+        if (m.processorSubaccountCode) {
+          skipped.push({ id: m.id, businessName: m.businessName, why: "already has one" });
+          continue;
+        }
+        if (!m.settlementBankCode || !m.settlementAccountNumber) {
+          // Nothing to point a payout account at. These merchants have to
+          // finish onboarding before they can take a bank transfer.
+          skipped.push({ id: m.id, businessName: m.businessName, why: "no bank details" });
+          continue;
+        }
+        if (dryRun) {
+          created.push({ id: m.id, businessName: m.businessName });
+          continue;
+        }
+        try {
+          const code = await app.payments.ensurePayoutAccount(m);
+          if (code) created.push({ id: m.id, businessName: m.businessName, code });
+          else skipped.push({ id: m.id, businessName: m.businessName, why: "rail needs none" });
+        } catch (err) {
+          skipped.push({
+            id: m.id,
+            businessName: m.businessName,
+            why: `failed: ${(err as Error).message}`,
+          });
+        }
+      }
+
+      res.json({ dryRun: Boolean(dryRun), created: created.length, skipped: skipped.length, createdList: created, skippedList: skipped });
+    }),
+  );
+
+  /**
    * Backfill photographs onto demo products created before the catalogue
    * carried them.
    *

@@ -1,8 +1,8 @@
 import type { Repositories } from "../../db/repositories.js";
 import type { RailRegistry } from "../../rails/registry.js";
 import type { EventBus } from "../../events/bus.js";
-import type { PaymentInstruction, WebhookPayload } from "../../rails/types.js";
-import type { Payment, RailId } from "../../domain/types.js";
+import type { PaymentInstruction, PaymentRail, WebhookPayload } from "../../rails/types.js";
+import type { Merchant, Payment, RailId } from "../../domain/types.js";
 import type { Clock } from "../../lib/clock.js";
 import type { Metrics } from "../metrics/metrics.js";
 import type { AuditService } from "../audit/audit-service.js";
@@ -32,6 +32,31 @@ export class PaymentsOrchestrator {
     private metrics: Metrics,
     private audit: AuditService,
   ) {}
+
+  /**
+   * Make sure a merchant can actually be paid on the active bank rail.
+   *
+   * Some processors need a per-merchant payout account before they will route
+   * money to them; Paystack calls it a subaccount. Without it the rail either
+   * refuses the payment or — worse — settles into the platform's own balance,
+   * which is custody. This is the one place that gap gets closed, and it is
+   * idempotent so it can be called at onboarding and again as a repair.
+   *
+   * Returns the code, or null when the active rail needs no such thing (as
+   * Monnify does not).
+   */
+  async ensurePayoutAccount(merchant: Merchant): Promise<string | null> {
+    if (merchant.processorSubaccountCode) return merchant.processorSubaccountCode;
+
+    const rail = this.rails.fiat() as PaymentRail & {
+      createSubaccount?: (m: Merchant) => Promise<string>;
+    };
+    if (typeof rail.createSubaccount !== "function") return null;
+
+    const code = await rail.createSubaccount(merchant);
+    await this.repos.merchants.update(merchant.id, { processorSubaccountCode: code });
+    return code;
+  }
 
   /**
    * Issue a payment instruction for an order. `railId` picks a specific rail

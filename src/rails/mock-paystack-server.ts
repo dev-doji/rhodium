@@ -33,6 +33,15 @@ export class MockPaystackServer {
 
   constructor(private secret: string) {}
 
+  /**
+   * Stand-in for Paystack's subaccount creation. Deterministic on the merchant
+   * id so a test can assert the code without capturing it, and so re-running
+   * onboarding in mock mode does not invent a second subaccount.
+   */
+  createSubaccount(merchantId: string): string {
+    return `ACCT_mock_${merchantId.replace(/[^a-zA-Z0-9]/g, "").slice(-12)}`;
+  }
+
   createDedicatedAccount(input: {
     orderId: string;
     amount: Kobo;

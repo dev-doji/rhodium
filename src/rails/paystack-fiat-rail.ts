@@ -86,6 +86,24 @@ export class PaystackFiatRail implements PaymentRail {
     }
 
     // --- live ---
+    // NO CUSTODY, enforced rather than hoped for. Without a subaccount Paystack
+    // settles the money into OUR balance, which is precisely the thing this
+    // product promises never to do, and in Nigeria is the difference between
+    // routing a payment and holding customer funds. Refusing the payment is the
+    // safe failure: the buyer sees "we could not set up your payment", which is
+    // recoverable, where silently taking custody is not.
+    if (!merchant.processorSubaccountCode) {
+      log.error(
+        { merchantId: merchant.id, orderId: order.id },
+        "refusing paystack DVA: merchant has no subaccount, funds would land in our balance",
+      );
+      throw new AppError(
+        "merchant is not set up to receive payments yet",
+        "merchant_not_payable",
+        409,
+      );
+    }
+
     // Paystack needs a customer before it will issue a dedicated account, so
     // this is two calls. The buyer's phone is the customer identity; the email
     // is synthesised because WhatsApp buyers do not give one and Paystack
@@ -109,12 +127,9 @@ export class PaystackFiatRail implements PaymentRail {
       body: JSON.stringify({
         customer: customerCode,
         preferred_bank: this.cfg.dvaBank,
-        // [VALIDATE] split_code routes settlement to the merchant's subaccount.
-        // Without it funds land in the Rhodium balance, which breaks the
-        // no-custody rule — check this against the dashboard before going live.
-        ...(merchant.processorSubaccountCode
-          ? { subaccount: merchant.processorSubaccountCode }
-          : {}),
+        // The subaccount is what makes Paystack split the money straight to
+        // the merchant. It is required, not optional — see the guard above.
+        subaccount: merchant.processorSubaccountCode,
       }),
     });
 
@@ -229,6 +244,46 @@ export class PaystackFiatRail implements PaymentRail {
     const a = Buffer.from(expected);
     const b = Buffer.from(sig);
     return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  /**
+   * Create the Paystack subaccount that money settles into.
+   *
+   * This is the piece that was missing: `processorSubaccountCode` was read on
+   * every payment and persisted by the repositories, but nothing ever set it,
+   * so every merchant would have settled into the platform balance.
+   *
+   * `percentage_charge: 0` means Paystack sends the merchant the whole amount.
+   * Rhodium's cut, when there is one, is a separate decision — taking it here
+   * would silently make the platform a fee-charging intermediary on every
+   * order.
+   */
+  async createSubaccount(merchant: Merchant): Promise<string> {
+    if (!merchant.settlementBankCode || !merchant.settlementAccountNumber) {
+      throw new AppError(
+        "cannot create a subaccount without the merchant's bank details",
+        "validation",
+        422,
+      );
+    }
+
+    if (this.cfg.mode === "mock") {
+      return this.mock!.createSubaccount(merchant.id);
+    }
+
+    const res = await this.api<{ data?: { subaccount_code?: string } }>("/subaccount", {
+      method: "POST",
+      body: JSON.stringify({
+        business_name: merchant.businessName,
+        settlement_bank: merchant.settlementBankCode,
+        account_number: merchant.settlementAccountNumber,
+        percentage_charge: 0,
+      }),
+    });
+    const code = res.data?.subaccount_code;
+    if (!code) throw new AppError("paystack: no subaccount_code", "provider_error", 502);
+    log.info({ merchantId: merchant.id, code }, "paystack subaccount created");
+    return code;
   }
 
   private async api<T>(path: string, init: RequestInit): Promise<T> {
