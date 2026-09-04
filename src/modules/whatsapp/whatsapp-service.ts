@@ -159,6 +159,15 @@ export class WhatsAppService {
    * is taken. Best-effort: a merchant with no handle still works via its id, so
    * a collision storm must never block someone onboarding.
    */
+  /**
+   * Public wrapper: merchants can be created outside the chat flow (the admin
+   * test shop, future imports) and they need the same collision-free handle
+   * the WhatsApp onboarding mints, not a second implementation of it.
+   */
+  async freeShopSlug(businessName: string): Promise<string | undefined> {
+    return this.freeSlug(businessName);
+  }
+
   private async freeSlug(businessName: string): Promise<string | undefined> {
     const base = slugify(businessName);
     if (!base) return undefined;

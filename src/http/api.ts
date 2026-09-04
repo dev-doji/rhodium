@@ -10,7 +10,7 @@ import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
 import type { Merchant, Product, RailId } from "../domain/types.js";
-import { demoImageByName } from "../domain/demo-catalogue.js";
+import { demoImageByName, demoImageUrl, TEST_SHOP_ITEMS } from "../domain/demo-catalogue.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
 
@@ -563,6 +563,80 @@ export function buildApi(app: App): Express {
   // the order, ledger.recordSale for the entry — so balances, the weekly summary
   // and CSV export all reconcile exactly as they would for genuine traffic.
   // Body: { merchantId, count?, days? }. Undo with /admin/cleanup.
+  /**
+   * Create a shop stocked with ₦100 items, for testing a real payment.
+   *
+   * Separate from the demo seeder because the point is different: this exists
+   * to move actual money through the live rail as cheaply as possible, so the
+   * catalogue is four identical ₦100 items rather than a plausible shop.
+   *
+   * Creates the payout account too, since without one the fiat rail correctly
+   * refuses to issue an account number and the shop cannot be tested at all.
+   */
+  server.post(
+    "/admin/test-shop",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const { phone, businessName = "Rhodium Test Shop", bankCode, accountNumber } = req.body ?? {};
+      if (!phone) throw new ValidationError("phone required (the vendor's WhatsApp number)");
+
+      const existing = await app.repos.merchants.byPhone(String(phone));
+      if (existing) {
+        throw new ValidationError(
+          `${existing.businessName} already uses that number — delete it first or use another`,
+          { merchantId: existing.id },
+        );
+      }
+
+      const merchant = await app.repos.merchants.create({
+        id: ref("mch"),
+        phone: String(phone),
+        businessName: String(businessName),
+        slug: await app.whatsapp.freeShopSlug(String(businessName)),
+        status: "active",
+        kycState: "verified",
+        cryptoEnabled: true,
+        ...(bankCode && accountNumber
+          ? {
+              settlementBankCode: String(bankCode),
+              settlementAccountNumber: String(accountNumber),
+            }
+          : {}),
+      });
+
+      for (const [name, naira, image] of TEST_SHOP_ITEMS) {
+        await app.commerce.createProduct({
+          merchantId: merchant.id,
+          name,
+          price: nairaToKobo(naira),
+          imageUrl: demoImageUrl(image),
+        });
+      }
+
+      // Without this the rail refuses to issue an account number, so the shop
+      // would look fine and be impossible to pay.
+      let payout: string | null = null;
+      let payoutError: string | undefined;
+      try {
+        payout = await app.payments.ensurePayoutAccount(merchant);
+      } catch (err) {
+        payoutError = (err as Error).message;
+      }
+
+      res.status(201).json({
+        merchantId: merchant.id,
+        businessName: merchant.businessName,
+        handle: merchant.slug,
+        shopUrl: `${app.config.PUBLIC_BASE_URL}/s/${merchant.slug ?? merchant.id}`,
+        items: TEST_SHOP_ITEMS.length,
+        pricePerItem: "₦100.00",
+        payoutAccount: payout,
+        payoutError,
+        payable: Boolean(payout),
+      });
+    }),
+  );
+
   /**
    * Give existing merchants the payout account the bank rail needs.
    *

@@ -46,6 +46,21 @@ export const DIADEM_ITEMS: readonly CatalogueItem[] = [
 export const demoImageUrl = (slug: string): string => `/img/products/${slug}.jpg`;
 
 /**
+ * A deliberately cheap catalogue for live payment testing.
+ *
+ * Every item is ₦100. Testing a real Paystack transfer means real money
+ * leaving a real account, and the amount only needs to be large enough to
+ * settle — so it is set to the smallest sum worth moving. Reuses photographs
+ * the demo catalogue already ships, so no new assets are needed.
+ */
+export const TEST_SHOP_ITEMS: readonly CatalogueItem[] = [
+  ["Test Item A", 100, "wireless-mouse"],
+  ["Test Item B", 100, "usb-c-hub"],
+  ["Test Item C", 100, "webcam"],
+  ["Test Item D", 100, "smart-watch"],
+] as const;
+
+/**
  * Product name → image path, for every demo item across both stores.
  *
  * Names are compared case-insensitively and with surrounding whitespace
@@ -53,7 +68,7 @@ export const demoImageUrl = (slug: string): string => `/img/products/${slug}.jpg
  * stray space should not cost a photograph.
  */
 export const demoImageByName: ReadonlyMap<string, string> = new Map(
-  [...CIRCUIT_CITY_ITEMS, ...DIADEM_ITEMS].map(([name, , slug]) => [
+  [...CIRCUIT_CITY_ITEMS, ...DIADEM_ITEMS, ...TEST_SHOP_ITEMS].map(([name, , slug]) => [
     name.trim().toLowerCase(),
     demoImageUrl(slug),
   ]),

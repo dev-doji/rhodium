@@ -409,3 +409,54 @@ describe("backfilling demo product images", () => {
     expect(((await again.json()) as { patched: number }).patched).toBe(0);
   });
 });
+
+describe("the ₦100 test shop", () => {
+  const create = (body: unknown) =>
+    fetch(`${base}/admin/test-shop`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${app.config.APP_SECRET}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+  it("needs the admin secret", async () => {
+    const res = await fetch(`${base}/admin/test-shop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: "+2348000000101" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("creates a shop of ₦100 items that is immediately browsable", async () => {
+    const res = await create({
+      phone: "+2348000000101",
+      businessName: "Rhodium Test Shop",
+      bankCode: "058",
+      accountNumber: "0123456789",
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      handle: string; items: number; shopUrl: string; merchantId: string;
+    };
+    expect(body.items).toBe(4);
+    expect(body.shopUrl).toContain(`/s/${body.handle}`);
+
+    // The whole point is that a buyer can reach it, so check the public view.
+    const { shop } = await shopJson(body.handle);
+    expect(shop.products).toHaveLength(4);
+    for (const p of shop.products) {
+      expect(p.price).toBe(100_00);
+      expect(p.imageUrl).toBeTruthy();
+    }
+  });
+
+  it("refuses to reuse a number another merchant already has", async () => {
+    // Two merchants on one number would make vendor commands ambiguous.
+    const res = await create({ phone: "+2348000000101" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as ErrorBody).message).toMatch(/already uses that number/i);
+  });
+});
