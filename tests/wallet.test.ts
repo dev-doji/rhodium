@@ -16,7 +16,9 @@ describe("embedded Quai wallet", () => {
     await app.whatsapp.handleInbound({ from: phone, text: "Hi" });
     await app.whatsapp.handleInbound({ from: phone, text: "Wallet Store" });
     await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
-    const done = await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    // crypto settlement: USDC into a wallet
+    const done = await app.whatsapp.handleInbound({ from: phone, text: "2" });
 
     const merchant = await app.repos.merchants.byPhone(phone);
     // Quai is retired: onboarding now mints an ordinary EVM account for

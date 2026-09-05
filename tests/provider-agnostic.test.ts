@@ -89,7 +89,11 @@ describe("onboarding mints the wallet for the configured chain", () => {
     await app.whatsapp.handleInbound({ from: phone, text: "hi" });
     await app.whatsapp.handleInbound({ from: phone, text: "Arb Store" });
     await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
-    const done = await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    // crypto settlement: USDC into a wallet
+    const done = await app.whatsapp.handleInbound({ from: phone, text: "2" });
+    // crypto settlement: USDC in a wallet
+    await app.whatsapp.handleInbound({ from: phone, text: "2" });
 
     const merchant = await app.repos.merchants.byPhone(phone);
     expect(merchant!.quaiAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
@@ -185,5 +189,64 @@ describe("the OnSwitch off-ramp asset", () => {
     }
     delete process.env.ONSWITCH_ASSET;
     resetConfigCache();
+  });
+});
+
+describe("the merchant chooses how crypto reaches her", () => {
+  const onboard = async (reply: "1" | "2", phone: string) => {
+    const { makeApp } = await import("./helpers/harness.js");
+    const app = makeApp();
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Choice Store" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    const asked = await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    const done = await app.whatsapp.handleInbound({ from: phone, text: reply });
+    return { app, asked, done, merchant: (await app.repos.merchants.byPhone(phone))! };
+  };
+
+  it("asks, rather than assuming", async () => {
+    const { asked } = await onboard("1", "+2348094440001");
+    expect(asked).toMatch(/naira/i);
+    expect(asked).toMatch(/USDC/i);
+  });
+
+  it("naira: no wallet is minted, and crypto orders route to the off-ramp", async () => {
+    const { app, merchant, done } = await onboard("1", "+2348094440002");
+    expect(merchant.cryptoSettlement).toBe("naira");
+    // A wallet for someone who wanted naira is a seed phrase to guard for an
+    // account she will never use.
+    expect(merchant.quaiAddress).toBeUndefined();
+    expect(await app.repos.merchants.getWalletSecrets(merchant.id)).toBeNull();
+    expect(done).not.toMatch(/back it up/i);
+    expect(app.rails.crypto(merchant.cryptoSettlement).id).toBe("onswitch");
+  });
+
+  it("usdc: a wallet is minted, and crypto orders route on-chain", async () => {
+    const { app, merchant } = await onboard("2", "+2348094440003");
+    expect(merchant.cryptoSettlement).toBe("usdc");
+    expect(merchant.quaiAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(app.rails.crypto(merchant.cryptoSettlement).id).toBe("evm_stable");
+  });
+
+  it("rejects anything that is not 1 or 2", async () => {
+    const { makeApp } = await import("./helpers/harness.js");
+    const app = makeApp();
+    const phone = "+2348094440004";
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Choice Store" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    const bad = await app.whatsapp.handleInbound({ from: phone, text: "naira please" });
+    expect(bad).toMatch(/reply \*1\*/i);
+    // Still unfinished, so nothing was written on a guess.
+    expect(await app.repos.merchants.byPhone(phone)).toBeNull();
+  });
+
+  it("falls back to the platform rail when a merchant was never asked", async () => {
+    const { makeApp } = await import("./helpers/harness.js");
+    const app = makeApp();
+    // Merchants onboarded before the question existed have no preference, and
+    // must not be treated as having chosen anything.
+    expect(app.rails.crypto(undefined).kind).toBe("crypto");
   });
 });

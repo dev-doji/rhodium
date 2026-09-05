@@ -87,8 +87,11 @@ export class PaymentsOrchestrator {
       };
     }
 
-    // Route: explicit railId wins; else the order's kind (fiat → Monnify, crypto → Quai).
-    const rail = railId ? this.rails.get(railId) : this.rails.forKind(order.rail);
+    // Route: explicit railId wins; else the order's kind, and for a crypto
+    // order the merchant's own choice of being paid in naira or in USDC.
+    const rail = railId
+      ? this.rails.get(railId)
+      : this.rails.forKind(order.rail, merchant.cryptoSettlement);
     const instruction = await rail.createPaymentInstruction(order, merchant);
 
     await this.repos.payments.create({

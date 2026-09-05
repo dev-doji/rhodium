@@ -16,7 +16,9 @@ describe("WhatsApp merchant flow", () => {
     await app.whatsapp.handleInbound({ from: phone, text: "Hi" });
     await app.whatsapp.handleInbound({ from: phone, text: "Amaka Beauty" });
     await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
-    const done = await app.whatsapp.handleInbound({ from: phone, text: "2" }); // GTBank
+    await app.whatsapp.handleInbound({ from: phone, text: "2" }); // GTBank
+    // crypto settlement: naira into the bank
+    const done = await app.whatsapp.handleInbound({ from: phone, text: "1" });
     expect(done).toMatch(/all set up/i);
     const merchant = await app.repos.merchants.byPhone(phone);
     expect(merchant).not.toBeNull();

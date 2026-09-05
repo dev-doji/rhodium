@@ -20,6 +20,11 @@ model Merchant {
   settlementAccountEnc    String?  @map("settlement_account_enc") // encrypted
   processorSubaccountCode String?  @map("processor_subaccount_code")
   quaiAddress             String?  @map("quai_address")
+  // How crypto sales settle: "naira" (OnSwitch off-ramps to her bank) or
+  // "usdc" (the EVM rail pays her own wallet). Null means never asked, which
+  // is not the same as choosing the default — an existing merchant must not be
+  // silently assigned a preference.
+  cryptoSettlement        String?  @map("crypto_settlement")
   // Human-readable handle for buyer links: `shop-circuitcity` instead of
   // `shop-mch_e562196b4b76ad5b`. Nullable so pre-existing merchants stay valid.
   slug                    String?  @unique @map("slug")

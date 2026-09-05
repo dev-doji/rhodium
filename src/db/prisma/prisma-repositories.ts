@@ -57,6 +57,7 @@ class PgMerchantRepo implements MerchantRepo {
           ? encryptField(m.settlementAccountNumber)
           : null,
         processorSubaccountCode: m.processorSubaccountCode ?? null,
+        cryptoSettlement: m.cryptoSettlement ?? null,
         quaiAddress: m.quaiAddress ?? null,
         slug: m.slug ?? null,
         logoUrl: m.logoUrl ?? null,
@@ -115,6 +116,8 @@ class PgMerchantRepo implements MerchantRepo {
     const clearable = (v: string | undefined) => (v === undefined ? undefined : v || null);
     const sub = clearable(patch.processorSubaccountCode);
     if (sub !== undefined) data.processorSubaccountCode = sub;
+    const settle = clearable(patch.cryptoSettlement);
+    if (settle !== undefined) data.cryptoSettlement = settle;
     const logo = clearable(patch.logoUrl);
     if (logo !== undefined) data.logoUrl = logo;
     const slug = clearable(patch.slug);
@@ -164,6 +167,8 @@ class PgMerchantRepo implements MerchantRepo {
         ? decryptField(r.settlementAccountEnc as string)
         : undefined,
       processorSubaccountCode: (r.processorSubaccountCode as string | null) ?? undefined,
+      cryptoSettlement:
+        ((r.cryptoSettlement as string | null) ?? undefined) as Merchant["cryptoSettlement"],
       quaiAddress: (r.quaiAddress as string | null) ?? undefined,
       slug: (r.slug as string | null) ?? undefined,
       logoUrl: (r.logoUrl as string | null) ?? undefined,

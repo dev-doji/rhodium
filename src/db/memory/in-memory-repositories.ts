@@ -71,6 +71,7 @@ class MemMerchantRepo implements MerchantRepo {
     // implementations must agree or a test passes while production does not.
     for (const k of [
       "processorSubaccountCode",
+      "cryptoSettlement",
       "slug",
       "waPhoneNumberId",
       "waBusinessAccountId",

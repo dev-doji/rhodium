@@ -8,6 +8,7 @@ export type RailKind = "fiat" | "crypto";
 export type RailId = "monnify" | "paystack" | "stablecoin_base" | "quai" | "evm_stable" | "onswitch";
 
 export type MerchantStatus = "pending" | "active" | "suspended";
+export type CryptoSettlement = "naira" | "usdc";
 export type KycState = "unverified" | "pending" | "verified" | "rejected";
 
 export interface Merchant {
@@ -26,8 +27,17 @@ export interface Merchant {
    * PaystackFiatRail.createPaymentInstruction.
    */
   processorSubaccountCode?: string;
-  /** Merchant's self-custody Quai wallet — where crypto sales settle (no custody by us). */
+  /** Merchant's self-custody EVM wallet — where crypto sales settle when she
+   *  chose to be paid in USDC. (Column is still named quaiAddress.) */
   quaiAddress?: string;
+  /**
+   * How crypto sales reach her:
+   *   "naira" — OnSwitch off-ramps to her bank; she needs no wallet at all
+   *   "usdc"  — the EVM rail pays her own Arbitrum wallet
+   * Undefined means she was never asked, which is not the same as choosing
+   * the default; callers fall back to the platform setting.
+   */
+  cryptoSettlement?: CryptoSettlement;
   /** Human-readable buyer-link handle, e.g. "circuitcity" → `shop-circuitcity`. */
   slug?: string;
   /** Vendor's logo for receipts. Absent => initials fallback. */

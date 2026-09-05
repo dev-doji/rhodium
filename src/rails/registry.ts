@@ -1,5 +1,5 @@
 import type { PaymentRail } from "./types.js";
-import type { RailId, RailKind } from "../domain/types.js";
+import type { CryptoSettlement, RailId, RailKind } from "../domain/types.js";
 import { MonnifyFiatRail } from "./monnify-fiat-rail.js";
 import { PaystackFiatRail } from "./paystack-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
@@ -47,16 +47,36 @@ export class RailRegistry {
     return this.rails.get(id) ?? null;
   }
 
-  /** The active crypto rail. */
-  crypto(): PaymentRail {
+  /**
+   * The crypto rail for a given merchant.
+   *
+   * Not a single global choice, because the two rails pay her in different
+   * things: OnSwitch off-ramps to her bank in naira and needs no wallet, while
+   * the EVM rail sends USDC to a wallet she has to keep a seed phrase for.
+   * That is her decision, taken at onboarding, so it is read from the merchant
+   * rather than from config.
+   *
+   * With no preference recorded — a merchant onboarded before the question
+   * existed — it falls back to the first registered crypto rail, which is the
+   * platform default.
+   */
+  crypto(settlement?: CryptoSettlement): PaymentRail {
+    if (settlement === "usdc") {
+      const evm = this.rails.get("evm_stable");
+      if (evm) return evm;
+    }
+    if (settlement === "naira") {
+      const off = this.rails.get("onswitch");
+      if (off) return off;
+    }
     const rail = this.all().find((r) => r.kind === "crypto");
     if (!rail) throw new NotFoundError("crypto rail");
     return rail;
   }
 
-  /** Pick a rail by order kind: fiat → bank transfer, crypto → on-chain. */
-  forKind(kind: RailKind): PaymentRail {
-    return kind === "crypto" ? this.crypto() : this.fiat();
+  /** Pick a rail by order kind, honouring the merchant's crypto preference. */
+  forKind(kind: RailKind, settlement?: CryptoSettlement): PaymentRail {
+    return kind === "crypto" ? this.crypto(settlement) : this.fiat();
   }
 
   all(): PaymentRail[] {

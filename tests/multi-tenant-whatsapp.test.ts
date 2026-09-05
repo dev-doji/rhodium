@@ -483,6 +483,8 @@ describe("human-readable shop handles", () => {
     await app.whatsapp.handleInbound({ from: phone, text: "Circuit City", toPhoneNumberId: PLATFORM });
     await app.whatsapp.handleInbound({ from: phone, text: "0123456789", toPhoneNumberId: PLATFORM });
     await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
+    // crypto settlement: naira into the bank
+    await app.whatsapp.handleInbound({ from: phone, text: "1", toPhoneNumberId: PLATFORM });
 
     const merchant = await app.repos.merchants.byPhone(phone);
     expect(merchant!.slug).toBe("circuitcity");
@@ -500,6 +502,8 @@ describe("human-readable shop handles", () => {
     await app.whatsapp.handleInbound({ from: phone, text: "Circuit City", toPhoneNumberId: PLATFORM });
     await app.whatsapp.handleInbound({ from: phone, text: "0123456789", toPhoneNumberId: PLATFORM });
     await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
+    // crypto settlement: naira into the bank
+    await app.whatsapp.handleInbound({ from: phone, text: "1", toPhoneNumberId: PLATFORM });
 
     const merchant = await app.repos.merchants.byPhone(phone);
     expect(merchant!.slug).toBe("circuitcity2");
@@ -527,6 +531,9 @@ describe("buyer and merchant origins", () => {
       await app.whatsapp.handleInbound({ from: phone, text: "hi", toPhoneNumberId: PLATFORM });
       await app.whatsapp.handleInbound({ from: phone, text: "Origin Store", toPhoneNumberId: PLATFORM });
       await app.whatsapp.handleInbound({ from: phone, text: "0123456789", toPhoneNumberId: PLATFORM });
+      await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
+      // USDC into a wallet — this test is about the wallet-backup link, which
+      // only exists for a merchant who chose to be paid in USDC.
       const done = await app.whatsapp.handleInbound({ from: phone, text: "2", toPhoneNumberId: PLATFORM });
       expect(done).toContain("https://app.example/wallet");
       expect(done).not.toContain("pay.example");

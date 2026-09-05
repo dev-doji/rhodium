@@ -300,6 +300,27 @@ export class WhatsAppService {
       case "onboard:bank": {
         const bank = pickBank(text);
         if (!bank) return "Please reply with the number of your bank from the list.";
+        data.bankCode = bank.code;
+        data.bankName = bank.name;
+        this.convo.set(ctx.key, "onboard:crypto_settlement", data);
+        return [
+          "Almost done. Some buyers pay with *crypto* (USDC).",
+          "",
+          "How should we send you that money?",
+          "",
+          "*1* — 💵 As naira, straight into the bank account you just gave me _(recommended)_",
+          "*2* — 🪙 As USDC, into a crypto wallet we create for you",
+          "",
+          "Reply *1* or *2*. Bank transfers always pay into your bank either way.",
+        ].join("\n");
+      }
+      case "onboard:crypto_settlement": {
+        const choice = text.trim();
+        if (choice !== "1" && choice !== "2") {
+          return "Reply *1* for naira in your bank, or *2* for USDC in a wallet.";
+        }
+        const settlement: "naira" | "usdc" = choice === "1" ? "naira" : "usdc";
+        const bank = { code: String(data.bankCode), name: String(data.bankName) };
         const merchant = await this.repos.merchants.create({
           id: ref("mch"),
           phone: from,
@@ -310,6 +331,7 @@ export class WhatsAppService {
           cryptoEnabled: true,
           settlementBankCode: bank.code,
           settlementAccountNumber: String(data.accountNumber),
+          cryptoSettlement: settlement,
         });
         // Create the processor subaccount that bank payments settle into.
         // Without it the fiat rail refuses to issue an account number, because
@@ -330,8 +352,11 @@ export class WhatsAppService {
         // actually settles on — an address on the wrong chain is not a smaller
         // problem than no address, it is funds sent somewhere she cannot reach.
         // Resilient: if generation fails, onboarding still succeeds (bank only).
+        // Only when she chose to be paid in USDC. A wallet minted for someone
+        // who wanted naira is a seed phrase she must guard for an account she
+        // will never use — a liability handed over as if it were a feature.
         let walletLine = "";
-        try {
+        if (settlement === "usdc") try {
           const wallet = await this.wallets.generateForChain(this.opts.cryptoChain ?? "quai");
           await this.repos.merchants.setWalletSecrets(merchant.id, wallet.mnemonic, wallet.privateKey);
           await this.repos.merchants.update(merchant.id, { quaiAddress: wallet.address });
@@ -343,7 +368,11 @@ export class WhatsAppService {
         this.convo.clear(ctx.key);
         return [
           `✅ *${merchant.businessName}* is all set up!`,
-          `Payouts (bank): ${bank.name} ••••${String(data.accountNumber).slice(-4)}${walletLine}`,
+          `Payouts (bank): ${bank.name} ••••${String(data.accountNumber).slice(-4)}`,
+          settlement === "naira"
+            ? "Crypto sales: converted and paid into that same bank account."
+            : "Crypto sales: paid as USDC into your own wallet.",
+          `${walletLine}`,
           "",
           "Add your first product:",
           "*add Lipstick 5000*",
