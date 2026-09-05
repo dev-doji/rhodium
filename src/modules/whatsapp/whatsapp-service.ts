@@ -324,7 +324,7 @@ export class WhatsAppService {
       case "onboard:bank": {
         const bank = pickBank(text);
         if (!bank) return "Please reply with the number of your bank from the list.";
-        data.bankCode = bank.code;
+        data.bankId = bank.id;
         data.bankName = bank.name;
         this.convo.set(ctx.key, "onboard:crypto_settlement", data);
         return [
@@ -344,7 +344,7 @@ export class WhatsAppService {
           return "Reply *1* for naira in your bank, or *2* for USDC in a wallet.";
         }
         const settlement: "naira" | "usdc" = choice === "1" ? "naira" : "usdc";
-        const bank = { code: String(data.bankCode), name: String(data.bankName) };
+        const bank = { id: String(data.bankId), name: String(data.bankName) };
         const merchant = await this.repos.merchants.create({
           id: ref("mch"),
           phone: from,
@@ -353,7 +353,9 @@ export class WhatsAppService {
           status: "active",
           kycState: "verified",
           cryptoEnabled: true,
-          settlementBankCode: bank.code,
+          // The bank's identity, not one provider's code for it — each rail
+          // translates via bankCodeFor when it needs its own scheme.
+          settlementBankCode: bank.id,
           settlementAccountNumber: String(data.accountNumber),
           cryptoSettlement: settlement,
         });

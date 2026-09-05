@@ -11,6 +11,7 @@ import type { Merchant, Order, RailId } from "../domain/types.js";
 import { MockPaystackServer } from "./mock-paystack-server.js";
 import { AppError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import { bankCodeFor } from "../modules/whatsapp/banks.js";
 
 const log = logger("paystack-rail");
 
@@ -312,7 +313,7 @@ export class PaystackFiatRail implements PaymentRail {
       method: "POST",
       body: JSON.stringify({
         business_name: merchant.businessName,
-        settlement_bank: merchant.settlementBankCode,
+        settlement_bank: bankCodeFor("paystack", merchant.settlementBankCode),
         account_number: merchant.settlementAccountNumber,
         percentage_charge: 0,
       }),

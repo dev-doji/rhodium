@@ -11,6 +11,7 @@ import type { Merchant, Order, RailId } from "../domain/types.js";
 import { MockOnSwitchServer } from "./mock-onswitch-server.js";
 import { AppError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import { bankCodeFor } from "../modules/whatsapp/banks.js";
 
 const log = logger("onswitch-rail");
 
@@ -80,7 +81,7 @@ export class OnSwitchRail implements PaymentRail {
           holder_type: "BUSINESS",
           holder_name: merchant.businessName.slice(0, 60),
           account_number: merchant.settlementAccountNumber,
-          bank_code: merchant.settlementBankCode,
+          bank_code: bankCodeFor("nibss", merchant.settlementBankCode),
         },
       }),
     });
