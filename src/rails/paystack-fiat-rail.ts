@@ -157,7 +157,12 @@ export class PaystackFiatRail implements PaymentRail {
       await this.api("/dedicated_account/split", {
         method: "POST",
         body: JSON.stringify({
-          customer: customerCode,
+          // account_number, NOT customer. Paystack rejects a customer code
+          // here with "account_number and (subaccount or split_code) fields
+          // are required" — and because this call is what binds the money to
+          // the merchant, getting it wrong failed every crypto-free checkout
+          // with "could not route this payment to the seller".
+          account_number: accountNumber,
           subaccount: merchant.processorSubaccountCode,
         }),
       });

@@ -145,6 +145,11 @@ describe("a dedicated account settles to the right shop", () => {
       withSub({ id: "mch_diadem", processorSubaccountCode: "ACCT_diadem" }),
     );
 
+    // Paystack refuses to issue a dedicated account for a customer with no
+    // phone — "Customer phone number is required".
+    for (const c of calls.filter((x) => x.path === "/customer")) {
+      expect(c.body.phone, "customer needs a phone for DVA issuance").toBeTruthy();
+    }
     const emails = calls
       .filter((c) => c.path === "/customer")
       .map((c) => String(c.body.email));
