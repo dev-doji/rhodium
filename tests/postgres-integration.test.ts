@@ -5,7 +5,7 @@ import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { createPrismaRepositories } from "../src/db/prisma/prisma-repositories.js";
 import { PrismaIdempotencyStore } from "../src/db/prisma/prisma-idempotency.js";
 import { prisma, disconnectPrisma } from "../src/db/prisma/client.js";
-import { MonnifyFiatRail } from "../src/rails/monnify-fiat-rail.js";
+import type { PaymentRail } from "../src/rails/types.js";
 import { ref } from "../src/lib/ids.js";
 
 /**
@@ -16,6 +16,38 @@ import { ref } from "../src/lib/ids.js";
  */
 const RUN = !!process.env.DATABASE_URL;
 const d = RUN ? describe : describe.skip;
+
+/**
+ * Both bank rails expose the same mock surface, so this test can drive
+ * whichever one FIAT_PROVIDER selects instead of assuming Monnify.
+ *
+ * It used to ask the registry for the configured rail and then post the
+ * webhook as "monnify" regardless, so the moment FIAT_PROVIDER moved to
+ * paystack it failed with "invalid monnify signature" — a real config change
+ * showing up as a mysterious signature error in an unrelated Postgres test.
+ */
+type SignedWebhook = { signature: string; rawBody: string };
+type MockableRail = PaymentRail & {
+  mock?: {
+    simulateTransfer(ref: string): SignedWebhook;
+    replayLastTransfer(ref: string): SignedWebhook;
+  };
+};
+
+/** Each rail reads its signature from its own header. */
+function signatureHeader(railId: string): string {
+  switch (railId) {
+    case "monnify":
+      return "monnify-signature";
+    case "paystack":
+      return "x-paystack-signature";
+    default:
+      throw new Error(
+        `no webhook signature header known for rail "${railId}" — add it here ` +
+          "when a new bank rail is introduced",
+      );
+  }
+}
 
 d("magic moment against live Postgres", () => {
   let app: ReturnType<typeof buildApp>;
@@ -66,19 +98,21 @@ d("magic moment against live Postgres", () => {
     expect(instruction.accountNumber).toMatch(/^\d{10}$/);
 
     const payment = await app.repos.payments.byProviderRef(instruction.providerRef);
-    const fiat = app.rails.fiat() as MonnifyFiatRail;
+    const fiat = app.rails.fiat() as MockableRail;
+    expect(fiat.mock, `rail ${fiat.id} has no mock server`).toBeTruthy();
+    const header = signatureHeader(fiat.id);
 
     const before = await app.ledger.balance(merchantId);
     const signed = fiat.mock!.simulateTransfer(payment!.providerRef);
-    await app.payments.handleRailWebhook("monnify", {
-      headers: { "monnify-signature": signed.signature },
+    await app.payments.handleRailWebhook(fiat.id, {
+      headers: { [header]: signed.signature },
       rawBody: signed.rawBody,
     });
 
     // Replay the identical webhook — DB-backed idempotency must dedupe it.
     const replay = fiat.mock!.replayLastTransfer(payment!.providerRef);
-    await app.payments.handleRailWebhook("monnify", {
-      headers: { "monnify-signature": replay.signature },
+    await app.payments.handleRailWebhook(fiat.id, {
+      headers: { [header]: replay.signature },
       rawBody: replay.rawBody,
     });
 

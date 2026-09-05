@@ -4,7 +4,7 @@ import { buildApp } from "../src/app.js";
 import { loadConfig, resetConfigCache } from "../src/config/index.js";
 import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { buildApi } from "../src/http/api.js";
-import { MonnifyFiatRail } from "../src/rails/monnify-fiat-rail.js";
+import { signatureHeader, type MockableFiatRail } from "./helpers/harness.js";
 
 let server: Server;
 let base: string;
@@ -89,11 +89,14 @@ describe("HTTP API — end-to-end over the wire", () => {
 
     // Buyer transfers → provider posts the signed webhook to our endpoint.
     const payment = await app.repos.payments.byOrderId(order.id);
-    const fiat = app.rails.fiat() as MonnifyFiatRail;
+    const fiat = app.rails.fiat() as MockableFiatRail;
     const signed = fiat.mock!.simulateTransfer(payment!.providerRef);
-    const wh = await fetch(`${base}/webhooks/rails/monnify`, {
+    const wh = await fetch(`${base}/webhooks/rails/${fiat.id}`, {
       method: "POST",
-      headers: { "monnify-signature": signed.signature, "content-type": "application/json" },
+      headers: {
+        [signatureHeader(fiat.id)]: signed.signature,
+        "content-type": "application/json",
+      },
       body: signed.rawBody,
     });
     expect(wh.status).toBe(200);
@@ -119,9 +122,10 @@ describe("HTTP API — end-to-end over the wire", () => {
   });
 
   it("rejects a forged rail webhook signature (401)", async () => {
-    const res = await fetch(`${base}/webhooks/rails/monnify`, {
+    const railId = app.rails.fiat().id;
+    const res = await fetch(`${base}/webhooks/rails/${railId}`, {
       method: "POST",
-      headers: { "monnify-signature": "bad", "content-type": "application/json" },
+      headers: { [signatureHeader(railId)]: "bad", "content-type": "application/json" },
       body: JSON.stringify({ event: "charge.success", data: {} }),
     });
     expect(res.status).toBe(401);
@@ -372,11 +376,14 @@ describe("shareable receipt", () => {
       lines: [{ productId: product.id, qty: 1 }],
     });
     const instruction = await app.payments.requestPayment(order.id);
-    const fiat = app.rails.fiat() as MonnifyFiatRail;
+    const fiat = app.rails.fiat() as MockableFiatRail;
     const signed = fiat.mock!.simulateTransfer(instruction.providerRef);
-    await fetch(`${base}/webhooks/rails/monnify`, {
+    await fetch(`${base}/webhooks/rails/${fiat.id}`, {
       method: "POST",
-      headers: { "monnify-signature": signed.signature, "content-type": "application/json" },
+      headers: {
+        [signatureHeader(fiat.id)]: signed.signature,
+        "content-type": "application/json",
+      },
       body: signed.rawBody,
     });
 
@@ -412,11 +419,14 @@ describe("receipt as an image and a document", () => {
       lines: [{ productId: product.id, qty: 1 }],
     });
     const instruction = await app.payments.requestPayment(order.id);
-    const fiat = app.rails.fiat() as MonnifyFiatRail;
+    const fiat = app.rails.fiat() as MockableFiatRail;
     const signed = fiat.mock!.simulateTransfer(instruction.providerRef);
-    await fetch(`${base}/webhooks/rails/monnify`, {
+    await fetch(`${base}/webhooks/rails/${fiat.id}`, {
       method: "POST",
-      headers: { "monnify-signature": signed.signature, "content-type": "application/json" },
+      headers: {
+        [signatureHeader(fiat.id)]: signed.signature,
+        "content-type": "application/json",
+      },
       body: signed.rawBody,
     });
     return order;
