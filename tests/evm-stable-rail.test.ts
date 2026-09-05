@@ -185,4 +185,60 @@ describe("EVM stablecoin through the whole payment loop", () => {
       delete process.env.EVM_CONTRACT_ADDRESS;
     }
   });
+
+  it("crypto + fiat sales land in the SAME ledger and traction snapshot", async () => {
+    // Ported from the retired Quai rail's suite. The single naira ledger
+    // across both rails is the whole point of the rail abstraction, and it is
+    // the one thing the per-rail tests cannot prove on their own.
+    process.env.FEATURE_EVM_STABLE_ENABLED = "true";
+    process.env.EVM_ADAPTER_MODE = "mock";
+    process.env.EVM_CONTRACT_ADDRESS = CONTRACT;
+    const { makeApp, seedMerchant, seedProduct } = await import("./helpers/harness.js");
+    const app = makeApp();
+    try {
+      const m = await seedMerchant(app, { quaiAddress: MERCHANT_WALLET, cryptoEnabled: true });
+      const p = await seedProduct(app, m.id, 500_000);
+
+      // one on-chain sale
+      const cryptoOrd = await app.commerce.createOrder({
+        merchantId: m.id, buyerRef: "+2348090005555",
+        lines: [{ productId: p.id, qty: 1 }], rail: "crypto",
+      });
+      const cInst = await app.payments.requestPayment(cryptoOrd.id);
+      const evm = app.rails.get("evm_stable") as {
+        mock?: { pay: (i: Record<string, string>) => { txHash: string } };
+      };
+      const log = evm.mock!.pay({
+        orderId: cryptoOrd.id, merchant: MERCHANT_WALLET,
+        token: USDC_SEPOLIA, amount: cInst.cryptoAmount!,
+      });
+      await app.payments.handleRailWebhook("evm_stable", {
+        headers: {},
+        rawBody: JSON.stringify({ orderId: cryptoOrd.id, txHash: log.txHash }),
+      });
+
+      // one bank sale, on whichever fiat rail is configured
+      const fiatOrder = await app.commerce.createOrder({
+        merchantId: m.id, buyerRef: "+2348090006666",
+        lines: [{ productId: p.id, qty: 1 }],
+      });
+      const fInst = await app.payments.requestPayment(fiatOrder.id);
+      const signed = app.fiat.mock!.simulateTransfer(fInst.providerRef);
+      await app.payments.handleRailWebhook(app.fiat.id, {
+        headers: { [app.fiat.webhookSignatureHeader!]: signed.signature },
+        rawBody: signed.rawBody,
+      });
+
+      expect(await app.ledger.entries(m.id)).toHaveLength(2);
+      const t = await app.traction.snapshot();
+      expect(t.salesCount).toBe(2);
+      expect(t.railSplit.crypto).toBe(1);
+      expect(t.railSplit.fiat).toBe(1);
+      expect(t.gmvKobo).toBe(1_000_000);
+      expect(t.uniqueBuyers).toBe(2);
+    } finally {
+      delete process.env.FEATURE_EVM_STABLE_ENABLED;
+      delete process.env.EVM_CONTRACT_ADDRESS;
+    }
+  });
 });

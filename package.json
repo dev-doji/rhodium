@@ -22,7 +22,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx src/demo/magic-moment.ts",
-    "demo:crypto": "tsx src/demo/crypto-moment.ts",
     "demo:whatsapp": "tsx src/demo/whatsapp-e2e.ts",
     "smoke:whatsapp": "tsx src/smoke/whatsapp-check.ts",
     "seed:merchant": "tsx src/smoke/seed-merchant.ts",

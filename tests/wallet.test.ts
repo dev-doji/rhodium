@@ -19,11 +19,14 @@ describe("embedded Quai wallet", () => {
     const done = await app.whatsapp.handleInbound({ from: phone, text: "1" });
 
     const merchant = await app.repos.merchants.byPhone(phone);
-    expect(merchant!.quaiAddress).toMatch(/^0x00/);
-    // The message names the chain now ("your Quai wallet", "your Arbitrum
-    // wallet"), because a merchant told only "crypto wallet" cannot tell
-    // whether the address she is backing up works where she expects.
-    expect(done).toMatch(/your Quai wallet/i);
+    // Quai is retired: onboarding now mints an ordinary EVM account for
+    // Arbitrum, so the address must NOT carry Quai's 0x00 shard prefix.
+    expect(merchant!.quaiAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(merchant!.quaiAddress!.startsWith("0x00")).toBe(false);
+    // The message names the chain, because a merchant told only "crypto
+    // wallet" cannot tell whether the address she is backing up works where
+    // she expects.
+    expect(done).toMatch(/your Arbitrum One wallet/i);
 
     const secrets = await app.repos.merchants.getWalletSecrets(merchant!.id);
     expect(secrets).not.toBeNull();

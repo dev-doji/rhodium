@@ -3,7 +3,6 @@ import type { RailId, RailKind } from "../domain/types.js";
 import { MonnifyFiatRail } from "./monnify-fiat-rail.js";
 import { PaystackFiatRail } from "./paystack-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
-import { QuaiRail } from "./quai-rail.js";
 import { EvmStableRail } from "./evm-stable-rail.js";
 import { OnSwitchRail } from "./onswitch-rail.js";
 import { NotFoundError } from "../lib/errors.js";
@@ -35,14 +34,27 @@ export class RailRegistry {
     return this.get(this.defaultFiatId);
   }
 
-  /** The active crypto rail (Quai/BlipPay). */
+  /**
+   * Like `get`, but returns null for a rail that is no longer registered.
+   *
+   * Retiring a rail does not retire the rows it wrote. Orders and payments
+   * created on it keep their railId forever, and a background job walking the
+   * payment table must not crash on a decade-old row from a provider we
+   * stopped using. Read paths use this; anything creating a NEW payment still
+   * uses `get`, because there a missing rail is a genuine misconfiguration.
+   */
+  find(id: RailId): PaymentRail | null {
+    return this.rails.get(id) ?? null;
+  }
+
+  /** The active crypto rail. */
   crypto(): PaymentRail {
     const rail = this.all().find((r) => r.kind === "crypto");
     if (!rail) throw new NotFoundError("crypto rail");
     return rail;
   }
 
-  /** Pick a rail by order kind: fiat → bank transfer, crypto → Quai/BlipPay. */
+  /** Pick a rail by order kind: fiat → bank transfer, crypto → on-chain. */
   forKind(kind: RailKind): PaymentRail {
     return kind === "crypto" ? this.crypto() : this.fiat();
   }
@@ -79,8 +91,7 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
 
   // Crypto rail. When the EVM stablecoin rail is enabled it is registered FIRST,
   // so `crypto()` — which returns the first crypto rail found — routes new
-  // orders to it while Quai stays loaded for historical ones. Same pattern as
-  // keeping Monnify registered behind Paystack.
+  // orders to it. Same pattern as keeping Monnify registered behind Paystack.
   if (cfg.FEATURE_EVM_STABLE_ENABLED) {
     registry.register(
       new EvmStableRail({
@@ -99,21 +110,10 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
     );
   }
 
-  // Legacy crypto rail: the Quai/BlipPay adapter when enabled; otherwise the
-  // dark stablecoin stub keeps the seam present but refusing.
-  if (cfg.FEATURE_QUAI_ENABLED) {
-    registry.register(
-      new QuaiRail({
-        mode: cfg.QUAI_ADAPTER_MODE,
-        asset: cfg.QUAI_PAYMENT_ASSET,
-        chainId: cfg.QUAI_CHAIN_ID,
-        contractAddress: cfg.QUAI_CONTRACT_ADDRESS,
-        usdtAddress: cfg.QUAI_USDT_ADDRESS,
-        rpcUrl: cfg.QUAI_RPC_URL,
-        publicBaseUrl: cfg.PUBLIC_BASE_URL,
-      }),
-    );
-  } else {
+  // Quai has been retired in favour of the EVM rail on Arbitrum. Rows written
+  // by it keep their railId forever, which is why read paths use
+  // `registry.find` and tolerate a rail that is no longer here.
+  {
     registry.register(new StablecoinRail(cfg.FEATURE_STABLECOIN_ENABLED));
   }
 

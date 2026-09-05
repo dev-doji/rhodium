@@ -10,6 +10,7 @@ import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
 import type { Merchant, Product, RailId } from "../domain/types.js";
+import type { PaymentRail } from "../rails/types.js";
 import { demoImageByName, demoImageUrl, TEST_SHOP_ITEMS } from "../domain/demo-catalogue.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
@@ -440,28 +441,44 @@ export function buildApi(app: App): Express {
   server.post(
     "/api/crypto/simulate-pay",
     asyncRoute(async (req, res) => {
-      if (app.config.QUAI_ADAPTER_MODE !== "mock") {
+      if (app.config.EVM_ADAPTER_MODE !== "mock") {
         throw new ValidationError("simulate-pay is disabled in live mode");
       }
       const { orderId } = req.body ?? {};
       const order = await app.repos.orders.byId(String(orderId));
       if (!order) throw new NotFoundError("order", { id: orderId });
       const merchant = await app.repos.merchants.byId(order.merchantId);
-      const rail = app.rails.crypto() as { chain?: import("../rails/mock-quai-chain.js").MockQuaiChain };
-      if (!rail.chain) throw new ValidationError("crypto rail not in mock mode");
+
+      // Whichever crypto rail is active, not a named one — that is what let
+      // this endpoint keep pointing at Quai after the chain moved.
+      const rail = app.rails.crypto() as PaymentRail & {
+        mock?: {
+          pay(input: {
+            orderId: string;
+            merchant: string;
+            token: string;
+            amount: string;
+          }): { txHash: string };
+        };
+      };
+      if (!rail.mock) throw new ValidationError("crypto rail not in mock mode");
+
       // Mirror the real payment instruction (asset, amount, token) so the mock
       // exercises the same confirmation path as a live tx.
       const instruction = await app.payments.requestPayment(order.id);
       const nativeToken = "0x0000000000000000000000000000000000000000";
-      const paid = rail.chain.simulatePayment({
+      const paid = rail.mock.pay({
         orderId: order.id,
         merchant: merchant?.quaiAddress ?? "0xmerchant",
         token: instruction.tokenAddress ?? nativeToken,
         amount: instruction.cryptoAmount ?? "0",
       });
-      await app.payments.handleRailWebhook("quai", {
+      // The EVM rail wants the order id as well as the hash: it checks the
+      // on-chain Paid log carries THIS order's id, so one real transfer cannot
+      // confirm a different order. The retired Quai rail matched on hash alone.
+      await app.payments.handleRailWebhook(rail.id, {
         headers: {},
-        rawBody: JSON.stringify({ txHash: paid.txHash }),
+        rawBody: JSON.stringify({ orderId: order.id, txHash: paid.txHash }),
       });
       res.json({ ok: true, txHash: paid.txHash });
     }),

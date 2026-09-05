@@ -296,8 +296,8 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(await res.text()).toMatch(/cancelled/i);
   });
 
-  it("runs the crypto (Quai/BlipPay) checkout loop and reflects it in traction", async () => {
-    // A crypto-capable merchant with a Quai wallet + a crypto order.
+  it("runs the crypto checkout loop and reflects it in traction", async () => {
+    // A crypto-capable merchant with an on-chain wallet + a crypto order.
     const merchant = await app.repos.merchants.create({
       id: "mch_crypto_http",
       phone: "+2348030007777",
@@ -324,12 +324,12 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(checkout.instruction.instructionType).toBe("crypto");
     expect(checkout.instruction.checkoutUrl).toContain(`/checkout/${order.id}`);
 
-    // Simulate the BlipPay payment (dev/mock path the checkout button uses).
+    // Simulate the on-chain payment (dev/mock path the checkout button uses).
     const pay = await fetch(`${base}/api/crypto/simulate-pay`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ orderId: order.id }),
     });
-    expect(pay.status).toBe(200);
+    expect(pay.status, await pay.clone().text()).toBe(200);
 
     // Order is paid; the sale is in the naira ledger + the traction feed.
     const after = await app.repos.orders.byId(order.id);

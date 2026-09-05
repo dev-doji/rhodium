@@ -84,8 +84,12 @@ export class ReconciliationJob {
         }
         // Optionally ask the provider directly (catches missed webhooks).
         if (this.opts.pollProvider && payment.status === "pending") {
-          const rail = this.rails.get(payment.railId);
-          const status = await rail.verifyPayment(payment.providerRef).catch(() => null);
+          // A payment on a retired rail cannot be polled — skip it rather than
+          // failing the whole reconciliation run over one historical row.
+          const rail = this.rails.find(payment.railId);
+          const status = rail
+            ? await rail.verifyPayment(payment.providerRef).catch(() => null)
+            : null;
           if (status?.status === "confirmed") {
             drift.push({
               paymentId: payment.id,

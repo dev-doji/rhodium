@@ -81,32 +81,33 @@ const schema = z.object({
   FEATURE_STABLECOIN_ENABLED: bool(false),
 
   // --- Quai Network + BlipPay crypto rail (buildathon) ---
-  FEATURE_QUAI_ENABLED: bool(true),
+  // Quai is retired: the crypto rail is the EVM one, on Arbitrum. These
+  // remain only because historical rows and the checkout page still reference
+  // an explorer for orders that settled on Quai; nothing new is created here.
   QUAI_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
-  // Orchard testnet (per the Quai buildathon starter guide).
-  QUAI_RPC_URL: z.string().optional().default("https://orchard.rpc.quai.network/cyprus1"),
-  QUAI_CHAIN_ID: z.string().default("15000"),
-  QUAI_EXPLORER_URL: z.string().default("https://orchard.quaiscan.io"),
-  QUAI_CONTRACT_ADDRESS: z.string().optional().default(""),
-  QUAI_USDT_ADDRESS: z.string().optional().default(""),
-  // Which asset buyers pay: 'native' QUAI (simplest for the testnet demo) or
-  // 'usdt' (ERC-20 stablecoin). Native needs only faucet QUAI.
-  QUAI_PAYMENT_ASSET: z.enum(["native", "usdt"]).default("usdt"),
-  // --- EVM stablecoin rail (Arbitrum et al) ---
+  QUAI_EXPLORER_URL: z.string().default("https://arbiscan.io"),
+  QUAI_RPC_URL: z.string().optional().default(""),
+  QUAI_CHAIN_ID: z.string().default("42161"),
+
   // Chain-agnostic by construction: nothing below names Arbitrum, so pointing
   // at Base or Polygon is four env vars, not a new adapter.
-  FEATURE_EVM_STABLE_ENABLED: bool(false),
+  // ON by default: with Quai retired this IS the crypto rail. Left off, the
+  // registry falls back to the stablecoin stub and every crypto order is
+  // answered with "feature disabled".
+  FEATURE_EVM_STABLE_ENABLED: bool(true),
   EVM_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
-  EVM_CHAIN_ID: z.coerce.number().default(421614), // Arbitrum Sepolia
-  EVM_CHAIN_NAME: z.string().default("Arbitrum Sepolia"),
-  EVM_RPC_URL: z.string().default("https://sepolia-rollup.arbitrum.io/rpc"),
+  EVM_CHAIN_ID: z.coerce.number().default(42161), // Arbitrum One
+  EVM_CHAIN_NAME: z.string().default("Arbitrum One"),
+  EVM_RPC_URL: z.string().default("https://arb1.arbitrum.io/rpc"),
   EVM_EXPLORER_URL: z.string().default("https://sepolia.arbiscan.io"),
   // RhodiumPay, redeployed unchanged — payToken() is already an ERC-20
   // transferFrom(buyer -> merchant) that emits Paid(orderId, ...).
   EVM_CONTRACT_ADDRESS: z.string().optional().default(""),
   // Circle-issued NATIVE USDC on Arbitrum Sepolia. Never bridged USDC.e:
   // different contract, and wallets display it confusingly.
-  EVM_TOKEN_ADDRESS: z.string().default("0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"),
+  // Native (Circle-issued) USDC on Arbitrum One, verified on-chain:
+  // symbol USDC, 6 decimals. NOT the bridged USDC.e at 0xFF970A61…
+  EVM_TOKEN_ADDRESS: z.string().default("0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
   EVM_TOKEN_SYMBOL: z.string().default("USDC"),
   // SIX for USDC/USDT, not eighteen. Assuming 18 overcharges a buyer by 10^12,
   // which is the single highest-risk number in this rail.
