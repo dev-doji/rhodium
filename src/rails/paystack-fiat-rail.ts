@@ -41,6 +41,7 @@ interface PaystackConfig {
 export class PaystackFiatRail implements PaymentRail {
   readonly id: RailId = "paystack";
   readonly kind = "fiat" as const;
+  readonly webhookSignatureHeader = "x-paystack-signature";
   readonly mock?: MockPaystackServer;
 
   constructor(private cfg: PaystackConfig) {

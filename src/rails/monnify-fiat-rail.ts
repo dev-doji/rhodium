@@ -33,6 +33,7 @@ interface MonnifyConfig {
 export class MonnifyFiatRail implements PaymentRail {
   readonly id: RailId = "monnify";
   readonly kind = "fiat" as const;
+  readonly webhookSignatureHeader = "monnify-signature";
   readonly mock?: MockMonnifyServer;
   private token?: { value: string; expiresAt: number };
 

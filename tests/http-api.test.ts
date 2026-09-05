@@ -4,7 +4,7 @@ import { buildApp } from "../src/app.js";
 import { loadConfig, resetConfigCache } from "../src/config/index.js";
 import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { buildApi } from "../src/http/api.js";
-import { signatureHeader, type MockableFiatRail } from "./helpers/harness.js";
+import type { MockableFiatRail } from "./helpers/harness.js";
 
 let server: Server;
 let base: string;
@@ -94,7 +94,7 @@ describe("HTTP API — end-to-end over the wire", () => {
     const wh = await fetch(`${base}/webhooks/rails/${fiat.id}`, {
       method: "POST",
       headers: {
-        [signatureHeader(fiat.id)]: signed.signature,
+        [fiat.webhookSignatureHeader!]: signed.signature,
         "content-type": "application/json",
       },
       body: signed.rawBody,
@@ -125,7 +125,7 @@ describe("HTTP API — end-to-end over the wire", () => {
     const railId = app.rails.fiat().id;
     const res = await fetch(`${base}/webhooks/rails/${railId}`, {
       method: "POST",
-      headers: { [signatureHeader(railId)]: "bad", "content-type": "application/json" },
+      headers: { [app.rails.fiat().webhookSignatureHeader!]: "bad", "content-type": "application/json" },
       body: JSON.stringify({ event: "charge.success", data: {} }),
     });
     expect(res.status).toBe(401);
@@ -381,7 +381,7 @@ describe("shareable receipt", () => {
     await fetch(`${base}/webhooks/rails/${fiat.id}`, {
       method: "POST",
       headers: {
-        [signatureHeader(fiat.id)]: signed.signature,
+        [fiat.webhookSignatureHeader!]: signed.signature,
         "content-type": "application/json",
       },
       body: signed.rawBody,
@@ -424,7 +424,7 @@ describe("receipt as an image and a document", () => {
     await fetch(`${base}/webhooks/rails/${fiat.id}`, {
       method: "POST",
       headers: {
-        [signatureHeader(fiat.id)]: signed.signature,
+        [fiat.webhookSignatureHeader!]: signed.signature,
         "content-type": "application/json",
       },
       body: signed.rawBody,

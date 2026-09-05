@@ -126,6 +126,13 @@ export function buildApp(deps: BuildAppDeps = {}): App {
       merchantBaseUrl: config.MERCHANT_BASE_URL,
       waNumber: config.WHATSAPP_WA_NUMBER,
       platformPhoneNumberId: config.WHATSAPP_PHONE_NUMBER_ID,
+      // Mint the merchant's wallet on the chain the crypto rail settles on.
+      // With the EVM rail enabled that is an ordinary Ethereum-format account
+      // (Arbitrum by default), importable into MetaMask; otherwise Quai.
+      cryptoChain: config.FEATURE_EVM_STABLE_ENABLED ? "evm" : "quai",
+      cryptoChainName: config.FEATURE_EVM_STABLE_ENABLED
+        ? config.EVM_CHAIN_NAME
+        : "Quai",
     },
     waSignup,
     new HumanTakeoverStore(),

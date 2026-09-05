@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeApp, seedMerchant, seedProduct, signatureHeader } from "./helpers/harness.js";
+import { makeApp, seedMerchant, seedProduct } from "./helpers/harness.js";
 import { QuaiRail } from "../src/rails/quai-rail.js";
 import { koboToUsdtUnits } from "../src/lib/fx.js";
 import { AppError, ValidationError } from "../src/lib/errors.js";
@@ -133,7 +133,7 @@ describe("Quai/BlipPay crypto rail — WhatsApp merchant accepts crypto, books i
     const inst = await app.payments.requestPayment(fiatOrder.id);
     const signed = app.fiat.mock!.simulateTransfer(inst.providerRef);
     await app.payments.handleRailWebhook(app.fiat.id, {
-      headers: { [signatureHeader(app.fiat.id)]: signed.signature },
+      headers: { [app.fiat.webhookSignatureHeader!]: signed.signature },
       rawBody: signed.rawBody,
     });
 

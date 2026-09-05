@@ -54,6 +54,10 @@ export interface WhatsAppOptions {
   /** Merchant-facing origin — dashboard and wallet backup. Defaults to publicBaseUrl. */
   merchantBaseUrl?: string;
   waNumber: string; // digits for wa.me links (e.g. 15551405536)
+  /** Chain family the crypto rail settles on — decides the wallet we mint. */
+  cryptoChain?: "quai" | "evm";
+  /** Display name for that chain, e.g. "Arbitrum". Copy only. */
+  cryptoChainName?: string;
   /** Rhodium's own phone_number_id — messages here are vendor onboarding. */
   platformPhoneNumberId?: string;
 }
@@ -322,14 +326,17 @@ export class WhatsAppService {
           );
         }
 
-        // Generate an embedded Quai wallet so they can accept crypto instantly.
+        // Generate an embedded wallet on whichever chain the crypto rail
+        // actually settles on — an address on the wrong chain is not a smaller
+        // problem than no address, it is funds sent somewhere she cannot reach.
         // Resilient: if generation fails, onboarding still succeeds (bank only).
         let walletLine = "";
         try {
-          const wallet = await this.wallets.generateCyprus1();
+          const wallet = await this.wallets.generateForChain(this.opts.cryptoChain ?? "quai");
           await this.repos.merchants.setWalletSecrets(merchant.id, wallet.mnemonic, wallet.privateKey);
           await this.repos.merchants.update(merchant.id, { quaiAddress: wallet.address });
-          walletLine = `\n🪙 We created your crypto wallet: ${wallet.address.slice(0, 10)}…${wallet.address.slice(-4)}\n⚠️ Back it up now: ${this.merchantOrigin()}/wallet (verify with the code we text you). It's the only way to control your crypto funds.`;
+          const chainName = this.opts.cryptoChainName ?? (wallet.chain === "evm" ? "EVM" : "Quai");
+          walletLine = `\n🪙 We created your ${chainName} wallet: ${wallet.address.slice(0, 10)}…${wallet.address.slice(-4)}\n⚠️ Back it up now: ${this.merchantOrigin()}/wallet (verify with the code we text you). It's the only way to control your crypto funds.`;
         } catch (err) {
           log.warn({ err: (err as Error).message }, "wallet generation failed during onboarding");
         }

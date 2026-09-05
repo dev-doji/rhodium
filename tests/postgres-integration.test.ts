@@ -5,7 +5,7 @@ import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { createPrismaRepositories } from "../src/db/prisma/prisma-repositories.js";
 import { PrismaIdempotencyStore } from "../src/db/prisma/prisma-idempotency.js";
 import { prisma, disconnectPrisma } from "../src/db/prisma/client.js";
-import type { PaymentRail } from "../src/rails/types.js";
+import type { MockableFiatRail } from "./helpers/harness.js";
 import { ref } from "../src/lib/ids.js";
 
 /**
@@ -26,29 +26,6 @@ const d = RUN ? describe : describe.skip;
  * paystack it failed with "invalid monnify signature" — a real config change
  * showing up as a mysterious signature error in an unrelated Postgres test.
  */
-type SignedWebhook = { signature: string; rawBody: string };
-type MockableRail = PaymentRail & {
-  mock?: {
-    simulateTransfer(ref: string): SignedWebhook;
-    replayLastTransfer(ref: string): SignedWebhook;
-  };
-};
-
-/** Each rail reads its signature from its own header. */
-function signatureHeader(railId: string): string {
-  switch (railId) {
-    case "monnify":
-      return "monnify-signature";
-    case "paystack":
-      return "x-paystack-signature";
-    default:
-      throw new Error(
-        `no webhook signature header known for rail "${railId}" — add it here ` +
-          "when a new bank rail is introduced",
-      );
-  }
-}
-
 d("magic moment against live Postgres", () => {
   let app: ReturnType<typeof buildApp>;
   let merchantId: string;
@@ -98,9 +75,9 @@ d("magic moment against live Postgres", () => {
     expect(instruction.accountNumber).toMatch(/^\d{10}$/);
 
     const payment = await app.repos.payments.byProviderRef(instruction.providerRef);
-    const fiat = app.rails.fiat() as MockableRail;
+    const fiat = app.rails.fiat() as MockableFiatRail;
     expect(fiat.mock, `rail ${fiat.id} has no mock server`).toBeTruthy();
-    const header = signatureHeader(fiat.id);
+    const header = fiat.webhookSignatureHeader!;
 
     const before = await app.ledger.balance(merchantId);
     const signed = fiat.mock!.simulateTransfer(payment!.providerRef);

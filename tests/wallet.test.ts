@@ -20,7 +20,10 @@ describe("embedded Quai wallet", () => {
 
     const merchant = await app.repos.merchants.byPhone(phone);
     expect(merchant!.quaiAddress).toMatch(/^0x00/);
-    expect(done).toMatch(/crypto wallet/i);
+    // The message names the chain now ("your Quai wallet", "your Arbitrum
+    // wallet"), because a merchant told only "crypto wallet" cannot tell
+    // whether the address she is backing up works where she expects.
+    expect(done).toMatch(/your Quai wallet/i);
 
     const secrets = await app.repos.merchants.getWalletSecrets(merchant!.id);
     expect(secrets).not.toBeNull();

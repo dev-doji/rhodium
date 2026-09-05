@@ -14,10 +14,22 @@ function q(): any {
 const log = logger("wallet");
 
 export interface GeneratedWallet {
-  address: string; // Cyprus1 Quai address (0x00…)
+  /** Quai Cyprus1 (0x00…) or a standard EVM address, depending on the chain. */
+  address: string;
   privateKey: string;
   mnemonic: string; // 12-word BIP39 phrase
+  /** Which chain family the address belongs to. */
+  chain: "quai" | "evm";
 }
+
+/**
+ * The standard BIP44 path for Ethereum and every EVM chain, Arbitrum included.
+ *
+ * Using the standard path is the whole point: the merchant can type her twelve
+ * words into MetaMask, Rainbow or any wallet and land on the same address. A
+ * custom path would strand her funds behind our own software.
+ */
+const EVM_PATH = "m/44'/60'/0'/0/0";
 
 /**
  * Generates a self-custody-style Quai EOA for a merchant (embedded wallet).
@@ -29,6 +41,31 @@ export interface GeneratedWallet {
  * never sent over WhatsApp.
  */
 export class WalletService {
+  /** Mint the wallet for a chain family, so callers need not branch. */
+  async generateForChain(chain: "quai" | "evm"): Promise<GeneratedWallet> {
+    return chain === "evm" ? this.generateEvm() : this.generateCyprus1();
+  }
+
+  /**
+   * A standard EVM account, for chains like Arbitrum.
+   *
+   * `quais` is a fork of ethers v6, so it derives an ordinary secp256k1 EOA at
+   * the Ethereum path — no second crypto dependency for one key derivation.
+   */
+  async generateEvm(): Promise<GeneratedWallet> {
+    const lib = q();
+    const mnemonic = lib.Mnemonic.fromEntropy(lib.randomBytes(16));
+    const wallet = lib.HDNodeWallet.fromMnemonic(mnemonic, EVM_PATH);
+    // Never log secrets — only the public address.
+    log.info({ address: wallet.address, chain: "evm" }, "generated merchant wallet");
+    return {
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+      mnemonic: mnemonic.phrase,
+      chain: "evm",
+    };
+  }
+
   async generateCyprus1(): Promise<GeneratedWallet> {
     const lib = q();
     const mnemonic = lib.Mnemonic.fromEntropy(lib.randomBytes(16));
@@ -36,7 +73,7 @@ export class WalletService {
     const info = await hd.getNextAddress(0, lib.Zone.Cyprus1);
     const privateKey = hd.getPrivateKey(info.address);
     // Never log secrets — only the public address.
-    log.info({ address: info.address }, "generated merchant wallet");
-    return { address: info.address, privateKey, mnemonic: mnemonic.phrase };
+    log.info({ address: info.address, chain: "quai" }, "generated merchant wallet");
+    return { address: info.address, privateKey, mnemonic: mnemonic.phrase, chain: "quai" };
   }
 }

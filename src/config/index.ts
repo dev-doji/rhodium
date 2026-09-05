@@ -11,6 +11,25 @@ const bool = (def: boolean) =>
     .optional()
     .transform((v) => (v == null ? def : v === "true" || v === "1"));
 
+/**
+ * Bank rails you can switch between with FIAT_PROVIDER.
+ *
+ * Adding a provider is meant to be three edits and no more: register the rail
+ * in the registry, add its id here with the credentials it needs, and give the
+ * rail a `webhookSignatureHeader`. Nothing else in the codebase — the
+ * orchestrator, the tests, the payout-account backfill — needs to know the
+ * roster, because they all go through the registry or the rail itself.
+ */
+export const FIAT_PROVIDERS = ["monnify", "paystack"] as const;
+export type FiatProvider = (typeof FIAT_PROVIDERS)[number];
+export const DEFAULT_FIAT_PROVIDER: FiatProvider = "monnify";
+
+/** Env vars each provider cannot run live without. */
+const FIAT_PROVIDER_CREDENTIALS: Record<FiatProvider, readonly string[]> = {
+  monnify: ["MONNIFY_API_KEY", "MONNIFY_SECRET_KEY"],
+  paystack: ["PAYSTACK_SECRET_KEY"],
+};
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(3000),
@@ -42,8 +61,8 @@ const schema = z.object({
   FIAT_PROVIDER: z
     .string()
     .optional()
-    .transform((v) => (v ?? "monnify").trim().toLowerCase())
-    .pipe(z.enum(["monnify", "paystack"])),
+    .transform((v) => (v ?? DEFAULT_FIAT_PROVIDER).trim().toLowerCase())
+    .pipe(z.enum(FIAT_PROVIDERS)),
   PAYSTACK_SECRET_KEY: z.string().optional().default(""),
   PAYSTACK_BASE_URL: z.string().default("https://api.paystack.co"),
   // Bank the dedicated virtual accounts are issued against. Paystack supports
@@ -168,11 +187,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   // Guardrails: in production, live external calls must have real credentials.
   if (cfg.NODE_ENV === "production") {
     if (cfg.FIAT_ADAPTER_MODE === "live") {
-      if (cfg.FIAT_PROVIDER === "monnify" && (!cfg.MONNIFY_API_KEY || !cfg.MONNIFY_SECRET_KEY)) {
-        throw new Error("FIAT_PROVIDER=monnify + live requires MONNIFY_API_KEY + MONNIFY_SECRET_KEY");
-      }
-      if (cfg.FIAT_PROVIDER === "paystack" && !cfg.PAYSTACK_SECRET_KEY) {
-        throw new Error("FIAT_PROVIDER=paystack + live requires PAYSTACK_SECRET_KEY");
+      // Table-driven, so a new provider cannot be added and silently skip
+      // its credential check.
+      const required = FIAT_PROVIDER_CREDENTIALS[cfg.FIAT_PROVIDER] ?? [];
+      const missing = required.filter(
+        (key) => !(cfg as unknown as Record<string, string>)[key],
+      );
+      if (missing.length) {
+        throw new Error(
+          `FIAT_PROVIDER=${cfg.FIAT_PROVIDER} + live requires ${missing.join(" + ")}`,
+        );
       }
     }
     if (cfg.WHATSAPP_MODE === "live" && !cfg.WHATSAPP_ACCESS_TOKEN) {

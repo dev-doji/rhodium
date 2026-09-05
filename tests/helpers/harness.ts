@@ -17,27 +17,6 @@ export type MockableFiatRail = PaymentRail & {
   };
 };
 
-/**
- * Each rail reads its signature from its own header.
- *
- * Exported because the harness is not the only place that posts a webhook,
- * and a second copy of this mapping is how the suite ends up green on one
- * provider and broken on another.
- */
-export function signatureHeader(railId: string): string {
-  switch (railId) {
-    case "monnify":
-      return "monnify-signature";
-    case "paystack":
-      return "x-paystack-signature";
-    default:
-      throw new Error(
-        `no webhook signature header known for rail "${railId}" — add it here ` +
-          "when a new bank rail is introduced",
-      );
-  }
-}
-
 export interface TestApp extends App {
   channel: CaptureTransport;
   clock: FixedClock;
@@ -107,8 +86,10 @@ export async function orderWithDva(
 }
 
 function post(app: TestApp, signed: SignedWebhook) {
+  // The rail says which header carries its signature, so this works for any
+  // provider without the harness knowing the roster.
   return app.payments.handleRailWebhook(app.fiat.id, {
-    headers: { [signatureHeader(app.fiat.id)]: signed.signature },
+    headers: { [app.fiat.webhookSignatureHeader!]: signed.signature },
     rawBody: signed.rawBody,
   });
 }

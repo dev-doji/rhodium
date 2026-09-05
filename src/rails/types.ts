@@ -84,6 +84,16 @@ export interface PaymentRail {
   readonly id: RailId;
   readonly kind: RailKind;
 
+  /**
+   * HTTP header this rail reads its webhook signature from.
+   *
+   * Declared by the rail rather than looked up in a table somewhere, so adding
+   * a provider is one file and callers never have to know which one is
+   * configured. Absent on rails that authenticate differently — the crypto
+   * rails verify against the chain itself, not a shared secret.
+   */
+  readonly webhookSignatureHeader?: string;
+
   createPaymentInstruction(
     order: Order,
     merchant: Merchant,
