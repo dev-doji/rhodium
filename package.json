@@ -44,7 +44,8 @@
     "landing:build": "npm --prefix apps/landing run build",
     "landing:start": "npm --prefix apps/landing run start",
     "setup": "npm install && npm run db:up && npm run prisma:generate && npm run prisma:migrate && npm run dashboard:install && npm run dashboard:build",
-    "lint": "tsc -p tsconfig.json --noEmit"
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "contracts:deploy:arbitrum": "npm --prefix chain run deploy:arbitrum"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

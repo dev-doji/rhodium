@@ -6,13 +6,15 @@
   "scripts": {
     "compile": "hardhat compile",
     "deploy": "node scripts/deploy.cjs",
-    "pay": "node scripts/pay.cjs"
+    "pay": "node scripts/pay.cjs",
+    "deploy:arbitrum": "node scripts/deploy-arbitrum.cjs"
   },
   "devDependencies": {
     "hardhat": "^2.22.0"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "ethers": "^6.17.0",
     "ipfs-only-hash": "^4.0.0",
     "quais": "1.0.0-alpha.56"
   }
