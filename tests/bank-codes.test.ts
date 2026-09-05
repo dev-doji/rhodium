@@ -73,3 +73,49 @@ describe("choosing a bank in the chat", () => {
     }
   });
 });
+
+describe("verifying the account before trusting it", () => {
+  const onboard = async (account: string, bank: string, phone: string) => {
+    const { makeApp } = await import("./helpers/harness.js");
+    process.env.FIAT_PROVIDER = "paystack";
+    const app = makeApp();
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Verify Shop" });
+    await app.whatsapp.handleInbound({ from: phone, text: account });
+    const afterBank = await app.whatsapp.handleInbound({ from: phone, text: bank });
+    return { app, afterBank };
+  };
+
+  it("re-prompts when the provider says the account does not exist", async () => {
+    // Tees Kitchen's exact failure: ten digits accepted on trust, a subaccount
+    // that could never be created, and a buyer as the first to find out.
+    const { afterBank } = await onboard("999", "1", "+2348052220001");
+    expect(afterBank).toMatch(/10-digit/i);
+    delete process.env.FIAT_PROVIDER;
+  });
+
+  it("shows the account name back so a typo is caught by a human", async () => {
+    const { app, afterBank } = await onboard("0123456789", "1", "+2348052220002");
+    expect(afterBank).toMatch(/naira|USDC/i); // reached the settlement question
+    const done = await app.whatsapp.handleInbound({ from: "+2348052220002", text: "1" });
+    // The name is what turns "is 0123456789 right?" into a question she can
+    // actually answer.
+    expect(done).toMatch(/TEST ACCOUNT NAME/i);
+    delete process.env.FIAT_PROVIDER;
+  });
+
+  it("does not block onboarding when the rail cannot check at all", async () => {
+    // Monnify has no resolver. Treating "could not check" as "does not exist"
+    // would make every merchant retype a perfectly good number.
+    const { makeApp } = await import("./helpers/harness.js");
+    process.env.FIAT_PROVIDER = "monnify";
+    const app = makeApp();
+    const phone = "+2348052220003";
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "No Resolver Shop" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    const afterBank = await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    expect(afterBank).toMatch(/naira|USDC/i);
+    delete process.env.FIAT_PROVIDER;
+  });
+});

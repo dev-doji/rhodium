@@ -285,6 +285,38 @@ export class PaystackFiatRail implements PaymentRail {
   }
 
   /**
+   * Check an account exists and return the name on it.
+   *
+   * Onboarding takes ten digits on trust today, and a typo is not a small
+   * error here: it is a subaccount pointing at a stranger, discovered only
+   * when a buyer's money has already moved. Showing the name back turns that
+   * into a question she can answer in one tap.
+   *
+   * Returns null when the account cannot be resolved, rather than throwing —
+   * the caller wants to re-prompt, not to fail onboarding.
+   */
+  async resolveAccount(bankCode: string, accountNumber: string): Promise<string | null> {
+    if (this.cfg.mode === "mock") {
+      // Deterministic and obviously fake, so a test never mistakes it for a
+      // real resolution.
+      return /^\d{10}$/.test(accountNumber) ? "TEST ACCOUNT NAME" : null;
+    }
+    try {
+      const res = await this.api<{ data?: { account_name?: string } }>(
+        `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+        { method: "GET" },
+      );
+      return res.data?.account_name ?? null;
+    } catch (err) {
+      log.warn(
+        { bankCode, err: (err as Error).message },
+        "account resolution failed",
+      );
+      return null;
+    }
+  }
+
+  /**
    * Create the Paystack subaccount that money settles into.
    *
    * This is the piece that was missing: `processorSubaccountCode` was read on

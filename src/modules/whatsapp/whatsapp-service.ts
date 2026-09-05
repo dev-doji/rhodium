@@ -9,7 +9,7 @@ import type { LedgerService } from "../ledger/ledger-service.js";
 import type { WalletService } from "../wallet/wallet-service.js";
 import type { Repositories } from "../../db/repositories.js";
 import type { ConversationStore } from "./conversation-store.js";
-import { bankMenu, pickBank } from "./banks.js";
+import { bankMenu, pickBank, bankCodeFor } from "./banks.js";
 import { formatNaira, nairaToKobo } from "../../lib/money.js";
 import { koboToUsdcDisplay } from "../../lib/fx.js";
 import { ref, slugify } from "../../lib/ids.js";
@@ -313,6 +313,13 @@ export class WhatsAppService {
         return `Nice to meet you, *${text}*! 🎉\n\nWhich bank account should we settle your money into?\nSend your *10-digit account number*.`;
       }
       case "onboard:account_number": {
+        if (text.trim().toLowerCase() === "skip" && data.bankUnverified) {
+          // She insists the number is right and we could not confirm it. Let
+          // her through rather than trapping her, but the payout account will
+          // fail later and `retry` exists for that.
+          this.convo.set(ctx.key, "onboard:bank", data);
+          return `No problem. Which bank is that?\n\n${bankMenu()}\n\nReply with the *number*.`;
+        }
         const acct = text.replace(/\s/g, "");
         if (!/^\d{10}$/.test(acct)) {
           return "That doesn't look right — send your *10-digit* account number (numbers only).";
@@ -326,6 +333,36 @@ export class WhatsAppService {
         if (!bank) return "Please reply with the number of your bank from the list.";
         data.bankId = bank.id;
         data.bankName = bank.name;
+
+        // Check the account exists before going further. Ten digits taken on
+        // trust is how a merchant reaches checkout and is told she "is not set
+        // up to receive payments" — the number was wrong all along, and the
+        // first person to find out was a buyer.
+        const check = await this.payments.resolveBankAccount(
+          bankCodeFor("paystack", bank.id),
+          String(data.accountNumber),
+        );
+        // Only re-prompt when the provider actually looked and found nothing.
+        // A rail with no resolver has checked nothing, and blocking on that
+        // would make every merchant retype a good account number.
+        if (check.supported && check.name === null) {
+          // Null covers "no such account" AND "could not reach the provider".
+          // Re-prompting once is right for the first; blocking onboarding on
+          // the second would be worse than proceeding, so a second attempt at
+          // the same number is allowed through.
+          if (!data.bankUnverified) {
+            data.bankUnverified = true;
+            this.convo.set(ctx.key, "onboard:account_number", data);
+            return [
+              `We couldn't find account *${String(data.accountNumber)}* at *${bank.name}*.`,
+              "",
+              "Please send your *10-digit account number* again — or reply *skip* to carry on and fix it later.",
+            ].join("\n");
+          }
+        } else if (check.name) {
+          data.accountName = check.name;
+        }
+
         this.convo.set(ctx.key, "onboard:crypto_settlement", data);
         return [
           "Almost done. Some buyers pay with *crypto* (USDC).",
@@ -394,7 +431,9 @@ export class WhatsAppService {
         this.convo.clear(ctx.key);
         return [
           `✅ *${merchant.businessName}* is all set up!`,
-          `Payouts (bank): ${bank.name} ••••${String(data.accountNumber).slice(-4)}`,
+          data.accountName
+            ? `Payouts (bank): ${String(data.accountName)} — ${bank.name} ••••${String(data.accountNumber).slice(-4)}`
+            : `Payouts (bank): ${bank.name} ••••${String(data.accountNumber).slice(-4)}`,
           settlement === "naira"
             ? "Crypto sales: converted and paid into that same bank account."
             : "Crypto sales: paid as USDC into your own wallet.",

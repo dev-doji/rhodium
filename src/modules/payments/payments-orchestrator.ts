@@ -34,6 +34,29 @@ export class PaymentsOrchestrator {
   ) {}
 
   /**
+   * The name on a bank account, when the active rail can tell us.
+   *
+   * The result distinguishes three outcomes, because collapsing them is a bug:
+   *   unsupported — the rail has no resolver, so nothing was checked
+   *   not found   — the rail checked and the account does not exist
+   *   the name    — the rail checked and it does
+   *
+   * "Could not check" must not be treated as "does not exist": doing so would
+   * make every merchant re-enter a perfectly good account number whenever the
+   * configured provider happens not to offer resolution.
+   */
+  async resolveBankAccount(
+    bankCode: string,
+    accountNumber: string,
+  ): Promise<{ supported: boolean; name: string | null }> {
+    const rail = this.rails.fiat() as PaymentRail & {
+      resolveAccount?: (b: string, a: string) => Promise<string | null>;
+    };
+    if (typeof rail.resolveAccount !== "function") return { supported: false, name: null };
+    return { supported: true, name: await rail.resolveAccount(bankCode, accountNumber) };
+  }
+
+  /**
    * Make sure a merchant can actually be paid on the active bank rail.
    *
    * Some processors need a per-merchant payout account before they will route
