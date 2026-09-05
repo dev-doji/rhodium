@@ -51,6 +51,11 @@ export function buildApi(app: App): Express {
 
   // Live QUAI→NGN, polled by the checkout page so a buyer watching the screen
   // sees the rate move rather than a number frozen at page load.
+  // Public price checker: what one USDC is worth in naira right now.
+  server.get("/api/fx", (_req, res) => {
+    res.json(app.fx.snapshot());
+  });
+  // Kept so old checkout pages still resolve.
   server.get("/api/fx/quai", (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json(app.fx.snapshot());

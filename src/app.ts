@@ -78,7 +78,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
 
   // Live QUAI→NGN. Only starts polling when enabled, so tests and demos stay
   // offline and deterministic on the configured fallback.
-  const fx = new FxOracle(config.FX_NGN_PER_QUAI, config.FX_RATE_TTL_MS);
+  const fx = new FxOracle(config.FX_NGN_PER_USD, config.FX_RATE_TTL_MS);
   setFxOracle(fx);
   if (config.FX_LIVE_RATES && config.NODE_ENV !== "test") fx.start();
 

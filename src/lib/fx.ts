@@ -13,9 +13,19 @@ import type { Kobo } from "./money.js";
 
 const USDT_DECIMALS = 6;
 
-function ngnPerUsd(): number {
-  const raw = loadConfig().FX_NGN_PER_USD;
-  const n = Number(raw);
+/**
+ * NGN per USDC — live when the oracle has a rate, else FX_NGN_PER_USD.
+ *
+ * Reading through the oracle keeps this synchronous: it serves a cached
+ * number, never a fetch, so a slow or unreachable price feed can never stall
+ * a payment. The configured value is a floor, not the intended source — it
+ * sat at 1600 while the market was near 1320, which quietly underpaid every
+ * crypto sale by a fifth.
+ */
+export function ngnPerUsd(): number {
+  const live = getFxOracle()?.ngnPerUsd();
+  if (Number.isFinite(live) && (live as number) > 0) return live as number;
+  const n = Number(loadConfig().FX_NGN_PER_USD);
   if (!Number.isFinite(n) || n <= 0) throw new Error("invalid FX_NGN_PER_USD");
   return n;
 }
@@ -48,45 +58,15 @@ export function humanUsdt(units: string): string {
   return `${u.toFixed(2)} USDT`;
 }
 
-// --- Native QUAI (18 decimals) ---
 /**
- * Live rate when the oracle has one, else FX_NGN_PER_QUAI. Reading through the
- * oracle keeps this synchronous — it serves a cached number, never a fetch, so
- * a slow or down price feed can never stall a payment.
+ * ₦ (kobo) → a human "≈ 12.50 USDC" for catalogues and payment prompts.
+ *
+ * Replaces the old QUAI display. Two decimals because USDC is a dollar
+ * stablecoin and a buyer reads "12.50" the way she reads a price; six-decimal
+ * precision belongs in the transfer, not in the sentence describing it.
  */
-export function ngnPerQuai(): number {
-  const live = getFxOracle()?.ngnPerQuai();
-  if (Number.isFinite(live) && (live as number) > 0) return live as number;
-  const n = Number(loadConfig().FX_NGN_PER_QUAI);
-  if (!Number.isFinite(n) || n <= 0) throw new Error("invalid FX_NGN_PER_QUAI");
-  return n;
+export function koboToUsdcDisplay(kobo: Kobo): string {
+  const usd = kobo / 100 / ngnPerUsd();
+  return `${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC`;
 }
 
-/** ₦ (kobo) → a human "≈ 393.46 QUAI" for catalogues and instructions. */
-export function koboToQuaiDisplay(kobo: Kobo): string {
-  const quai = kobo / 100 / ngnPerQuai();
-  const dp = quai >= 100 ? 2 : quai >= 1 ? 3 : 6;
-  return `${quai.toLocaleString("en-US", { maximumFractionDigits: dp })} QUAI`;
-}
-
-/** kobo → QUAI wei (18 dp), as a decimal string (BigInt-safe). */
-export function koboToQuaiWei(kobo: Kobo): string {
-  const naira = kobo / 100;
-  const quai = naira / ngnPerQuai();
-  // scale via 1e6 intermediate precision, then to 1e18
-  const micro = BigInt(Math.round(quai * 1e6));
-  return (micro * 10n ** 12n).toString();
-}
-
-/** QUAI wei → kobo. */
-export function quaiWeiToKobo(wei: string | bigint): Kobo {
-  const w = typeof wei === "bigint" ? wei : BigInt(wei);
-  const micro = Number(w / 10n ** 12n); // down to 1e6 units
-  const quai = micro / 1e6;
-  return Math.round(quai * ngnPerQuai() * 100);
-}
-
-export function humanQuai(wei: string): string {
-  const q = Number(BigInt(wei) / 10n ** 12n) / 1e6;
-  return `${q.toFixed(4)} QUAI`;
-}

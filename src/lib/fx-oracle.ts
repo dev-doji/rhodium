@@ -6,7 +6,7 @@ type Getter = (url: string) => Promise<Response>;
 
 export interface PriceSource {
   name: string;
-  /** Returns NGN per QUAI, or throws. */
+  /** Returns NGN per USDC, or throws. */
   read(get: Getter): Promise<number>;
 }
 
@@ -17,19 +17,27 @@ async function json<T>(get: Getter, url: string): Promise<T> {
 }
 
 /**
- * Ordered by directness. CoinGecko quotes QUAI in naira in a single call, but
- * rate-limits hard by IP and a shared host (Render) is often already over the
- * limit — so a keyless two-hop fallback matters more than it looks.
+ * NGN per USDC, ordered by directness.
+ *
+ * The first source quotes USDC in naira directly, which is the number that
+ * matters: USDC is a dollar stablecoin but it does not trade at the official
+ * USD/NGN rate in Nigeria, and pricing off the interbank rate would quote
+ * every buyer a figure they cannot actually transact at.
+ *
+ * CoinGecko rate-limits hard by IP and a shared host (Render) is often already
+ * over the limit, so the keyless fallbacks matter more than they look. The
+ * last one multiplies USDC/USD by the official USD/NGN — a worse number, but
+ * a working one when the direct quotes are unreachable.
  */
 export const DEFAULT_SOURCES: PriceSource[] = [
   {
     name: "coingecko",
     async read(get) {
-      const b = await json<{ "quai-network"?: { ngn?: number } }>(
+      const b = await json<{ "usd-coin"?: { ngn?: number } }>(
         get,
-        "https://api.coingecko.com/api/v3/simple/price?ids=quai-network&vs_currencies=ngn",
+        "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=ngn",
       );
-      const ngn = b["quai-network"]?.ngn;
+      const ngn = b["usd-coin"]?.ngn;
       if (typeof ngn !== "number") throw new Error("no ngn in response");
       return ngn;
     },
@@ -40,7 +48,7 @@ export const DEFAULT_SOURCES: PriceSource[] = [
       const [coin, fx] = await Promise.all([
         json<{ quotes?: { USD?: { price?: number } } }>(
           get,
-          "https://api.coinpaprika.com/v1/tickers/quai-quai-network?quotes=USD",
+          "https://api.coinpaprika.com/v1/tickers/usdc-usd-coin?quotes=USD",
         ),
         json<{ rates?: { NGN?: number } }>(get, "https://open.er-api.com/v6/latest/USD"),
       ]);
@@ -55,7 +63,7 @@ export const DEFAULT_SOURCES: PriceSource[] = [
 ];
 
 export interface RateSnapshot {
-  ngnPerQuai: number;
+  ngnPerUsd: number;
   /** "live" once a fetch has succeeded; "config" while falling back. */
   source: "live" | "config";
   fetchedAt: string | null;
@@ -63,7 +71,7 @@ export interface RateSnapshot {
 }
 
 /**
- * Live QUAI→NGN rate, cached.
+ * Live USDC→NGN rate, cached.
  *
  * The conversion helpers in fx.ts are synchronous and sit on the payment path,
  * so this deliberately does NOT fetch on read. A background refresh keeps a
@@ -80,7 +88,7 @@ export class FxOracle {
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
-    private fallbackNgnPerQuai: number,
+    private fallbackNgnPerUsd: number,
     private ttlMs = 5 * 60 * 1000,
     private fetchImpl: typeof fetch = fetch,
     /** Tried in order until one yields a usable rate. */
@@ -88,14 +96,14 @@ export class FxOracle {
   ) {}
 
   /** Cached rate, or the configured fallback. Never throws, never blocks. */
-  ngnPerQuai(): number {
-    return this.rate ?? this.fallbackNgnPerQuai;
+  ngnPerUsd(): number {
+    return this.rate ?? this.fallbackNgnPerUsd;
   }
 
   snapshot(): RateSnapshot {
     const age = this.fetchedAt ? Date.now() - this.fetchedAt : null;
     return {
-      ngnPerQuai: this.ngnPerQuai(),
+      ngnPerUsd: this.ngnPerUsd(),
       source: this.rate != null ? "live" : "config",
       fetchedAt: this.fetchedAt ? new Date(this.fetchedAt).toISOString() : null,
       // Surfaced so the checkout page can say "rate may be out of date" rather
@@ -123,7 +131,7 @@ export class FxOracle {
         this.rate = ngn;
         this.fetchedAt = Date.now();
         if (previous == null || Math.abs(previous - ngn) / ngn > 0.01) {
-          log.info({ ngnPerQuai: ngn, previous, source: source.name }, "quai rate updated");
+          log.info({ ngnPerUsd: ngn, previous, source: source.name }, "usdc/ngn rate updated");
         }
         return true;
       } catch (err) {
@@ -133,8 +141,8 @@ export class FxOracle {
     // Keep serving the last good rate. Only a cold start leaves us on the
     // configured fallback — a price feed being down must not stop a sale.
     log.warn(
-      { failures, using: this.rate ?? this.fallbackNgnPerQuai },
-      "every quai rate source failed",
+      { failures, using: this.rate ?? this.fallbackNgnPerUsd },
+      "every usdc/ngn rate source failed",
     );
     return false;
   }
