@@ -5,6 +5,7 @@ import type { App } from "../app.js";
 import { asyncRoute, errorHandler } from "./errors.js";
 import { requireMerchant, type AuthedRequest } from "./auth-middleware.js";
 import { ledgerToCsv, ledgerToStatement } from "./export.js";
+import { RateLimiter, clientIp, LIMITS, logRefusal } from "./rate-limit.js";
 import { nairaToKobo, formatNaira } from "../lib/money.js";
 import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
@@ -239,6 +240,10 @@ export function buildApi(app: App): Express {
 
   // JSON for everything below.
   server.use(express.json());
+
+  // Public endpoints that cost real money to call are counted; nothing else
+  // is, because a limit that never fires is only a way to break something.
+  const limiter = new RateLimiter();
 
   /**
    * "I've sent the money" — ask the PROVIDER, right now.
@@ -984,6 +989,29 @@ export function buildApi(app: App): Express {
     "/api/shop/:handle/order",
     asyncRoute(async (req, res) => {
       const merchant = await sellableShop(String(req.params.handle));
+
+      // Counted AFTER the shop is resolved, so a bad handle costs an attacker
+      // their quota without a real buyer ever being charged for someone else's
+      // 404s. Each order that gets through creates a customer and a dedicated
+      // virtual account at the processor — real records that cost real money,
+      // which is what makes an unlimited public endpoint expensive rather than
+      // merely noisy.
+      const ip = clientIp(req);
+      const byIp = limiter.check(
+        `order:ip:${ip}`,
+        LIMITS.ordersPerIp.limit,
+        LIMITS.ordersPerIp.windowMs,
+      );
+      if (!byIp.ok) {
+        logRefusal("order:ip", ip, byIp.retryAfter);
+        res.set("Retry-After", String(byIp.retryAfter));
+        res.status(429).json({
+          error: "rate_limited",
+          message: "Too many orders from here just now. Please wait a moment and try again.",
+        });
+        return;
+      }
+
       const rawLines = req.body?.lines;
       if (!Array.isArray(rawLines) || rawLines.length === 0) {
         throw new ValidationError("cart is empty");
@@ -1048,6 +1076,39 @@ export function buildApi(app: App): Express {
     "/auth/otp/request",
     asyncRoute(async (req, res) => {
       const phone = String(req.body?.phone ?? "");
+
+      // Two keys, and the PHONE one is the point. Every request here sends a
+      // real WhatsApp message from our number, so an unlimited endpoint is a
+      // way to make Rhodium spam a stranger — the victim is named in the body,
+      // not identified by where the request came from. The IP limit is only a
+      // backstop for one source walking many numbers.
+      const byPhone = limiter.check(
+        `otp:phone:${phone}`,
+        LIMITS.otpPerPhone.limit,
+        LIMITS.otpPerPhone.windowMs,
+      );
+      if (!byPhone.ok) {
+        logRefusal("otp:phone", phone, byPhone.retryAfter);
+        res.set("Retry-After", String(byPhone.retryAfter));
+        res.status(429).json({
+          error: "rate_limited",
+          message: `Too many codes requested. Try again in ${Math.ceil(byPhone.retryAfter / 60)} minute(s).`,
+        });
+        return;
+      }
+
+      const ip = clientIp(req);
+      const byIp = limiter.check(`otp:ip:${ip}`, LIMITS.otpPerIp.limit, LIMITS.otpPerIp.windowMs);
+      if (!byIp.ok) {
+        logRefusal("otp:ip", ip, byIp.retryAfter);
+        res.set("Retry-After", String(byIp.retryAfter));
+        res.status(429).json({
+          error: "rate_limited",
+          message: "Too many sign-in attempts from here. Please try again later.",
+        });
+        return;
+      }
+
       await app.auth.requestOtp(phone);
       res.json({ ok: true });
     }),

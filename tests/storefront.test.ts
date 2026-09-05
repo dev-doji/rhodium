@@ -460,3 +460,57 @@ describe("the ₦100 test shop", () => {
     expect(((await res.json()) as ErrorBody).message).toMatch(/already uses that number/i);
   });
 });
+
+describe("rate limiting the public money endpoints", () => {
+  it("refuses a flood of OTP requests for one phone, with Retry-After", async () => {
+    const phone = "+2348097770001";
+    const hit = () =>
+      fetch(`${base}/auth/otp/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+        body: JSON.stringify({ phone }),
+      });
+
+    const codes: number[] = [];
+    for (let i = 0; i < 6; i++) codes.push((await hit()).status);
+
+    // Every one of these sends a real WhatsApp message from our number, so an
+    // unlimited endpoint is a way to make Rhodium spam a stranger.
+    expect(codes.slice(0, 3), JSON.stringify(codes)).toEqual([200, 200, 200]);
+    expect(codes.slice(3)).toEqual([429, 429, 429]);
+
+    const refused = await hit();
+    expect(refused.headers.get("retry-after")).toBeTruthy();
+    expect(((await refused.json()) as ErrorBody).error).toBe("rate_limited");
+  });
+
+  it("does not let one phone's limit lock out a different phone", async () => {
+    // The failure that would matter more than the abuse: a limiter that takes
+    // everyone down together.
+    const res = await fetch(`${base}/auth/otp/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+      body: JSON.stringify({ phone: "+2348097770002" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("counts orders per client, not per shop, and only after the shop resolves", async () => {
+    // A bad handle must not spend a real buyer's quota, so the 404 path is
+    // never counted.
+    for (let i = 0; i < 5; i++) {
+      const miss = await fetch(`${base}/api/shop/nosuchshop/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.77" },
+        body: JSON.stringify({ buyerPhone: "08030001234", lines: [] }),
+      });
+      expect(miss.status).toBe(404);
+    }
+    const real = await fetch(`${base}/api/shop/circuitcity/order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.77" },
+      body: JSON.stringify({ buyerPhone: "08030001234", lines: [{ productId: laptopId, qty: 1 }] }),
+    });
+    expect(real.status).toBe(201);
+  });
+});
