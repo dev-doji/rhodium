@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { buildRegistry } from "../src/rails/registry.js";
-import { loadConfig, resetConfigCache, FIAT_PROVIDERS } from "../src/config/index.js";
+import {
+  loadConfig,
+  resetConfigCache,
+  FIAT_PROVIDERS,
+  EVM_DEPLOYMENTS,
+} from "../src/config/index.js";
 import { WalletService } from "../src/modules/wallet/wallet-service.js";
 
 /**
@@ -90,5 +95,65 @@ describe("onboarding mints the wallet for the configured chain", () => {
     expect(merchant!.quaiAddress!.startsWith("0x00")).toBe(false);
     expect(done).toMatch(/Arbitrum/i);
     delete process.env.FEATURE_EVM_STABLE_ENABLED;
+  });
+});
+
+describe("the EVM deployment must hang together", () => {
+  const base = () => {
+    process.env.NODE_ENV = "production";
+    process.env.FEATURE_EVM_STABLE_ENABLED = "true";
+    process.env.EVM_ADAPTER_MODE = "live";
+    // satisfy the unrelated production guards
+    process.env.WHATSAPP_MODE = "mock";
+    process.env.FIAT_ADAPTER_MODE = "mock";
+    process.env.FIELD_ENCRYPTION_KEY = "a".repeat(64);
+  };
+  const clear = () => {
+    for (const k of [
+      "NODE_ENV", "FEATURE_EVM_STABLE_ENABLED", "EVM_ADAPTER_MODE", "EVM_CHAIN_ID",
+      "EVM_CONTRACT_ADDRESS", "EVM_TOKEN_ADDRESS", "FIELD_ENCRYPTION_KEY",
+    ]) delete process.env[k];
+    resetConfigCache();
+  };
+
+  it("refuses mainnet config pointing at the testnet contract", () => {
+    // The failure this exists for: renders fine, quotes an amount, settles
+    // nothing, and is invisible until a buyer's money has moved.
+    base();
+    process.env.EVM_CHAIN_ID = "42161";
+    process.env.EVM_CONTRACT_ADDRESS = "0x34b17673E4Be07D5027cF02C63b3bDf5ed7e13b2";
+    resetConfigCache();
+    expect(() => loadConfig()).toThrow(/not the RhodiumPay deployment on Arbitrum One/i);
+    clear();
+  });
+
+  it("refuses a token that is not USDC on that chain", () => {
+    base();
+    process.env.EVM_CHAIN_ID = "42161";
+    process.env.EVM_CONTRACT_ADDRESS = "0x80cD8120170c799501E9a7eA0da4203AD52C1d7d";
+    process.env.EVM_TOKEN_ADDRESS = "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8"; // bridged USDC.e
+    resetConfigCache();
+    expect(() => loadConfig()).toThrow(/is not USDC on Arbitrum One/i);
+    clear();
+  });
+
+  it("accepts each network's own matching set", () => {
+    for (const [chainId, dep] of Object.entries(EVM_DEPLOYMENTS)) {
+      base();
+      process.env.EVM_CHAIN_ID = chainId;
+      process.env.EVM_CONTRACT_ADDRESS = dep.contract;
+      process.env.EVM_TOKEN_ADDRESS = dep.token;
+      resetConfigCache();
+      expect(() => loadConfig(), `${dep.name} should be accepted`).not.toThrow();
+      clear();
+    }
+  });
+
+  it("refuses a live EVM rail with no contract at all", () => {
+    base();
+    process.env.EVM_CHAIN_ID = "42161";
+    resetConfigCache();
+    expect(() => loadConfig()).toThrow(/EVM_CONTRACT_ADDRESS is not set/i);
+    clear();
   });
 });

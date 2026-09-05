@@ -20,6 +20,29 @@ const bool = (def: boolean) =>
  * orchestrator, the tests, the payout-account backfill — needs to know the
  * roster, because they all go through the registry or the rail itself.
  */
+/**
+ * RhodiumPay, per Arbitrum network. Chain id -> the contract and token that
+ * belong to it.
+ *
+ * Exists to catch the half-finished switch: a mainnet chain id left beside a
+ * testnet contract address gives a checkout that renders correctly, quotes an
+ * amount, and settles nothing, because the contract is not at that address on
+ * that chain. That failure is invisible until a buyer's money has already
+ * moved, so it is checked at boot instead.
+ */
+export const EVM_DEPLOYMENTS: Record<number, { contract: string; token: string; name: string }> = {
+  42161: {
+    name: "Arbitrum One",
+    contract: "0x80cD8120170c799501E9a7eA0da4203AD52C1d7d",
+    token: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // native Circle USDC
+  },
+  421614: {
+    name: "Arbitrum Sepolia",
+    contract: "0x34b17673E4Be07D5027cF02C63b3bDf5ed7e13b2",
+    token: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+  },
+};
+
 export const FIAT_PROVIDERS = ["monnify", "paystack"] as const;
 export type FiatProvider = (typeof FIAT_PROVIDERS)[number];
 export const DEFAULT_FIAT_PROVIDER: FiatProvider = "monnify";
@@ -102,6 +125,17 @@ const schema = z.object({
   EVM_EXPLORER_URL: z.string().default("https://sepolia.arbiscan.io"),
   // RhodiumPay, redeployed unchanged — payToken() is already an ERC-20
   // transferFrom(buyer -> merchant) that emits Paid(orderId, ...).
+  /**
+   * RhodiumPay, deployed on both Arbitrum networks:
+   *
+   *   Arbitrum One     42161   0x80cD8120170c799501E9a7eA0da4203AD52C1d7d
+   *   Arbitrum Sepolia 421614  0x34b17673E4Be07D5027cF02C63b3bDf5ed7e13b2
+   *
+   * Deliberately no default. The address, chain id and token must agree, and a
+   * default here is the one that would silently survive a half-finished switch
+   * — pointing mainnet config at a testnet contract, where payments would
+   * appear to work and settle nothing. Set all four together or none.
+   */
   EVM_CONTRACT_ADDRESS: z.string().optional().default(""),
   // Circle-issued NATIVE USDC on Arbitrum Sepolia. Never bridged USDC.e:
   // different contract, and wallets display it confusingly.
@@ -205,6 +239,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
     if (cfg.FIELD_ENCRYPTION_KEY === "0".repeat(64)) {
       throw new Error("FIELD_ENCRYPTION_KEY must be set in production");
+    }
+    if (cfg.FEATURE_EVM_STABLE_ENABLED && cfg.EVM_ADAPTER_MODE === "live") {
+      if (!cfg.EVM_CONTRACT_ADDRESS) {
+        throw new Error("EVM rail is live but EVM_CONTRACT_ADDRESS is not set");
+      }
+      // Refuse a chain/contract/token combination that does not go together.
+      const known = EVM_DEPLOYMENTS[cfg.EVM_CHAIN_ID];
+      if (known) {
+        const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+        if (!same(cfg.EVM_CONTRACT_ADDRESS, known.contract)) {
+          throw new Error(
+            `EVM_CONTRACT_ADDRESS ${cfg.EVM_CONTRACT_ADDRESS} is not the RhodiumPay ` +
+              `deployment on ${known.name} (${cfg.EVM_CHAIN_ID}), which is ${known.contract}`,
+          );
+        }
+        if (!same(cfg.EVM_TOKEN_ADDRESS, known.token)) {
+          throw new Error(
+            `EVM_TOKEN_ADDRESS ${cfg.EVM_TOKEN_ADDRESS} is not USDC on ${known.name} ` +
+              `(${cfg.EVM_CHAIN_ID}), which is ${known.token}`,
+          );
+        }
+      }
     }
   }
   cached = cfg;
