@@ -1,6 +1,7 @@
 import type { NotificationTransport } from "../notification/transport.js";
 import type { EmbeddedSignupService } from "./embedded-signup.js";
 import type { HumanTakeoverStore } from "./human-takeover.js";
+import type { MediaFetcher } from "./media.js";
 import type { Merchant } from "../../domain/types.js";
 import type { CommerceService } from "../commerce/commerce-service.js";
 import type { PaymentsOrchestrator } from "../payments/payments-orchestrator.js";
@@ -47,6 +48,8 @@ export interface InboundMessage {
    * Absent (older callers, demos) => the platform number.
    */
   toPhoneNumberId?: string;
+  /** A photo she sent. `caption` is whatever she typed with it. */
+  image?: { mediaId: string; caption?: string };
 }
 
 export interface WhatsAppOptions {
@@ -71,6 +74,8 @@ interface Ctx {
   from: string;
   phoneNumberId?: string;
   tenant: Merchant | null;
+  /** A photo on this message, carried through so the router can act on it. */
+  image?: { mediaId: string; caption?: string };
   /** Conversation-store key, namespaced per number (see `convKey`). */
   key: string;
 }
@@ -115,7 +120,14 @@ export class WhatsAppService {
     private opts: WhatsAppOptions,
     private signup?: EmbeddedSignupService,
     private takeover?: HumanTakeoverStore,
+    private media?: MediaFetcher,
   ) {}
+
+  /**
+   * Which product each vendor's next photo belongs to. In memory and per
+   * process: losing it costs one fallback lookup, not a product.
+   */
+  private awaitingPhoto = new Map<string, { productId: string; name: string }>();
 
   /**
    * The vendor answered a buyer by hand from the WhatsApp Business app
@@ -131,6 +143,7 @@ export class WhatsAppService {
       from: msg.from,
       phoneNumberId: msg.toPhoneNumberId,
       tenant: null,
+      image: msg.image,
       key: convKey(msg.from, msg.toPhoneNumberId),
     };
     // A human is mid-conversation here: say nothing at all. Note this runs
@@ -225,6 +238,16 @@ export class WhatsAppService {
     //    A `shop-<other>` deep link is deliberately ignored here (hence the
     //    `!ctx.tenant` guard above): a vendor's number must never hand a buyer
     //    a competitor's catalogue.
+    // A photo from the vendor is a product picture, handled before any text
+    // parsing: her caption is a description, not a command, and running it
+    // through the command router would answer "Didn't get that" to a picture.
+    if (ctx.image) {
+      const owner = ctx.tenant ?? (await this.repos.merchants.byPhone(ctx.from));
+      if (owner && ctx.from === owner.phone) {
+        return this.attachPhoto(owner, ctx.image);
+      }
+    }
+
     if (ctx.tenant) {
       if (ctx.from === ctx.tenant.phone) return this.vendorCommand(ctx.tenant, text);
       return this.startBuyerFlow(ctx, ctx.tenant.id);
@@ -376,10 +399,11 @@ export class WhatsAppService {
           `${walletLine}`,
           "",
           "*Next:* add your first product",
-          "*add Lipstick 5000*",
+          "_e.g._ *add Lipstick 5000*",
           "",
           "Then:",
           "• *link* — your shop link, and where to put it so buyers find it",
+          `• 📊 *Your dashboard:* ${this.merchantOrigin()} — sign in with this number to add photos to your products, see orders and export your books`,
           "• *greeting* — a welcome message to paste into WhatsApp, so every new buyer gets your link automatically",
           "• *help* — everything else",
         ].join("\n");
@@ -593,7 +617,7 @@ export class WhatsAppService {
       "",
       "*📦 Your products*",
       "• *list* — everything you're selling",
-      "• *add <name> <price>* — _add Lipstick 5000_",
+      "• *add <name> <price>* — _e.g. add Lipstick 5000_",
       "",
       "*🔗 Get buyers*",
       "• *link* — your shop link + where to put it",
@@ -754,7 +778,65 @@ export class WhatsAppService {
       name,
       price: nairaToKobo(price),
     });
-    return `✅ Added *${product.name}* at ${formatNaira(product.price)}\nID: ${product.id}\n\nType *link* to share your shop with buyers.`;
+    // Remember it, so the next photo she sends needs no id typed out. A vendor
+    // adding stock takes the picture right after naming the thing; asking her
+    // to quote a uuid back is how product photos never get added at all.
+    this.awaitingPhoto.set(merchantId, { productId: product.id, name: product.name });
+    return [
+      `✅ Added *${product.name}* at ${formatNaira(product.price)}`,
+      `ID: ${product.id}`,
+      "",
+      "📸 *Send a photo now* and I'll put it on this product.",
+      "",
+      "Or add another with *add <name> <price>*, then *link* to share your shop.",
+    ].join("\n");
+  }
+
+  /**
+   * Attach a photo she just sent to the product she just added.
+   *
+   * Falls back to her newest product without one, so a picture sent a beat
+   * late still lands somewhere sensible rather than being dropped with an
+   * error she has to decode.
+   */
+  private async attachPhoto(
+    merchant: Merchant,
+    image: { mediaId: string; caption?: string },
+  ): Promise<string> {
+    if (!this.media) {
+      return "I can't take photos just yet — add one from your dashboard instead.";
+    }
+
+    let target = this.awaitingPhoto.get(merchant.id) ?? null;
+    if (!target) {
+      const products = await this.repos.products.listByMerchant(merchant.id);
+      const candidate = [...products].reverse().find((p) => !p.imageUrl);
+      if (candidate) target = { productId: candidate.id, name: candidate.name };
+    }
+    if (!target) {
+      return [
+        "Nice photo! I'm not sure which product it belongs to though.",
+        "",
+        "Add the product first — _e.g._ *add Egusi Soup 3000* — then send the picture.",
+      ].join("\n");
+    }
+
+    const fetched = await this.media.fetch(image.mediaId);
+    if (!fetched) {
+      return [
+        `I couldn't save that photo for *${target.name}*.`,
+        "",
+        "Try again with a smaller picture (under 5MB), or add it from your dashboard.",
+      ].join("\n");
+    }
+
+    await this.commerce.setProductImage(target.productId, fetched);
+    this.awaitingPhoto.delete(merchant.id);
+    return [
+      `📸 Photo added to *${target.name}* — buyers will see it on your shop page.`,
+      "",
+      "Add another product with *add <name> <price>*, or *link* to share your shop.",
+    ].join("\n");
   }
 
   private async sell(merchantId: string, args: string[]): Promise<string> {

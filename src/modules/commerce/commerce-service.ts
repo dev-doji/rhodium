@@ -129,6 +129,24 @@ export class CommerceService {
     return order;
   }
 
+  /**
+   * Put a photograph on a product that already exists.
+   *
+   * Separate from createProduct because the picture usually arrives after the
+   * product does — a vendor names the thing, then takes the photo.
+   */
+  async setProductImage(
+    productId: string,
+    image: { bytes: Buffer; contentType: string },
+  ): Promise<Product> {
+    const product = await this.repos.products.byId(productId);
+    if (!product) throw new NotFoundError("product", { id: productId });
+    const { url } = await this.objects.put(image.bytes, image.contentType);
+    const updated = await this.repos.products.update(productId, { imageUrl: url });
+    log.info({ productId }, "product image set");
+    return updated;
+  }
+
   /** draft → awaiting_payment, once a payment instruction is issued. */
   async markAwaitingPayment(orderId: string): Promise<Order> {
     return this.transition(orderId, "awaiting_payment");

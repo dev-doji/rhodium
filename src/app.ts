@@ -20,6 +20,7 @@ import { ConversationStore } from "./modules/whatsapp/conversation-store.js";
 import { WhatsAppCloudTransport } from "./modules/whatsapp/cloud-transport.js";
 import { EmbeddedSignupService } from "./modules/whatsapp/embedded-signup.js";
 import { HumanTakeoverStore } from "./modules/whatsapp/human-takeover.js";
+import { MediaFetcher } from "./modules/whatsapp/media.js";
 import { AuthService } from "./modules/auth/auth-service.js";
 import { ReconciliationJob } from "./jobs/reconciliation-job.js";
 import { TractionService } from "./modules/traction/traction-service.js";
@@ -136,6 +137,11 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     },
     waSignup,
     new HumanTakeoverStore(),
+    // Only when there is a token to fetch with. Absent, the bot says it cannot
+    // take photos rather than failing silently on every picture sent.
+    config.WHATSAPP_ACCESS_TOKEN
+      ? new MediaFetcher({ accessToken: config.WHATSAPP_ACCESS_TOKEN })
+      : undefined,
   );
   const auth = new AuthService(repos, clock, async (phone, code) => {
     await waTransport.send(phone, `Your Rhodium code is ${code}. Expires in 5 min.`);

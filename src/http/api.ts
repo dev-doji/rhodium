@@ -165,6 +165,18 @@ export function buildApi(app: App): Express {
             if (echo.to) app.whatsapp.noteVendorReply(toPhoneNumberId, `+${echo.to}`);
           }
           rec.echoes = echoes.length;
+        } else if (msg?.type === "image" && msg.from) {
+          // Product photos: a vendor sends the picture straight after naming
+          // the product. Dropping these was why every storefront showed
+          // placeholders.
+          const reply = await app.whatsapp.handleInbound({
+            from: `+${msg.from}`,
+            text: msg.image?.caption ?? "",
+            toPhoneNumberId,
+            image: { mediaId: msg.image?.id, caption: msg.image?.caption },
+          });
+          rec.type = "image";
+          if (reply) rec.replied = String(reply).slice(0, 80);
         } else if (msg?.type === "text" && msg.from) {
           const reply = await app.whatsapp.handleInbound({
             from: `+${msg.from}`,
