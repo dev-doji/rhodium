@@ -334,8 +334,19 @@ export class PaystackFiatRail implements PaymentRail {
       },
     });
     if (!res.ok) {
-      log.error({ path, status: res.status, text: await res.text() }, "paystack api error");
-      throw new AppError(`paystack api ${res.status}`, "provider_error", 502);
+      const text = await res.text();
+      log.error({ path, status: res.status, text }, "paystack api error");
+      // Carry Paystack's own words. "paystack api 400" is true and useless:
+      // it cost an afternoon of guessing at which field was being rejected
+      // when the provider had said so plainly all along.
+      let detail = text.slice(0, 200);
+      try {
+        const body = JSON.parse(text) as { message?: string };
+        if (body.message) detail = body.message;
+      } catch {
+        /* not JSON; the raw text is the best we have */
+      }
+      throw new AppError(`paystack ${path} ${res.status}: ${detail}`, "provider_error", 502);
     }
     return (await res.json()) as T;
   }

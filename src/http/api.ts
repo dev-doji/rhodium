@@ -933,6 +933,11 @@ export function buildApi(app: App): Express {
           status: m.status,
           cryptoEnabled: m.cryptoEnabled,
           quaiAddress: m.quaiAddress,
+          // Diagnostics only: which bank code is stored, and whether a payout
+          // account exists. The account number stays encrypted and unexposed.
+          settlementBankCode: m.settlementBankCode,
+          hasBankAccount: Boolean(m.settlementAccountNumber),
+          hasPayoutAccount: Boolean(m.processorSubaccountCode),
           waPhoneNumberId: m.waPhoneNumberId,
           waDisplayPhone: m.waDisplayPhone,
         })),
