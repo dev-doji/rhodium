@@ -15,7 +15,10 @@
  * Arbitrum key fails with "Invalid zone" before a single call goes out. ethers
  * is a devDependency of this workspace only; the server does not gain it.
  *
- *   ARBITRUM_RPC_URL=... DEPLOYER_PRIVATE_KEY=0x... node scripts/deploy-arbitrum.cjs
+ *   ARBITRUM_PRIVATE_KEY=0x... node scripts/deploy-arbitrum.cjs
+ *
+ * Pass --estimate to price the deployment without sending anything. Worth
+ * doing on mainnet before committing real ETH.
  *
  * Defaults to Arbitrum Sepolia. Pass ARBITRUM_CHAIN_ID=42161 with a mainnet
  * RPC for Arbitrum One — and read the balance line before confirming, because
@@ -41,8 +44,17 @@ function withTimeout(promise, ms, label) {
 }
 
 async function main() {
-  const PK = process.env.DEPLOYER_PRIVATE_KEY || process.env.EVM_DEPLOYER_PRIVATE_KEY;
-  if (!PK) throw new Error("DEPLOYER_PRIVATE_KEY is required");
+  // Accept the obvious spellings. A deploy that fails because the key was
+  // called something reasonable-but-different wastes a round trip for no gain.
+  const PK =
+    process.env.ARBITRUM_PRIVATE_KEY ||
+    process.env.DEPLOYER_PRIVATE_KEY ||
+    process.env.EVM_DEPLOYER_PRIVATE_KEY;
+  if (!PK) {
+    throw new Error(
+      "set ARBITRUM_PRIVATE_KEY (or DEPLOYER_PRIVATE_KEY) to the deployer's private key",
+    );
+  }
 
   const chainId = Number(process.env.ARBITRUM_CHAIN_ID || process.env.EVM_CHAIN_ID || 421614);
   const meta = NETWORKS[chainId];
@@ -86,7 +98,10 @@ async function main() {
 
   const balance = await withTimeout(provider.getBalance(wallet.address), 25000, "getBalance");
   console.log(`Balance : ${ethers.formatEther(balance)} ETH`);
-  if (balance === 0n) {
+  // Deliberately NOT fatal under --estimate: pricing the deployment is most
+  // useful on a key that has not been funded yet, which is exactly when you
+  // want to know how much to send it.
+  if (balance === 0n && !process.argv.includes("--estimate")) {
     throw new Error(
       chainId === 421614
         ? "deployer has no ETH — fund it at https://faucet.quicknode.com/arbitrum/sepolia"
@@ -94,8 +109,47 @@ async function main() {
     );
   }
 
-  console.log("  … deploying");
   const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, wallet);
+
+  // Price it from the chain rather than from a remembered figure: Arbitrum's
+  // fee is mostly the L1 data cost, which moves with Ethereum's gas market and
+  // can differ by an order of magnitude within a day.
+  const deployTx = await factory.getDeployTransaction();
+  const fee = await withTimeout(provider.getFeeData(), 25000, "getFeeData");
+  let gas;
+  try {
+    gas = await withTimeout(
+      provider.estimateGas({ ...deployTx, from: wallet.address }),
+      25000,
+      "estimateGas",
+    );
+  } catch (err) {
+    // An unfunded address makes estimateGas revert before it can measure
+    // anything. Estimate from the deployer-agnostic path instead so the
+    // number is still useful.
+    gas = await withTimeout(provider.estimateGas(deployTx), 25000, "estimateGas");
+  }
+  const gasPrice = fee.maxFeePerGas ?? fee.gasPrice ?? 0n;
+  const cost = gas * gasPrice;
+  console.log(`Gas     : ${gas} units @ ${ethers.formatUnits(gasPrice, "gwei")} gwei`);
+  console.log(`Est cost: ${ethers.formatEther(cost)} ETH`);
+
+  if (process.argv.includes("--estimate")) {
+    console.log("");
+    console.log("--estimate given: nothing was sent.");
+    if (balance < cost) {
+      console.log(`Short by ${ethers.formatEther(cost - balance)} ETH.`);
+    }
+    return;
+  }
+  if (balance < cost) {
+    throw new Error(
+      `deployer has ${ethers.formatEther(balance)} ETH but needs about ` +
+        `${ethers.formatEther(cost)} ETH — fund it and retry`,
+    );
+  }
+
+  console.log("  … deploying");
   const contract = await factory.deploy();
   const tx = contract.deploymentTransaction();
   console.log(`  tx: ${tx.hash}`);
