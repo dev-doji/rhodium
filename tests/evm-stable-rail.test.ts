@@ -152,7 +152,7 @@ describe("EVM stablecoin through the whole payment loop", () => {
     const { makeApp, seedMerchant, seedProduct } = await import("./helpers/harness.js");
     const app = makeApp();
     try {
-      const m = await seedMerchant(app, { quaiAddress: MERCHANT_WALLET, cryptoEnabled: true });
+      const m = await seedMerchant(app, { quaiAddress: MERCHANT_WALLET, cryptoEnabled: true, cryptoSettlement: "usdc" });
       const p = await seedProduct(app, m.id, 1_600_00);
       const o = await app.commerce.createOrder({
         merchantId: m.id, buyerRef: "+2349032621846",
@@ -196,7 +196,7 @@ describe("EVM stablecoin through the whole payment loop", () => {
     const { makeApp, seedMerchant, seedProduct } = await import("./helpers/harness.js");
     const app = makeApp();
     try {
-      const m = await seedMerchant(app, { quaiAddress: MERCHANT_WALLET, cryptoEnabled: true });
+      const m = await seedMerchant(app, { quaiAddress: MERCHANT_WALLET, cryptoEnabled: true, cryptoSettlement: "usdc" });
       const p = await seedProduct(app, m.id, 500_000);
 
       // one on-chain sale

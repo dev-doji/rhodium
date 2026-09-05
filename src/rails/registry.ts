@@ -69,9 +69,15 @@ export class RailRegistry {
       const off = this.rails.get("onswitch");
       if (off) return off;
     }
-    const rail = this.all().find((r) => r.kind === "crypto");
-    if (!rail) throw new NotFoundError("crypto rail");
-    return rail;
+    // No preference recorded. Prefer the off-ramp: a merchant who never chose
+    // is far more likely to want naira in her bank than USDC in a wallet she
+    // does not have, and the EVM rail refuses outright without one. Explicit
+    // rather than "whichever registered first", which is how registration
+    // order silently became a product decision.
+    const fallback =
+      this.rails.get("onswitch") ?? this.all().find((r) => r.kind === "crypto");
+    if (!fallback) throw new NotFoundError("crypto rail");
+    return fallback;
   }
 
   /** Pick a rail by order kind, honouring the merchant's crypto preference. */

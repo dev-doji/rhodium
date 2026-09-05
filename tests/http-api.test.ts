@@ -306,6 +306,9 @@ describe("HTTP API — end-to-end over the wire", () => {
       kycState: "verified",
       cryptoEnabled: true,
       quaiAddress: "0xMerchantWallet",
+      // The on-chain loop is what this exercises, so state the choice: the
+      // platform default is now the naira off-ramp.
+      cryptoSettlement: "usdc",
     });
     const product = await app.commerce.createProduct({
       merchantId: merchant.id, name: "Serum", price: 800_000,

@@ -29,6 +29,7 @@ const COMMAND_WORDS = new Set([
   "sell",
   "link",
   "greeting",
+  "bank",
   "myshop",
   "shop",
   "ledger",
@@ -80,10 +81,10 @@ interface Ctx {
   key: string;
 }
 
-/** Format a crypto base-unit amount for humans (QUAI=18 dp, USDT=6 dp). */
+/** Format a crypto base-unit amount for humans. USDC and USDT are 6 dp. */
 function humanCrypto(cryptoAmount?: string, symbol?: string): string {
   if (!cryptoAmount) return "?";
-  const decimals = symbol === "QUAI" ? 18 : 6;
+  const decimals = 6;
   const n = Number(cryptoAmount) / Math.pow(10, decimals);
   return `${n.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol ?? ""}`.trim();
 }
@@ -232,6 +233,10 @@ export class WhatsAppService {
 
     // 2) Mid-conversation (onboarding or buying) → continue it.
     const state = this.convo.get(ctx.key);
+    if (state?.step.startsWith("bank:")) {
+      const owner = ctx.tenant ?? (await this.repos.merchants.byPhone(ctx.from));
+      if (owner) return this.bankStep(ctx, owner, text, state.step, state.data);
+    }
     if (state) return this.continueConversation(ctx, text, state.step, state.data);
 
     // 3) On a vendor's own number the tenancy decides, not the message text.
@@ -249,14 +254,14 @@ export class WhatsAppService {
     }
 
     if (ctx.tenant) {
-      if (ctx.from === ctx.tenant.phone) return this.vendorCommand(ctx.tenant, text);
+      if (ctx.from === ctx.tenant.phone) return this.vendorCommand(ctx.tenant, text, ctx.key);
       return this.startBuyerFlow(ctx, ctx.tenant.id);
     }
 
     // 4) Registered merchant on our own number → vendor commands. Below the
     //    deep link so a vendor can shop other stores from their own phone.
     const merchant = await this.repos.merchants.byPhone(ctx.from);
-    if (merchant) return this.vendorCommand(merchant, text);
+    if (merchant) return this.vendorCommand(merchant, text, ctx.key);
 
     // 5) New unknown sender → greet + start onboarding.
     return this.startOnboarding(ctx);
@@ -464,17 +469,17 @@ export class WhatsAppService {
           "",
           "How would you like to pay?",
           "1) Bank transfer",
-          "2) Pay with stablecoin (USDT) — seller receives naira",
-          "3) Pay with QUAI (BlipPay wallet)",
+          "2) Pay with USDC — the seller still receives naira",
         ].join("\n");
       }
       case "buy:select_method": {
         const c = text.trim();
         const orderRef = () => order.id.slice(-6).toUpperCase();
-        // 2 = OnSwitch off-ramp (crypto → naira), 3 = Quai wallet, else bank.
-        const isOfframp = /^2|usdt|usdc|stable|naira/i.test(c);
-        const isQuai = /^3|quai|blip/i.test(c);
-        const rail = isOfframp || isQuai ? "crypto" : "fiat";
+        // 2 = pay on-chain, anything else = bank transfer. Which crypto rail
+        // that becomes is the MERCHANT's choice, made at onboarding, not the
+        // buyer's: she picked whether to be paid in naira or USDC.
+        const isCrypto = /^2|usdt|usdc|stable|crypto|naira/i.test(c);
+        const rail = isCrypto ? "crypto" : "fiat";
         const order = await this.commerce.createOrder({
           merchantId: String(data.merchantId),
           buyerRef: from,
@@ -490,30 +495,35 @@ export class WhatsAppService {
         const bought = await this.repos.products.byId(String(data.productId)).catch(() => null);
         const itemName = bought?.name ?? "your order";
 
-        if (isOfframp) {
-          const inst = await this.payments.requestPayment(order.id, "onswitch");
-          return [
+        if (isCrypto) {
+          // No rail named here: the orchestrator routes on the merchant's own
+          // settlement choice, so naming one would override her decision.
+          const inst = await this.payments.requestPayment(order.id);
+          const head = [
             `🧾 *${itemName}* — ${formatNaira(order.amount)}`,
             `Order ${orderRef()}`,
             "",
-            `*Send ${inst.cryptoAmount} ${inst.tokenSymbol}* on *${inst.network}* to:`,
-            `${inst.depositAddress}`,
-            "",
-            `The seller receives ${formatNaira(order.amount)} in their bank automatically.`,
-            "You'll get a receipt here once it settles.",
-          ].join("\n");
-        }
-        if (isQuai) {
-          const inst = await this.payments.requestPayment(order.id);
+          ];
+          // A deposit address means an off-ramp; a link means paying a
+          // contract from the buyer's own wallet.
+          if (inst.depositAddress) {
+            return [
+              ...head,
+              `*Send ${inst.cryptoAmount} ${inst.tokenSymbol}* on *${inst.network}* to:`,
+              `${inst.depositAddress}`,
+              "",
+              `The seller receives ${formatNaira(order.amount)} in their bank automatically.`,
+              "You'll get a receipt here once it settles.",
+            ].join("\n");
+          }
           return [
-            `🧾 *${itemName}* — ${formatNaira(order.amount)}`,
-            `Order ${orderRef()} · ≈ ${humanCrypto(inst.cryptoAmount, inst.tokenSymbol)}`,
+            ...head,
+            `≈ ${humanCrypto(inst.cryptoAmount, inst.tokenSymbol)}`,
             "",
             "👉 *Tap to pay:*",
             `${inst.checkoutUrl}`,
             "",
-            "Opens BlipPay / Pelagus. You'll get a receipt here once it",
-            "confirms on-chain.",
+            "Opens your wallet. You'll get a receipt here once it confirms on-chain.",
           ].join("\n");
         }
         const inst = await this.payments.requestPayment(order.id);
@@ -580,7 +590,11 @@ export class WhatsAppService {
   // ---------------------------------------------------------------------------
   // Vendor commands
   // ---------------------------------------------------------------------------
-  private async vendorCommand(merchant: Merchant, text: string): Promise<string> {
+  private async vendorCommand(
+    merchant: Merchant,
+    text: string,
+    convoKey: string,
+  ): Promise<string> {
     const merchantId = merchant.id;
     const [command, ...rest] = text.split(/\s+/);
     switch ((command ?? "").toLowerCase()) {
@@ -602,6 +616,14 @@ export class WhatsAppService {
       case "greeting":
       case "welcome":
         return this.greetingMessage(merchant);
+      case "bank":
+      case "payout":
+        this.convo.set(convoKey, "bank:account_number", {});
+        return [
+          "Let's update where your money is paid.",
+          "",
+          "Send your *10-digit account number*.",
+        ].join("\n");
       case "connect":
         return this.connectNumber(merchant);
       case "ledger":
@@ -667,10 +689,11 @@ export class WhatsAppService {
       "",
       "*💳 Take a payment*",
       "• *sell <productId> <qty> <buyerPhone>*",
-      "   ↳ add *crypto* on the end for BlipPay/Quai",
+      "   ↳ add *crypto* on the end to take USDC instead",
       "",
       "*📒 Your money*",
       "• *ledger* — sales + running balance",
+      "• *bank* — change where your money is paid",
       "",
       "_Send *menu* anytime to see this again._",
     ].join("\n");
@@ -722,6 +745,74 @@ export class WhatsAppService {
       "",
       "_Send *link* for the other places to put your shop link._",
     ].join("\n");
+  }
+
+  /**
+   * Change the payout account after onboarding.
+   *
+   * Exists because the alternative was telling a merchant to start again. Tees
+   * Kitchen mistyped ten digits and would otherwise have lost her products and
+   * her shop link to fix it — and every merchant who ever changes bank would
+   * hit the same wall.
+   */
+  private async bankStep(
+    ctx: Ctx,
+    merchant: Merchant,
+    text: string,
+    step: string,
+    data: Record<string, unknown>,
+  ): Promise<string> {
+    if (step === "bank:account_number") {
+      const acct = text.replace(/\s/g, "");
+      if (!/^\d{10}$/.test(acct)) {
+        return "That doesn't look right — send your *10-digit* account number (numbers only).";
+      }
+      data.accountNumber = acct;
+      this.convo.set(ctx.key, "bank:pick", data);
+      return `Which bank is that?\n\n${bankMenu()}\n\nReply with the *number*.`;
+    }
+
+    const bank = pickBank(text);
+    if (!bank) return "Please reply with the number of your bank from the list.";
+    const account = String(data.accountNumber);
+
+    const check = await this.payments.resolveBankAccount(
+      bankCodeFor("paystack", bank.id),
+      account,
+    );
+    if (check.supported && check.name === null) {
+      this.convo.set(ctx.key, "bank:account_number", {});
+      return [
+        `We couldn't find account *${account}* at *${bank.name}*.`,
+        "",
+        "Send the *10-digit account number* again.",
+      ].join("\n");
+    }
+
+    await this.repos.merchants.update(merchant.id, {
+      settlementBankCode: bank.id,
+      settlementAccountNumber: account,
+      // Force a fresh payout account: the old one, if any, points at the old
+      // bank details and would keep settling there.
+      processorSubaccountCode: undefined,
+    });
+    this.convo.clear(ctx.key);
+
+    const updated = await this.repos.merchants.byId(merchant.id);
+    let payoutNote = "";
+    try {
+      const code = await this.payments.ensurePayoutAccount(updated!);
+      payoutNote = code ? "" : "";
+    } catch (err) {
+      log.error({ err: (err as Error).message, merchantId: merchant.id }, "payout account failed after bank update");
+      payoutNote = "\n\n⚠️ I couldn't set up payouts with those details yet — send *bank* to try again.";
+    }
+
+    return [
+      "✅ Payout account updated.",
+      check.name ? `${check.name} — ${bank.name} ••••${account.slice(-4)}` : `${bank.name} ••••${account.slice(-4)}`,
+      payoutNote,
+    ].filter(Boolean).join("\n");
   }
 
   /**

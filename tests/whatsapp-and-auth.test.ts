@@ -105,9 +105,15 @@ describe("WhatsApp merchant flow", () => {
 });
 
 describe("WhatsApp buyer storefront", () => {
-  it("buyer opens a shop link, picks a product, and gets a crypto pay link", async () => {
+  it("buyer picks a product and gets on-chain payment instructions", async () => {
     const app = makeApp();
-    const merchant = await seedMerchant(app, { quaiAddress: "0xMerchantWallet" });
+    // This merchant chose to be paid in USDC, so the buyer gets a link to pay
+    // her wallet. A merchant on the naira default gets a deposit address
+    // instead — covered separately below.
+    const merchant = await seedMerchant(app, {
+      quaiAddress: "0xMerchantWallet",
+      cryptoSettlement: "usdc",
+    });
     await seedProduct(app, merchant.id, 500_000);
     const buyer = "+2348090005555";
 
@@ -118,7 +124,7 @@ describe("WhatsApp buyer storefront", () => {
     const method = await app.whatsapp.handleInbound({ from: buyer, text: "1" });
     expect(method).toMatch(/how would you like to pay/i);
 
-    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "3" }); // QUAI (BlipPay)
+    const pay = await app.whatsapp.handleInbound({ from: buyer, text: "2" }); // pay on-chain
     expect(pay).toMatch(/\/checkout\//);
 
     const orders = await app.repos.orders.listByMerchant(merchant.id);

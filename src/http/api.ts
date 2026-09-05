@@ -471,9 +471,10 @@ export function buildApi(app: App): Express {
       if (!order) throw new NotFoundError("order", { id: orderId });
       const merchant = await app.repos.merchants.byId(order.merchantId);
 
-      // Whichever crypto rail is active, not a named one — that is what let
-      // this endpoint keep pointing at Quai after the chain moved.
-      const rail = app.rails.crypto() as PaymentRail & {
+      // The rail THIS merchant's order will actually use, not "the crypto
+      // rail" — those differ now that she chooses between naira and USDC, and
+      // simulating the wrong one proves nothing about her checkout.
+      const rail = app.rails.crypto(merchant?.cryptoSettlement) as PaymentRail & {
         mock?: {
           pay(input: {
             orderId: string;

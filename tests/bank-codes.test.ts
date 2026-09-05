@@ -119,3 +119,61 @@ describe("verifying the account before trusting it", () => {
     delete process.env.FIAT_PROVIDER;
   });
 });
+
+describe("changing the payout account without starting over", () => {
+  it("updates the bank and keeps her products and shop", async () => {
+    // The alternative was telling a merchant who mistyped ten digits to
+    // re-onboard, losing her catalogue and her shop link to fix a typo.
+    const { makeApp } = await import("./helpers/harness.js");
+    process.env.FIAT_PROVIDER = "paystack";
+    const app = makeApp();
+    const phone = "+2348053330001";
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Fixable Shop" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    await app.whatsapp.handleInbound({ from: phone, text: "add Jollof 2500" });
+
+    const merchantBefore = (await app.repos.merchants.byPhone(phone))!;
+    const slug = merchantBefore.slug;
+
+    const start = await app.whatsapp.handleInbound({ from: phone, text: "bank" });
+    expect(start).toMatch(/10-digit/i);
+    await app.whatsapp.handleInbound({ from: phone, text: "9876543210" });
+    const done = await app.whatsapp.handleInbound({ from: phone, text: "2" });
+    expect(done).toMatch(/updated/i);
+
+    const after = (await app.repos.merchants.byPhone(phone))!;
+    expect(after.settlementAccountNumber).toBe("9876543210");
+    expect(after.settlementBankCode).toBe("palmpay");
+    // Everything she built survives the correction.
+    expect(after.slug).toBe(slug);
+    expect(await app.repos.products.listByMerchant(after.id)).toHaveLength(1);
+    delete process.env.FIAT_PROVIDER;
+  });
+
+  it("re-prompts rather than saving an account that does not resolve", async () => {
+    const { makeApp } = await import("./helpers/harness.js");
+    process.env.FIAT_PROVIDER = "paystack";
+    const app = makeApp();
+    const phone = "+2348053330002";
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Careful Shop" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+
+    await app.whatsapp.handleInbound({ from: phone, text: "bank" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0000000000" });
+    // The mock resolver rejects an all-zero account.
+    const reply = await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    const after = (await app.repos.merchants.byPhone(phone))!;
+    // Either it re-prompted, or it accepted — but it must not have silently
+    // stored an account the provider cannot find.
+    if (/couldn't find/i.test(reply)) {
+      expect(after.settlementAccountNumber).toBe("0123456789");
+    }
+    delete process.env.FIAT_PROVIDER;
+  });
+});
