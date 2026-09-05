@@ -250,3 +250,49 @@ describe("the merchant chooses how crypto reaches her", () => {
     expect(app.rails.crypto(undefined).kind).toBe("crypto");
   });
 });
+
+describe("getting the shop link in front of buyers", () => {
+  const setup = async (phone: string) => {
+    const { makeApp } = await import("./helpers/harness.js");
+    const app = makeApp();
+    await app.whatsapp.handleInbound({ from: phone, text: "hi" });
+    await app.whatsapp.handleInbound({ from: phone, text: "Ada Fabrics" });
+    await app.whatsapp.handleInbound({ from: phone, text: "0123456789" });
+    await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    const done = await app.whatsapp.handleInbound({ from: phone, text: "1" });
+    return { app, done };
+  };
+
+  it("points a new merchant at both link and greeting", async () => {
+    // A link she is never told what to do with stays in the chat, which is how
+    // a working storefront ends up with no visitors.
+    const { done } = await setup("+2348095550001");
+    expect(done).toMatch(/\*link\*/);
+    expect(done).toMatch(/\*greeting\*/);
+  });
+
+  it("`link` says where to put it, not just what it is", async () => {
+    const phone = "+2348095550002";
+    const { app } = await setup(phone);
+    const reply = await app.whatsapp.handleInbound({ from: phone, text: "link" });
+    expect(reply).toMatch(/\/s\//);
+    // Every one of these is a surface she controls herself, with no Meta
+    // review or Embedded Signup in the way.
+    expect(reply).toMatch(/greeting message/i);
+    expect(reply).toMatch(/instagram/i);
+    expect(reply).toMatch(/facebook/i);
+    expect(reply).toMatch(/website/i);
+  });
+
+  it("`greeting` hands her finished copy with her own name and link in it", async () => {
+    const phone = "+2348095550003";
+    const { app } = await setup(phone);
+    const reply = await app.whatsapp.handleInbound({ from: phone, text: "greeting" });
+    expect(reply).toMatch(/Ada Fabrics/);
+    expect(reply).toMatch(/\/s\//);
+    // Paste-ready, not "now write something": an empty box is its own reason
+    // the greeting never gets set.
+    expect(reply).toMatch(/──────────/);
+    expect(reply).toMatch(/Business tools/i);
+  });
+});

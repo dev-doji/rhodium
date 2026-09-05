@@ -27,6 +27,7 @@ const COMMAND_WORDS = new Set([
   "add",
   "sell",
   "link",
+  "greeting",
   "myshop",
   "shop",
   "ledger",
@@ -374,10 +375,13 @@ export class WhatsAppService {
             : "Crypto sales: paid as USDC into your own wallet.",
           `${walletLine}`,
           "",
-          "Add your first product:",
+          "*Next:* add your first product",
           "*add Lipstick 5000*",
           "",
-          "Then type *link* to get your shareable shop link, or *help* for all commands.",
+          "Then:",
+          "• *link* — your shop link, and where to put it so buyers find it",
+          "• *greeting* — a welcome message to paste into WhatsApp, so every new buyer gets your link automatically",
+          "• *help* — everything else",
         ].join("\n");
       }
       // ----- buyer flow -----
@@ -530,6 +534,9 @@ export class WhatsAppService {
       case "myshop":
       case "shop":
         return this.shopLink(merchant);
+      case "greeting":
+      case "welcome":
+        return this.greetingMessage(merchant);
       case "connect":
         return this.connectNumber(merchant);
       case "ledger":
@@ -589,7 +596,8 @@ export class WhatsAppService {
       "• *add <name> <price>* — _add Lipstick 5000_",
       "",
       "*🔗 Get buyers*",
-      "• *link* — your shareable shop link",
+      "• *link* — your shop link + where to put it",
+      "• *greeting* — ready-made welcome message to paste into WhatsApp",
       "• *connect* — sell from your OWN WhatsApp number",
       "",
       "*💳 Take a payment*",
@@ -617,17 +625,81 @@ export class WhatsAppService {
    * for a vendor on her own number. The chat link follows it, because plenty
    * of buyers would still rather ask a question than tap Add to cart.
    */
+  /**
+   * A welcome message she can paste into WhatsApp as-is.
+   *
+   * Telling a vendor to "set a greeting message" leaves her staring at an
+   * empty box wondering what to write, which is its own reason the link never
+   * gets used. This hands her finished copy with her own shop name and link
+   * already in it, so the job is copy, paste, save.
+   */
+  private greetingMessage(merchant: Merchant): string {
+    const handle = merchant.slug ?? merchant.id;
+    if (!this.opts.publicBaseUrl) {
+      return "Your shop link isn't ready yet — send *link* once your shop is set up.";
+    }
+    const shopUrl = `${this.opts.publicBaseUrl}/s/${handle}`;
+    return [
+      "👋 *Your welcome message* — copy everything between the lines:",
+      "",
+      "──────────",
+      `Hi! Welcome to ${merchant.businessName} 🛍️`,
+      "",
+      "See everything we have, with prices:",
+      shopUrl,
+      "",
+      "Tap any item to buy — pay by transfer or card, and we'll confirm straight away.",
+      "──────────",
+      "",
+      "Now paste it into WhatsApp:",
+      "*Settings → Business tools → Greeting message*",
+      "Turn it on, and set it to send to *everyone* who messages you for the first time.",
+      "",
+      "_Send *link* for the other places to put your shop link._",
+    ].join("\n");
+  }
+
+  /**
+   * Her shop link, and — the part that actually matters — where to put it.
+   *
+   * A vendor handed a URL and no instructions leaves it in the chat and never
+   * uses it, which is how a working storefront ends up with no visitors. The
+   * places listed are all ones she controls herself in apps she already has:
+   * none of them need Embedded Signup, Meta review, or anything from us. That
+   * is deliberate — it means she can be selling today rather than whenever
+   * review clears.
+   */
   private shopLink(merchant: Merchant): string {
     const handle = merchant.slug ?? merchant.id;
-    const lines: string[] = ["Your shop links — share either with buyers:"];
+    const shopUrl = this.opts.publicBaseUrl
+      ? `${this.opts.publicBaseUrl}/s/${handle}`
+      : "";
 
-    if (this.opts.publicBaseUrl) {
-      lines.push(
-        "",
-        "🛒 *Your shop page* — pictures, prices, pay by card or transfer:",
-        `${this.opts.publicBaseUrl}/s/${handle}`,
-      );
+    if (!shopUrl) {
+      // Nothing to share yet, so say what is missing rather than printing a
+      // half-formed link she would paste into her profile.
+      return `Your shop id: *shop-${handle}*\nBuyers message this number with that to see your catalogue.`;
     }
+
+    const lines: string[] = [
+      "🛒 *Your shop link*",
+      shopUrl,
+      "",
+      "Buyers see your pictures and prices, and pay by transfer or card. Copy it and put it everywhere people already find you 👇",
+      "",
+      "*1. WhatsApp greeting message*",
+      "Settings → Business tools → Greeting message.",
+      "Paste the link there and every NEW person who messages you gets it automatically, before you even reply.",
+      "",
+      "*2. Your WhatsApp profile*",
+      "Settings → Business profile → Website. This one is always visible on your profile, not just on first contact.",
+      "",
+      "*3. Instagram bio*",
+      "Edit profile → Website, or add it to your Link in bio.",
+      "",
+      "*4. Facebook page*",
+      "Edit page info → Website. You can also pin a post with the link.",
+    ];
 
     let hasChatLink = false;
     const own = digits(merchant.waDisplayPhone);
@@ -635,10 +707,7 @@ export class WhatsAppService {
       hasChatLink = true;
       lines.push(
         "",
-        "💬 *Chat with you directly:*",
-        `https://wa.me/${own}`,
-        "",
-        "The chat link opens a conversation on your own number. Either way they see your products and can pay in a couple of taps.",
+        "💬 Buyers can also chat you directly: " + `https://wa.me/${own}`,
       );
     } else if (this.opts.waNumber) {
       hasChatLink = true;
@@ -646,23 +715,21 @@ export class WhatsAppService {
       // "shop-mch_e562196b4b76ad5b" is unusable the moment it leaves a tap.
       lines.push(
         "",
-        "💬 *Chat to order:*",
-        `https://wa.me/${this.opts.waNumber}?text=shop-${handle}`,
-        "",
-        "Either link shows buyers your products so they can pay in a couple of taps.",
+        "💬 Or to order by chat: " + `https://wa.me/${this.opts.waNumber}?text=shop-${handle}`,
       );
     }
 
-    // No chat route available (no connected number, no platform number). The
-    // handle still has to reach her: it is what a buyer types to this number to
-    // open her catalogue, and it is the one part of every link above that she
-    // may need to read down a phone line.
-    if (lines.length === 1) {
-      return `Your shop id: *shop-${handle}*\nBuyers message this number with that to see your catalogue.`;
-    }
+    // With no chat route configured the handle still has to reach her: it is
+    // what a buyer types to this number to open her catalogue, and the one
+    // part of all this she may need to read down a phone line.
     if (!hasChatLink) {
       lines.push("", `Your shop id is *shop-${handle}*.`);
     }
+
+    lines.push(
+      "",
+      "_Send *link* anytime to get this again._",
+    );
     return lines.join("\n");
   }
 
