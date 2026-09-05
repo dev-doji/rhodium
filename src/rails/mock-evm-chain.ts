@@ -18,6 +18,10 @@ export interface MockPaidLog {
 }
 
 export class MockEvmChain {
+  /** 48 hex chars of per-process entropy; the nonce supplies the last 16. */
+  private readonly seed = Array.from({ length: 48 }, () =>
+    Math.floor(Math.random() * 16).toString(16),
+  ).join("");
   private paid = new Map<string, MockPaidLog>();
   private nonce = 1;
 
@@ -30,7 +34,10 @@ export class MockEvmChain {
     payer?: string;
   }): MockPaidLog {
     const log: MockPaidLog = {
-      txHash: `0x${(this.nonce++).toString(16).padStart(64, "0")}`,
+      // Prefixed with per-process entropy for the same reason the Paystack
+      // mock seeds its ids: a hash that repeats across runs looks like a
+      // replay to a persistent idempotency store, and the sale never lands.
+      txHash: `0x${this.seed}${(this.nonce++).toString(16).padStart(16, "0")}`,
       orderIdBytes32: keccak256(toUtf8Bytes(input.orderId)),
       merchant: input.merchant.toLowerCase(),
       token: input.token.toLowerCase(),

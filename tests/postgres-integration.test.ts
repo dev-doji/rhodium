@@ -100,8 +100,14 @@ d("magic moment against live Postgres", () => {
     const stockAfter = await app.repos.products.byId(product.id);
     expect(stockAfter!.stockQty).toBe(3);
 
+    // Scoped to THIS order, not the whole database. `report.clean` asserts
+    // that every payment ever written reconciles, which in a shared dev
+    // database is a statement about other people's leftovers rather than
+    // about the loop under test — it can never hold and says nothing when it
+    // fails. What matters here is that the sale we just made shows no drift.
     const report = await app.reconciliation.run();
-    expect(report.clean).toBe(true);
+    const ourDrift = report.drift.filter((d) => d.orderId === order.id);
+    expect(ourDrift, JSON.stringify(ourDrift)).toHaveLength(0);
   });
 });
 

@@ -29,7 +29,17 @@ const BANKS = ["Wema Bank", "Titan Bank", "Paystack-Titan"];
 
 export class MockPaystackServer {
   private accounts = new Map<string, MockDedicatedAccount>();
-  private nextTxId = 900_000_001;
+  /**
+   * Seeded per process, not from a fixed constant.
+   *
+   * A provider's transaction id is what idempotency keys off. Starting every
+   * process at the same number means the second run against a PERSISTENT
+   * store replays the first: the event is judged already-processed, the ledger
+   * correctly refuses to double-credit, and the sale silently never lands —
+   * an order marked paid with nothing in the books. Fine against in-memory
+   * doubles, which is why it survived; the real Postgres run is where it bit.
+   */
+  private nextTxId = 900_000_001 + Math.floor(Math.random() * 90_000_000);
 
   constructor(private secret: string) {}
 
