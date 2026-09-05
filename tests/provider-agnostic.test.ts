@@ -5,6 +5,7 @@ import {
   resetConfigCache,
   FIAT_PROVIDERS,
   EVM_DEPLOYMENTS,
+  ONSWITCH_ASSETS,
 } from "../src/config/index.js";
 import { WalletService } from "../src/modules/wallet/wallet-service.js";
 
@@ -155,5 +156,34 @@ describe("the EVM deployment must hang together", () => {
     resetConfigCache();
     expect(() => loadConfig()).toThrow(/EVM_CONTRACT_ADDRESS is not set/i);
     clear();
+  });
+});
+
+describe("the OnSwitch off-ramp asset", () => {
+  it("defaults to Arbitrum USDC, matching the EVM rail's chain and token", () => {
+    resetConfigCache();
+    delete process.env.ONSWITCH_ASSET;
+    expect(loadConfig().ONSWITCH_ASSET).toBe("arbitrum:usdc");
+  });
+
+  it("refuses an asset OnSwitch does not accept", () => {
+    // The list comes from the API's own validation error. A wrong value is
+    // otherwise discovered only when a buyer is already waiting on a deposit
+    // address that will never be issued.
+    resetConfigCache();
+    process.env.ONSWITCH_ASSET = "arbitrum:dai";
+    expect(() => loadConfig()).toThrow();
+    delete process.env.ONSWITCH_ASSET;
+    resetConfigCache();
+  });
+
+  it("accepts every asset the API enumerated", () => {
+    for (const asset of ONSWITCH_ASSETS) {
+      resetConfigCache();
+      process.env.ONSWITCH_ASSET = asset;
+      expect(() => loadConfig(), `${asset} should be accepted`).not.toThrow();
+    }
+    delete process.env.ONSWITCH_ASSET;
+    resetConfigCache();
   });
 });

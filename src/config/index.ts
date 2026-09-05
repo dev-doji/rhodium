@@ -43,6 +43,32 @@ export const EVM_DEPLOYMENTS: Record<number, { contract: string; token: string; 
   },
 };
 
+/**
+ * Assets OnSwitch will off-ramp, exactly as its API enumerates them.
+ *
+ * Read from the API's own validation error rather than a docs page, so this
+ * is what the service actually accepts today. A wrong value here is only
+ * discovered when a buyer is already waiting on a deposit address, which is
+ * why it is checked at boot instead.
+ */
+export const ONSWITCH_ASSETS = [
+  "base:usdc", "base:usdt", "base:cngn",
+  "ethereum:usdc", "ethereum:usdt",
+  "arbitrum:usdc", "arbitrum:usdt",
+  "optimism:usdc", "optimism:usdt",
+  "polygon:usdc", "polygon:usdt",
+  "solana:usdc", "solana:usdt",
+  "bsc:usdc", "bsc:usdt", "bsc:cngn",
+  "avalanche:usdc", "avalanche:usdt",
+  "monad:usdc", "monad:usdt",
+  "gnosis:usdc", "gnosis:usdt",
+  "linea:usdc", "linea:usdt",
+  "berachain:usdc", "berachain:usdt",
+  "celo:usdc", "celo:usdt",
+  "sonic:usdc", "sui:usdc", "stellar:usdc", "tempo:usdc",
+  "tron:usdt", "plasma:usdt", "mantle:usdt", "hyperevm:usdt",
+] as const;
+
 export const FIAT_PROVIDERS = ["monnify", "paystack"] as const;
 export type FiatProvider = (typeof FIAT_PROVIDERS)[number];
 export const DEFAULT_FIAT_PROVIDER: FiatProvider = "monnify";
@@ -99,7 +125,14 @@ const schema = z.object({
   // Asset buyers pay in — "chain:token". OnSwitch off-ramp supports USDT on
   // tron/ethereum/polygon (not base). tron:usdt (USDT-TRC20) is cheapest + most
   // popular in Nigeria. NOTE: this is USDT on those chains — NOT Quai's USDT.
-  ONSWITCH_ASSET: z.string().default("tron:usdt"),
+  // Arbitrum USDC: the same chain and token the EVM rail settles on, so a
+  // merchant switching between "keep the USDC" and "off-ramp to naira" is not
+  // also switching chains.
+  ONSWITCH_ASSET: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "arbitrum:usdc").trim().toLowerCase())
+    .pipe(z.enum(ONSWITCH_ASSETS)),
 
   FEATURE_STABLECOIN_ENABLED: bool(false),
 
