@@ -942,7 +942,13 @@ export class WhatsAppService {
     let target = this.awaitingPhoto.get(merchant.id) ?? null;
     if (!target) {
       const products = await this.repos.products.listByMerchant(merchant.id);
-      const candidate = [...products].reverse().find((p) => !p.imageUrl);
+      const newestFirst = [...products].reverse();
+      // Prefer one with no picture, but fall back to the newest product
+      // REGARDLESS. A product whose image is broken already has an imageUrl,
+      // so filtering those out skipped the exact product that needed a photo —
+      // which is what happened when the first stored images were lost and the
+      // vendor sent hers again.
+      const candidate = newestFirst.find((p) => !p.imageUrl) ?? newestFirst[0];
       if (candidate) target = { productId: candidate.id, name: candidate.name };
     }
     if (!target) {
@@ -966,6 +972,8 @@ export class WhatsAppService {
     this.awaitingPhoto.delete(merchant.id);
     return [
       `📸 Photo added to *${target.name}* — buyers will see it on your shop page.`,
+      "",
+      "Wrong item? Send *list*, then the photo right after adding the one you meant.",
       "",
       "Add another product with *add <name> <price>*, or *link* to share your shop.",
     ].join("\n");

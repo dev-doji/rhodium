@@ -174,3 +174,37 @@ describe("where product photos are stored", () => {
     expect(await new PostgresObjectStore(db).get("img_nope.jpeg")).toBeNull();
   });
 });
+
+describe("replacing a photo that is already there", () => {
+  it("attaches to the newest product even when it already has an image", async () => {
+    // The real case: the first stored images were lost when the disk was
+    // wiped, so the product still carried a URL pointing at nothing. Skipping
+    // products that "have" an image meant her resend went nowhere.
+    const { makeApp, seedMerchant } = await import("./helpers/harness.js");
+    const { MediaFetcher } = await import("../src/modules/whatsapp/media.js");
+    const app = makeApp();
+    const m = await seedMerchant(app, { phone: "+2348051119999" });
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2]);
+    const feed = (async (url: string) =>
+      String(url).includes("/signed")
+        ? new Response(bytes, { status: 200 })
+        : new Response(JSON.stringify({ url: "https://lookaside.fb/signed", mime_type: "image/jpeg" }), {
+            status: 200, headers: { "content-type": "application/json" },
+          })) as unknown as typeof fetch;
+    (app.whatsapp as unknown as { media: unknown }).media = new MediaFetcher({ accessToken: "t" }, feed);
+
+    const product = await app.commerce.createProduct({
+      merchantId: m.id, name: "Egusi Soup", price: 100_00,
+      imageUrl: "/media/img_gone.jpeg", // a dead link from the wiped disk
+    });
+    (app.whatsapp as unknown as { awaitingPhoto: Map<string, unknown> }).awaitingPhoto.clear();
+
+    const reply = await app.whatsapp.handleInbound({
+      from: m.phone, text: "", image: { mediaId: "media_1" },
+    });
+    expect(reply).toMatch(/Egusi Soup/);
+    const after = await app.repos.products.byId(product.id);
+    expect(after!.imageUrl).not.toBe("/media/img_gone.jpeg");
+    expect(after!.imageUrl).toBeTruthy();
+  });
+});
