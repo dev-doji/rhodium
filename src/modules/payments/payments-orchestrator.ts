@@ -115,7 +115,13 @@ export class PaymentsOrchestrator {
     const rail = railId
       ? this.rails.get(railId)
       : this.rails.forKind(order.rail, merchant.cryptoSettlement);
-    const instruction = await rail.createPaymentInstruction(order, merchant);
+    // Look the buyer up: order.buyerRef is an internal id, and a processor
+    // handed that as a "phone" records nonsense against a real payment.
+    const buyer = await this.repos.buyers.byId(order.buyerRef).catch(() => null);
+    const instruction = await rail.createPaymentInstruction(order, merchant, {
+      phone: buyer?.phoneOrRef,
+      name: buyer?.name,
+    });
 
     await this.repos.payments.create({
       id: id("pay"),

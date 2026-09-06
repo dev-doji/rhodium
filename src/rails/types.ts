@@ -97,6 +97,12 @@ export interface PaymentRail {
   createPaymentInstruction(
     order: Order,
     merchant: Merchant,
+    /**
+     * The buyer's real contact details. `order.buyerRef` is the internal buyer
+     * ID, not a phone — a rail that needs to identify the payer to a processor
+     * cannot get it from the order alone.
+     */
+    buyer?: { phone?: string; name?: string },
   ): Promise<PaymentInstruction>;
 
   /** Idempotent: same webhook replayed => same PaymentEvent, one side effect. */

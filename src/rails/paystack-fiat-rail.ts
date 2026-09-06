@@ -65,7 +65,11 @@ export class PaystackFiatRail implements PaymentRail {
     };
   }
 
-  async createPaymentInstruction(order: Order, merchant: Merchant): Promise<PaymentInstruction> {
+  async createPaymentInstruction(
+    order: Order,
+    merchant: Merchant,
+    buyer?: { phone?: string; name?: string },
+  ): Promise<PaymentInstruction> {
     if (this.cfg.mode === "mock") {
       const acct = this.mock!.createDedicatedAccount({
         orderId: order.id,
@@ -120,10 +124,14 @@ export class PaystackFiatRail implements PaymentRail {
     const customer = await this.api<{ data?: { customer_code?: string } }>("/customer", {
       method: "POST",
       body: JSON.stringify({
-        email: `${digits(order.buyerRef)}.${merchantTag(merchant.id)}@buyers.userhodium.xyz`,
-        phone: order.buyerRef,
-        first_name: "Rhodium",
-        last_name: "Buyer",
+        // The buyer's ACTUAL phone. order.buyerRef is an internal id, and
+        // sending that recorded "buy_f81e22e1-…" as a phone number against a
+        // real payment — useless for support and for the processor's own risk
+        // checks.
+        email: `${digits(buyer?.phone ?? order.buyerRef)}.${merchantTag(merchant.id)}@buyers.userhodium.xyz`,
+        phone: buyer?.phone ?? undefined,
+        first_name: buyer?.name?.split(" ")[0] || "Rhodium",
+        last_name: buyer?.name?.split(" ").slice(1).join(" ") || "Buyer",
       }),
     });
     const customerCode = customer.data?.customer_code;

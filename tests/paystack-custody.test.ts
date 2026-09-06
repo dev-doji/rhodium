@@ -133,16 +133,24 @@ describe("a dedicated account settles to the right shop", () => {
     return { rail, calls };
   }
 
+  /**
+   * What the orchestrator passes: the buyer's REAL phone, looked up from the
+   * buyers table. order.buyerRef is an internal id, and Paystack refuses to
+   * issue a dedicated account for a customer with no phone.
+   */
+  const BUYER = { phone: "+2348031234567", name: "Ada Okeke" };
+
   const withSub = (over: Partial<Merchant> = {}) =>
     merchant({ processorSubaccountCode: "ACCT_circuit", ...over });
 
   it("keys the buyer's account per shop, so two shops never share one account", async () => {
     const { rail, calls } = fakePaystack();
 
-    await rail.createPaymentInstruction(order, withSub({ id: "mch_circuit" }));
+    await rail.createPaymentInstruction(order, withSub({ id: "mch_circuit" }), BUYER);
     await rail.createPaymentInstruction(
       { ...order, merchantId: "mch_diadem" },
       withSub({ id: "mch_diadem", processorSubaccountCode: "ACCT_diadem" }),
+      BUYER,
     );
 
     // Paystack refuses to issue a dedicated account for a customer with no
@@ -162,7 +170,7 @@ describe("a dedicated account settles to the right shop", () => {
 
   it("binds the account to the shop's subaccount, at creation and explicitly", async () => {
     const { rail, calls } = fakePaystack();
-    await rail.createPaymentInstruction(order, withSub());
+    await rail.createPaymentInstruction(order, withSub(), BUYER);
 
     const created = calls.find((c) => c.path === "/dedicated_account");
     expect(created?.body.subaccount).toBe("ACCT_circuit");
@@ -183,8 +191,45 @@ describe("a dedicated account settles to the right shop", () => {
       return original(path, init);
     };
     // Better no payment than one that settles to the wrong shop.
-    await expect(rail.createPaymentInstruction(order, withSub())).rejects.toThrow(
+    await expect(rail.createPaymentInstruction(order, withSub(), BUYER)).rejects.toThrow(
       /could not route this payment/i,
     );
+  });
+});
+
+describe("what the processor is told about the buyer", () => {
+  it("sends the buyer's real phone, not the internal buyer id", async () => {
+    // A live dedicated account was created with phone
+    // "buy_f81e22e1-72dc-472e-9e7c-1445030c79a7" and an email built from that
+    // uuid's digits, because order.buyerRef is an internal id. Useless for
+    // support, and it is what the processor runs its own risk checks against.
+    const calls: { path: string; body: Record<string, unknown> }[] = [];
+    const rail = new PaystackFiatRail({
+      mode: "live", secretKey: "sk", baseUrl: "https://paystack.test", dvaBank: "wema-bank",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rail as any).api = async (path: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>;
+      calls.push({ path, body });
+      if (path === "/customer") return { data: { customer_code: "CUS_x" } };
+      if (path === "/dedicated_account") {
+        return { data: { account_number: "9900112233", account_name: "X", bank: { name: "Wema" } } };
+      }
+      return { data: {} };
+    };
+
+    await rail.createPaymentInstruction(
+      { ...order, buyerRef: "buy_f81e22e1-72dc-472e-9e7c-1445030c79a7" },
+      merchant({ processorSubaccountCode: "ACCT_x" }),
+      { phone: "+2348031234567", name: "Ada Okeke" },
+    );
+
+    const customer = calls.find((c) => c.path === "/customer")!;
+    expect(customer.body.phone).toBe("+2348031234567");
+    expect(String(customer.body.email)).not.toContain("f81e22e1");
+    expect(String(customer.body.email)).toContain("2348031234567");
+    // And the name a human would recognise on a support call.
+    expect(customer.body.first_name).toBe("Ada");
+    expect(customer.body.last_name).toBe("Okeke");
   });
 });
