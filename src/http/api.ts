@@ -7,6 +7,7 @@ import { requireMerchant, type AuthedRequest } from "./auth-middleware.js";
 import { ledgerToCsv, ledgerToStatement } from "./export.js";
 import { RateLimiter, clientIp, LIMITS, logRefusal } from "./rate-limit.js";
 import { nairaToKobo, formatNaira } from "../lib/money.js";
+import { normalisePhone } from "../lib/phone.js";
 import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
@@ -1129,8 +1130,14 @@ export function buildApi(app: App): Express {
       }
 
       const buyerName = String(req.body?.buyerName ?? "").trim().slice(0, 80);
-      const buyerPhone = String(req.body?.buyerPhone ?? "").trim().slice(0, 20);
+      // Normalise to E.164 before it is stored. A buyer types "09032621846";
+      // WhatsApp cannot route that, so her receipt was addressed to a number
+      // Meta had no way to deliver to and simply never arrived.
+      const buyerPhone = normalisePhone(String(req.body?.buyerPhone ?? "").trim().slice(0, 20));
       if (!buyerPhone) throw new ValidationError("a phone number is required");
+      if (!/^\+\d{10,15}$/.test(buyerPhone)) {
+        throw new ValidationError("that doesn't look like a phone number we can reach");
+      }
 
       const order = await app.commerce.createOrder({
         merchantId: merchant.id,
@@ -1265,7 +1272,7 @@ export function buildApi(app: App): Express {
       const { buyerPhone, lines, rail, railId } = req.body ?? {};
       const order = await app.commerce.createOrder({
         merchantId: req.merchantId!,
-        buyerRef: String(buyerPhone),
+        buyerRef: normalisePhone(String(buyerPhone)),
         lines,
         ttlMs: 60 * 60 * 1000,
         rail: rail === "crypto" ? "crypto" : "fiat",

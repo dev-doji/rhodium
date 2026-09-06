@@ -220,7 +220,9 @@ describe("ordering from the storefront", () => {
     // The order carries a buyer id; the contact details live on the buyer, so
     // that is where the vendor's delivery information has to be.
     const buyer = await app.repos.buyers.byId(saved!.buyerRef);
-    expect(buyer?.phoneOrRef).toBe("08030001234");
+    // Stored in E.164, not as typed: WhatsApp cannot route "08030001234", so
+    // a receipt addressed that way never arrives.
+    expect(buyer?.phoneOrRef).toBe("+2348030001234");
     expect(buyer?.name).toBe("Ada Okeke");
   });
 
@@ -583,5 +585,37 @@ describe("the buyer chooses how to pay, at checkout", () => {
     };
     expect(typeof body.methods.crypto).toBe("boolean");
     if (!body.methods.crypto) expect(body.methods.cryptoKind).toBeNull();
+  });
+});
+
+describe("the buyer's number must be reachable", () => {
+  it("stores a local number in E.164 so a receipt can actually be sent", async () => {
+    const res = await order("circuitcity", {
+      buyerPhone: "0803 000 1111",
+      lines: [{ productId: laptopId, qty: 1 }],
+    });
+    const saved = await app.repos.orders.byId(((await res.json()) as OrderBody).orderId);
+    const buyer = await app.repos.buyers.byId(saved!.buyerRef);
+    expect(buyer?.phoneOrRef).toBe("+2348030001111");
+  });
+
+  it("treats the same number typed two ways as one buyer", async () => {
+    const one = await order("circuitcity", {
+      buyerPhone: "08055557777", lines: [{ productId: laptopId, qty: 1 }],
+    });
+    const two = await order("circuitcity", {
+      buyerPhone: "+234 805 555 7777", lines: [{ productId: laptopId, qty: 1 }],
+    });
+    const a = await app.repos.orders.byId(((await one.json()) as OrderBody).orderId);
+    const b = await app.repos.orders.byId(((await two.json()) as OrderBody).orderId);
+    // Without normalisation these were two separate customers in her book.
+    expect(a!.buyerRef).toBe(b!.buyerRef);
+  });
+
+  it("refuses something that cannot be a phone number", async () => {
+    const res = await order("circuitcity", {
+      buyerPhone: "12", lines: [{ productId: laptopId, qty: 1 }],
+    });
+    expect(res.status).toBe(422);
   });
 });
