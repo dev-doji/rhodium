@@ -139,3 +139,38 @@ describe("adding a photo to a product over WhatsApp", () => {
     expect((await app.repos.products.listByMerchant(m.id))[0]!.imageUrl).toBeFalsy();
   });
 });
+
+describe("where product photos are stored", () => {
+  it("keeps the same /media/<id> URL shape as the disk store", async () => {
+    // Existing products point at /media/<id>. A different shape here would
+    // have silently orphaned every image already stored.
+    const rows = new Map<string, { contentType: string; bytes: Buffer; size: number }>();
+    const db = {
+      mediaObject: {
+        create: async ({ data }: { data: { id: string; contentType: string; bytes: Buffer; size: number } }) => {
+          rows.set(data.id, data);
+          return data;
+        },
+        findUnique: async ({ where }: { where: { id: string } }) => rows.get(where.id) ?? null,
+      },
+    };
+    const { PostgresObjectStore } = await import("../src/modules/storage/object-store.js");
+    const store = new PostgresObjectStore(db);
+
+    const bytes = Buffer.from([1, 2, 3, 4, 5]);
+    const { url } = await store.put(bytes, "image/jpeg");
+    expect(url).toMatch(/^\/media\/img_[0-9a-f-]+\.jpeg$/);
+
+    const back = await store.get(url.replace("/media/", ""));
+    // The bytes must survive intact — this is the whole point, after a disk
+    // store silently discarded a vendor's photo at the next deploy.
+    expect(back?.bytes.equals(bytes)).toBe(true);
+    expect(back?.contentType).toBe("image/jpeg");
+  });
+
+  it("returns null for an image that was never stored", async () => {
+    const db = { mediaObject: { create: async () => ({}), findUnique: async () => null } };
+    const { PostgresObjectStore } = await import("../src/modules/storage/object-store.js");
+    expect(await new PostgresObjectStore(db).get("img_nope.jpeg")).toBeNull();
+  });
+});

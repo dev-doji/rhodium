@@ -3,6 +3,7 @@ import { loadConfig } from "../../config/index.js";
 import { prisma } from "./client.js";
 import { createPrismaRepositories } from "./prisma-repositories.js";
 import { PrismaIdempotencyStore, PrismaAuditSink } from "./prisma-idempotency.js";
+import { PostgresObjectStore } from "../../modules/storage/object-store.js";
 
 /**
  * Production composition: the same modular monolith wired to Postgres instead

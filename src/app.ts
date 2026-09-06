@@ -47,6 +47,8 @@ export interface App {
   wallets: WalletService;
   waTransport: NotificationTransport;
   fx: FxOracle;
+  /** Where product photos live — the http layer serves them back. */
+  objectStore: ObjectStore;
 }
 
 export interface BuildAppDeps {
@@ -153,6 +155,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   wirePaymentEvents({ bus, ledger, notifications, repos });
 
   return {
+    objectStore,
     config,
     repos,
     rails,

@@ -161,3 +161,19 @@ model AuditLog {
   @@index([entity, entityId])
   @@map("audit_log")
 }
+
+/// Product photographs.
+///
+/// In the database because Render's disk is ephemeral — a file written there
+/// is gone at the next deploy, which is exactly what happened to the first
+/// vendor photo. Bounded by the 5MB ceiling the WhatsApp fetcher enforces, so
+/// a handful of product images cannot bloat the database unnoticed.
+model MediaObject {
+  id          String   @id
+  contentType String   @map("content_type")
+  bytes       Bytes
+  size        Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("media_object")
+}

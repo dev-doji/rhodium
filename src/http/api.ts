@@ -1370,6 +1370,30 @@ export function buildApi(app: App): Express {
   server.use(express.static(resolve("public")));
 
   // Serve product images (local object store) + built dashboard, if present.
+  /**
+   * Product photos out of the database.
+   *
+   * Registered only when the store can read back — production keeps images in
+   * Postgres, development on disk, and the static handler below covers the
+   * second. Both produce the same /media/<id> URL, so an image does not break
+   * when the deployment changes underneath it.
+   */
+  const readableStore = app.objectStore as {
+    get?: (objectId: string) => Promise<{ bytes: Buffer; contentType: string } | null>;
+  };
+  if (typeof readableStore.get === "function") {
+    server.get(
+      "/media/:objectId",
+      asyncRoute(async (req, res) => {
+        const found = await readableStore.get!(String(req.params.objectId));
+        if (!found) throw new NotFoundError("image", { id: req.params.objectId });
+        res.set("Content-Type", found.contentType);
+        // Addressed by a uuid that never changes, so it can be cached hard.
+        res.set("Cache-Control", "public, max-age=31536000, immutable");
+        res.send(found.bytes);
+      }),
+    );
+  }
   server.use("/media", express.static(resolve("media-store")));
   const dashboardDist = resolve("dashboard/dist");
   if (existsSync(dashboardDist)) {
