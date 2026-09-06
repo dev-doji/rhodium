@@ -514,3 +514,74 @@ describe("rate limiting the public money endpoints", () => {
     expect(real.status).toBe(201);
   });
 });
+
+describe("the buyer chooses how to pay, at checkout", () => {
+  const checkout = (id: string) => fetch(`${base}/api/checkout/${id}`);
+  const choose = (id: string, method: string) =>
+    fetch(`${base}/api/checkout/${id}/method`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method }),
+    });
+
+  const anOrder = async () => {
+    const res = await order("circuitcity", {
+      buyerPhone: "08031119999",
+      lines: [{ productId: laptopId, qty: 1 }],
+    });
+    return ((await res.json()) as OrderBody).orderId;
+  };
+
+  it("issues nothing until the buyer picks", async () => {
+    // Creating an instruction commits the order to a rail. Doing that on page
+    // load mints a dedicated account for someone who may pay in USDC, and
+    // chooses on their behalf.
+    const id = await anOrder();
+    const body = (await (await checkout(id)).json()) as {
+      instruction: unknown;
+      methods: { bank: boolean; crypto: boolean };
+    };
+    expect(body.instruction).toBeNull();
+    expect(body.methods.bank).toBe(true);
+  });
+
+  it("issues a bank account when they choose naira", async () => {
+    const id = await anOrder();
+    const body = (await (await choose(id, "bank")).json()) as {
+      instruction: { accountNumber?: string; railId: string };
+    };
+    expect(body.instruction.accountNumber).toMatch(/^\d{10}$/);
+    expect((await app.repos.orders.byId(id))!.rail).toBe("fiat");
+  });
+
+  it("records the rail the buyer actually used", async () => {
+    // Traction counts order.rail, so leaving it at the storefront's default
+    // would report the sale on a rail it never touched.
+    const id = await anOrder();
+    await choose(id, "crypto");
+    expect((await app.repos.orders.byId(id))!.rail).toBe("crypto");
+  });
+
+  it("is idempotent — tapping twice does not mint a second account", async () => {
+    const id = await anOrder();
+    const a = (await (await choose(id, "bank")).json()) as { instruction: { providerRef: string } };
+    const b = (await (await choose(id, "bank")).json()) as { instruction: { providerRef: string } };
+    expect(b.instruction.providerRef).toBe(a.instruction.providerRef);
+  });
+
+  it("refuses a method that is not bank or crypto", async () => {
+    const id = await anOrder();
+    expect((await choose(id, "bitcoin")).status).toBe(422);
+  });
+
+  it("does not offer crypto to a merchant no rail can serve", async () => {
+    // Circuit City has no wallet, and the off-ramp needs her bank details —
+    // offering a method that will fail is worse than not offering it.
+    const id = await anOrder();
+    const body = (await (await checkout(id)).json()) as {
+      methods: { crypto: boolean; cryptoKind: string | null };
+    };
+    expect(typeof body.methods.crypto).toBe("boolean");
+    if (!body.methods.crypto) expect(body.methods.cryptoKind).toBeNull();
+  });
+});

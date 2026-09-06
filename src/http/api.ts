@@ -422,7 +422,33 @@ export function buildApi(app: App): Express {
       const order = await app.repos.orders.byId(req.params.orderId!);
       if (!order) throw new NotFoundError("order", { id: req.params.orderId });
       const merchant = await app.repos.merchants.byId(order.merchantId);
-      const instruction = await app.payments.requestPayment(order.id); // idempotent
+
+      // Do NOT issue an instruction here any more. Creating one commits the
+      // order to a rail, and the buyer has not chosen yet — issuing a bank
+      // account for someone who is about to pay in USDC leaves a dedicated
+      // account nobody uses, and picked the rail on their behalf.
+      const existing = await app.repos.payments.byOrderId(order.id);
+      const instruction = existing
+        ? await app.payments.requestPayment(order.id) // idempotent: returns it
+        : null;
+
+      // What this merchant can actually accept. Crypto is offered only when a
+      // rail can serve her: the EVM rail needs her wallet, the off-ramp needs
+      // her bank, and offering a method that will fail is worse than not
+      // offering it.
+      const cryptoRail = (() => {
+        try {
+          return app.rails.crypto(merchant?.cryptoSettlement);
+        } catch {
+          return null;
+        }
+      })();
+      const cryptoUsable =
+        !!cryptoRail &&
+        (cryptoRail.id === "onswitch"
+          ? Boolean(merchant?.settlementAccountNumber)
+          : Boolean(merchant?.quaiAddress));
+
       res.json({
         order: {
           id: order.id,
@@ -432,15 +458,54 @@ export function buildApi(app: App): Express {
           status: order.status,
         },
         merchantName: merchant?.businessName ?? "Merchant",
+        methods: {
+          bank: true,
+          crypto: cryptoUsable,
+          // Which shape the crypto flow takes: send to an address, or pay a
+          // contract from your own wallet.
+          cryptoKind: cryptoUsable ? (cryptoRail!.id === "onswitch" ? "transfer" : "wallet") : null,
+        },
         instruction,
-        quaiMode: app.config.QUAI_ADAPTER_MODE,
-        quaiExplorer: app.config.QUAI_EXPLORER_URL,
-        // Needed so a wallet sitting on mainnet can be asked to add/switch to
-        // the chain this order actually settles on.
-        quaiRpcUrl: app.config.QUAI_RPC_URL,
-        quaiChainId: app.config.QUAI_CHAIN_ID,
+        evmChainId: app.config.EVM_CHAIN_ID,
+        evmChainName: app.config.EVM_CHAIN_NAME,
+        evmRpcUrl: app.config.EVM_RPC_URL,
+        evmExplorerUrl: app.config.EVM_EXPLORER_URL,
         fx: app.fx.snapshot(),
       });
+    }),
+  );
+
+  /**
+   * The buyer picks how to pay, and only then is an instruction issued.
+   *
+   * Idempotent through requestPayment: tapping twice returns the same account
+   * number rather than minting a second one.
+   */
+  server.post(
+    "/api/checkout/:orderId/method",
+    asyncRoute(async (req, res) => {
+      const order = await app.repos.orders.byId(req.params.orderId!);
+      if (!order) throw new NotFoundError("order", { id: req.params.orderId });
+      const merchant = await app.repos.merchants.byId(order.merchantId);
+      if (!merchant) throw new NotFoundError("merchant", { id: order.merchantId });
+
+      const wants = String(req.body?.method ?? "").toLowerCase();
+      if (wants !== "bank" && wants !== "crypto") {
+        throw new ValidationError("method must be 'bank' or 'crypto'");
+      }
+
+      const rail = wants === "crypto"
+        ? app.rails.crypto(merchant.cryptoSettlement)
+        : app.rails.fiat();
+
+      // Keep the order honest about how it was paid: traction counts
+      // order.rail, so leaving it at the storefront's default would report
+      // the sale on a rail it never used.
+      const kind = wants === "crypto" ? "crypto" : "fiat";
+      if (order.rail !== kind) await app.repos.orders.setRail(order.id, kind);
+
+      const instruction = await app.payments.requestPayment(order.id, rail.id);
+      res.json({ instruction });
     }),
   );
 

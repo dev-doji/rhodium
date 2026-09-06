@@ -4,6 +4,7 @@ import type {
   Product,
   Order,
   OrderStatus,
+  RailKind,
   OrderItem,
   Payment,
   PaymentStatus,
@@ -267,6 +268,10 @@ class PgOrderRepo implements OrderRepo {
   }
   async updateStatus(id: string, status: OrderStatus): Promise<Order> {
     const row = await this.db.order.update({ where: { id }, data: { status } });
+    return this.map(row);
+  }
+  async setRail(id: string, rail: RailKind): Promise<Order> {
+    const row = await this.db.order.update({ where: { id }, data: { rail } });
     return this.map(row);
   }
   private map(r: Row): Order {

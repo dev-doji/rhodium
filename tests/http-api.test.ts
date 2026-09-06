@@ -318,14 +318,29 @@ describe("HTTP API — end-to-end over the wire", () => {
       lines: [{ productId: product.id, qty: 1 }], rail: "crypto",
     });
 
-    // Checkout page data (buyer-facing, no auth).
+    // Checkout page data (buyer-facing, no auth). No instruction yet: issuing
+    // one would commit the order to a rail before the buyer has chosen.
     const checkout = await json<{
-      instruction: { instructionType: string; checkoutUrl: string; cryptoAmount: string };
+      instruction: unknown;
+      methods: { bank: boolean; crypto: boolean; cryptoKind: string | null };
       order: { rail: string };
     }>(await fetch(`${base}/api/checkout/${order.id}`));
-    expect(checkout.order.rail).toBe("crypto");
-    expect(checkout.instruction.instructionType).toBe("crypto");
-    expect(checkout.instruction.checkoutUrl).toContain(`/checkout/${order.id}`);
+    expect(checkout.instruction).toBeNull();
+    expect(checkout.methods.bank).toBe(true);
+    expect(checkout.methods.crypto).toBe(true);
+
+    // The buyer picks, and only then is an instruction issued.
+    const chosen = await json<{
+      instruction: { instructionType: string; checkoutUrl: string; cryptoAmount: string };
+    }>(
+      await fetch(`${base}/api/checkout/${order.id}/method`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ method: "crypto" }),
+      }),
+    );
+    expect(chosen.instruction.instructionType).toBe("crypto");
+    expect(chosen.instruction.checkoutUrl).toContain(`/checkout/${order.id}`);
 
     // Simulate the on-chain payment (dev/mock path the checkout button uses).
     const pay = await fetch(`${base}/api/crypto/simulate-pay`, {

@@ -3,6 +3,7 @@ import type {
   Product,
   Order,
   OrderStatus,
+  RailKind,
   Payment,
   PaymentStatus,
   LedgerEntry,
@@ -52,6 +53,15 @@ export interface OrderRepo {
   byId(id: string): Promise<Order | null>;
   listByMerchant(merchantId: string): Promise<Order[]>;
   updateStatus(id: string, status: OrderStatus): Promise<Order>;
+  /**
+   * Record how the buyer chose to pay.
+   *
+   * The rail is provisional until then: an order created from the storefront
+   * defaults to bank, and the buyer may pick crypto at checkout. Traction
+   * counts `order.rail`, so leaving it stale would report the sale on a rail
+   * it did not use.
+   */
+  setRail(id: string, rail: RailKind): Promise<Order>;
 }
 
 export interface PaymentRepo {

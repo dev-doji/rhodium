@@ -175,7 +175,8 @@
 
     function humanCrypto(inst) {
       if (!inst.cryptoAmount) return "?";
-      const decimals = inst.tokenSymbol === "QUAI" ? 18 : 6;
+      // USDC and USDT are both six decimals.
+      const decimals = 6;
       const n = Number(inst.cryptoAmount) / Math.pow(10, decimals);
       return n.toLocaleString(undefined, { maximumFractionDigits: 6 }) + " " + (inst.tokenSymbol || "");
     }
@@ -223,56 +224,102 @@
     }
 
     function render() {
-      const { order, merchantName, instruction } = data;
+      const { order, merchantName, instruction, methods } = data;
       $("merchant").textContent = merchantName;
       $("orderline").textContent = `Order ${order.id.slice(-6).toUpperCase()}`;
       $("amount").textContent = order.amountFormatted;
 
       if (order.status === "paid") { paid(); return; }
 
-      // A bank order carries a reserved account, not a contract. It used to fall
-      // through to the crypto branch and render an empty page, so the WhatsApp
-      // bot could only ever hand out a link for the QUAI rail.
-      if (instruction.instructionType === "dva" || instruction.accountNumber) {
-        renderBankTransfer(instruction);
-        return;
-      }
+      // An instruction already exists (the WhatsApp bot issues one up front, or
+      // the buyer picked a moment ago) — go straight to it.
+      if (instruction) return renderInstruction(instruction);
 
-      $("crypto").innerHTML = `${ICON.coin} ≈ ${humanCrypto(instruction)} on Quai`;
+      // Otherwise ask how they want to pay. Nothing is issued until they
+      // choose: creating an account number for someone about to pay in USDC
+      // leaves a dedicated account nobody uses and picks the rail for them.
+      renderMethodChoice(methods);
+    }
 
-      const contract = (instruction.contractAddress || "").replace(/^(.{6}).+(.{4})$/, "$1…$2");
+    function renderInstruction(inst) {
+      if (inst.instructionType === "dva" || inst.accountNumber) return renderBankTransfer(inst);
+      if (inst.depositAddress) return renderDepositAddress(inst);
+      return renderWalletPay(inst);
+    }
+
+    /** Step one: bank or crypto. */
+    function renderMethodChoice(methods) {
+      $("crypto").innerHTML = `${ICON.shield} Choose how to pay`;
+      const cryptoBtn = methods && methods.crypto
+        ? `<button id="m-crypto" class="alt">${ICON.coin} Pay with crypto <span class="sub">USDC on Arbitrum</span></button>`
+        : "";
       $("body").innerHTML = `
-        <div class="rows">
-          <div class="row">${ICON.globe}<span class="k">Rate</span><b id="fxrate">…</b></div>
-          <div class="row">${ICON.globe}<span class="k">Network</span><b>Quai Orchard testnet</b></div>
-          <div class="row">${ICON.shield}<span class="k">Settlement</span><b>Merchant wallet · no custody</b></div>
-          <div class="row">${ICON.wallet}<span class="k">Contract</span><b>${contract || "—"}</b></div>
+        <div class="methods">
+          <button id="m-bank">${ICON.shield} Pay with naira <span class="sub">Bank transfer</span></button>
+          ${cryptoBtn}
         </div>
-        <button id="pay">${ICON.wallet} Pay with your wallet</button>
-        <div class="hint">Opens your Quai wallet. Funds go straight to the merchant in one
-          transaction — Rhodium never holds them. You'll get a receipt on WhatsApp.</div>
-        <div style="text-align:center">
-          <span class="mode ${data.quaiMode === 'live' ? 'live' : 'demo'}">
-            ${data.quaiMode === 'live' ? ICON.check + ' Live on Orchard' : ICON.coin + ' Demo (mock) — no on-chain tx yet'}
-          </span>
-        </div>`;
-      const chain = {
-        chainId: data.quaiChainId || instruction.chainId,
-        rpcUrl: data.quaiRpcUrl,
-        explorer: data.quaiExplorer,
-      };
-      $("pay").onclick = () => pay(data.quaiMode, instruction, chain);
-      startFxTicker(instruction);
-      // Decide up front rather than letting the buyer tap Pay and hit a wall:
-      // on a phone without Blip the button should already say "Open in Blip".
-      if (data.quaiMode === "live" && !quaiProvider()) needWallet();
+        <div class="hint">Either way the seller is paid and you get a receipt.</div>`;
+      $("m-bank").onclick = () => choose("bank");
+      if ($("m-crypto")) $("m-crypto").onclick = () => choose("crypto");
+    }
+
+    async function choose(method) {
+      const btns = document.querySelectorAll(".methods button");
+      btns.forEach((b) => { b.disabled = true; });
+      const picked = document.getElementById(method === "bank" ? "m-bank" : "m-crypto");
+      if (picked) picked.textContent = "Setting up…";
+      try {
+        const res = await fetch(`/api/checkout/${orderId}/method`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ method }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.message || "We couldn't set that up.");
+        renderInstruction(body.instruction);
+      } catch (e) {
+        btns.forEach((b) => { b.disabled = false; });
+        renderMethodChoice(data.methods);
+        const err = document.createElement("div");
+        err.className = "err";
+        err.textContent = e.message;
+        $("body").prepend(err);
+      }
     }
 
     /**
-     * Bank-transfer checkout. The account number IS the payment instrument, so
-     * the job here is to make it trivially copyable and to keep polling until
-     * the Monnify webhook flips the order — the buyer never sends a screenshot.
+     * The off-ramp: send USDC to an address, the seller is paid in naira.
+     *
+     * A plain address works from ANY wallet, on a phone or a desktop, which is
+     * why it is offered as copyable text first and a wallet deep link second —
+     * a buyer whose wallet we did not anticipate must still be able to pay.
      */
+    function renderDepositAddress(inst) {
+      $("crypto").innerHTML = `${ICON.coin} ${inst.cryptoAmount} ${inst.tokenSymbol || "USDC"} on ${inst.network || "Arbitrum"}`;
+      $("body").innerHTML = `
+        <div class="rows">
+          <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${inst.cryptoAmount} ${inst.tokenSymbol || "USDC"}</b></div>
+          <div class="row">${ICON.globe}<span class="k">Network</span><b>${inst.network || "Arbitrum"}</b></div>
+          <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
+        </div>
+        <div class="acct-label">Send to this address</div>
+        <div class="acct-no" id="addr">${inst.depositAddress}</div>
+        <button id="copyaddr">${ICON.copy || ""} Copy address</button>
+        <div class="hint">Send from any wallet on ${inst.network || "Arbitrum"}. Sending a different
+          amount, or on another network, means the payment cannot be matched.
+          You'll get a receipt once it settles.</div>`;
+      const copy = $("copyaddr");
+      if (copy) copy.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(inst.depositAddress);
+          copy.textContent = "Copied";
+        } catch {
+          window.prompt("Copy the address:", inst.depositAddress);
+        }
+      };
+      poll();
+    }
+
     function renderBankTransfer(inst) {
       $("crypto").innerHTML = `${ICON.shield} Bank transfer · settles to the merchant`;
       $("body").innerHTML = `
@@ -327,26 +374,22 @@
     }
 
     /**
-     * A Quai-aware injected wallet, or null.
+     * An EIP-1193 wallet, if the browser has one.
      *
-     * Detection is by CAPABILITY FLAG, not by object name. Blip injects its
-     * provider at window.quai and also aliases window.pelagus AND
-     * window.ethereum, so checking names alone either misses Blip or picks up a
-     * plain MetaMask — which implements no quai_* method and fails with
-     * 'The method "quai_requestAccounts" does not exist', an error that reads
-     * like our bug rather than "wrong wallet".
+     * Arbitrum is an ordinary EVM chain, so anything injecting window.ethereum
+     * works — MetaMask, Rainbow, Coinbase Wallet, Trust. The previous code
+     * looked for Quai-specific wallets and rejected everything else, which is
+     * meaningless now the chain has moved.
      */
-    function quaiProvider() {
-      const candidates = [window.quai, window.pelagus, window.blip, window.ethereum];
-      for (const p of candidates) {
-        if (p && (p.isQuai || p.isBlip || p.isPelagus)) return p;
+    function evmProvider() {
+      const eth = window.ethereum;
+      if (!eth) return null;
+      // Several wallets injected at once expose providers[]; prefer the one the
+      // user actually selected rather than whichever loaded first.
+      if (Array.isArray(eth.providers) && eth.providers.length) {
+        return eth.providers.find(function (p) { return p.isMetaMask; }) || eth.providers[0];
       }
-      return null;
-    }
-
-    /** Blip's universal link. Opens the app if installed, its site if not. */
-    function blipLink() {
-      return "https://blippay.me/browser?url=" + encodeURIComponent(location.href);
+      return eth;
     }
 
     function isMobile() {
@@ -354,192 +397,124 @@
     }
 
     /**
-     * No Quai wallet here. On a phone that is one tap from fixable, so offer the
-     * jump into Blip rather than instructions the buyer has to act on manually.
+     * Reopen this exact page inside a wallet's own browser.
+     *
+     * On a phone the wallet is an app, not an extension, so Safari and Chrome
+     * inject nothing and the only way through is to hand the page over. The
+     * order id is in the URL, so nothing is lost in the jump.
+     */
+    function walletDeepLinks() {
+      const bare = location.href.replace(/^https?:\/\//, "");
+      const full = encodeURIComponent(location.href);
+      return [
+        { name: "MetaMask", url: "https://metamask.app.link/dapp/" + bare },
+        { name: "Trust", url: "https://link.trustwallet.com/open_url?url=" + full },
+        { name: "Coinbase", url: "https://go.cb-w.com/dapp?cb_url=" + full },
+      ];
+    }
+
+    /**
+     * No wallet in this browser. On a phone that is one tap from fixable, so
+     * offer the jump rather than instructions the buyer has to act on.
      */
     function needWallet() {
       const btn = $("pay");
-      btn.disabled = false;
+      if (btn) { btn.disabled = true; btn.style.display = "none"; }
       if (isMobile()) {
-        btn.innerHTML = `${ICON.wallet} Open in Blip to pay`;
-        btn.onclick = () => { location.href = blipLink(); };
+        const links = walletDeepLinks().map(function (w) {
+          return '<a class="wallet-link" href="' + w.url + '">Open in ' + w.name + "</a>";
+        }).join("");
         $("body").insertAdjacentHTML("beforeend",
-          '<div class="hint">This order settles on Quai, so it needs the Blip wallet. ' +
-          'The button reopens this exact page inside Blip — your order is kept.</div>');
+          '<div class="hint">Open this page in your wallet app to pay — your order is kept.</div>' +
+          '<div class="wallet-links">' + links + "</div>");
         return;
       }
-      btn.innerHTML = `${ICON.wallet} Pay with your wallet`;
       $("body").insertAdjacentHTML("beforeend",
-        '<div class="err">This order settles on Quai, so it needs a Quai wallet — ' +
-        'MetaMask and other EVM wallets cannot sign it.<br><br>' +
-        '<b>On desktop:</b> install <a href="https://pelaguswallet.io" target="_blank" ' +
-        'rel="noopener">a Quai wallet</a>, then reload this page.<br>' +
-        '<b>On your phone:</b> <a href="' + blipLink() + '">open this order in Blip</a>.' +
-        '</div>');
+        '<div class="err">No wallet found in this browser. Install MetaMask or another ' +
+        'EVM wallet, or go back and choose <b>Pay with naira</b> — a bank transfer needs no wallet.</div>');
     }
 
-    /**
-     * Keep the displayed rate current. The quoted cryptoAmount is fixed at
-     * order creation — showing a rate that silently drifts from it would be
-     * worse than showing none, so a moved rate is labelled rather than used to
-     * re-quote the order.
-     */
-    function startFxTicker(instruction) {
-      const el = () => document.getElementById("fxrate");
-      const quotedQuai = Number(instruction.cryptoAmount) / 1e18;
-      const naira = instruction.amount / 100;
-      const quotedRate = quotedQuai > 0 ? naira / quotedQuai : null;
-
-      async function tick() {
-        const node = el();
-        if (!node) return;
-        try {
-          const r = await (await fetch("/api/fx/quai", { cache: "no-store" })).json();
-          const rate = Number(r.ngnPerQuai);
-          if (!Number.isFinite(rate) || rate <= 0) return;
-          let label = `₦${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} / QUAI`;
-          if (r.source === "config") label += " (fallback)";
-          else if (r.stale) label += " (may be stale)";
-          // Warn only when the live rate has drifted materially from the price
-          // this order was quoted at.
-          if (quotedRate && Math.abs(rate - quotedRate) / quotedRate > 0.05) {
-            label += " · order quoted at ₦" +
-              quotedRate.toLocaleString("en-US", { maximumFractionDigits: 2 });
-          }
-          node.textContent = label;
-        } catch { /* leave the last value on screen */ }
-      }
-      tick();
-      setInterval(tick, 60000);
-    }
-
-    async function pay(quaiMode, instruction, chain) {
-      const btn = $("pay");
-      btn.disabled = true; btn.innerHTML = "Confirming…";
+    /** Move the wallet to Arbitrum, adding the chain if it does not know it. */
+    async function ensureEvmChain(provider) {
+      const hexId = "0x" + Number(data.evmChainId).toString(16);
       try {
-        const provider = quaiProvider();
-        if (quaiMode === "live") {
-          // Never fall back to the simulator when live: doing so would mark a
-          // real order paid with no transaction behind it.
-          if (!provider) return needWallet();
-          lastTx = await payOnChain(provider, instruction, chain);
-        } else {
-          const res = await fetch("/api/crypto/simulate-pay", {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ orderId }),
-          });
-          if (!res.ok) throw new Error((await res.json()).message || "payment failed");
-          lastTx = (await res.json().catch(() => ({}))).txHash || null;
-        }
-        await pollPaid();
-      } catch (e) {
-        btn.disabled = false; btn.innerHTML = `${ICON.wallet} Pay with your wallet`;
-        $("body").insertAdjacentHTML("beforeend", `<div class="err">${e.message}</div>`);
-      }
-    }
-
-    /**
-     * Blip derives a SEPARATE wallet per dApp origin from the same mnemonic, so
-     * quai_requestAccounts returns an app wallet whose balance starts at zero —
-     * a buyer holding 2000 QUAI in their main vault still fails with
-     * "insufficient funds ... have 0". The dApp is expected to ask for a
-     * top-up; Blip moves it silently under the per-app limit (1000 QUAI by
-     * default) or shows an approval sheet above it.
-     */
-    async function fundAppWallet(provider, instruction) {
-      if (!provider.isBlip) return; // Pelagus has no app-wallet split
-      const need = BigInt(instruction.cryptoAmount || "0");
-      if (need <= 0n) return;
-      const withGas = need + need / 10n; // Blip's docs: request ~10% over
-      const params = {
-        chainId: "0x" + Number(instruction.chainId || 15000).toString(16),
-        reason: "purchase",
-        continueLabel: "Continue payment",
-        assets: [{
-          type: "native", symbol: "QUAI", decimals: 18,
-          amountWei: "0x" + withGas.toString(16), purpose: "payment",
-        }],
-      };
-      try {
-        await provider.request({ method: "blip_requestAppWalletFunding", params: [params] });
-      } catch (e) {
-        // Some builds take the object unwrapped. Try once, then give up and let
-        // the transaction itself report the real problem.
-        try { await provider.request({ method: "blip_requestAppWalletFunding", params }); }
-        catch { /* fall through to the send */ }
-      }
-    }
-
-    /**
-     * Put the wallet on the chain this order settles on.
-     *
-     * Blip defaults to Cyprus1 MAINNET (0x9) while this deployment runs on
-     * Orchard testnet (15000 / 0x3a98). On the wrong chain the app wallet is a
-     * different address entirely, so the payment fails as "insufficient funds
-     * ... have 0" — which looks like an empty wallet rather than a wrong
-     * network, and sends the buyer hunting for a faucet that will not help.
-     */
-    async function ensureChain(provider, want) {
-      const target = "0x" + Number(want.chainId || 15000).toString(16);
-      let current = null;
-      try { current = await provider.request({ method: "quai_chainId" }); } catch { /* older provider */ }
-      if (current && String(current).toLowerCase() === target.toLowerCase()) return;
-
-      try {
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: target }],
-        });
-        return;
+        await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hexId }] });
       } catch (err) {
-        // 4902 = wallet does not know this chain yet, so describe it and retry.
-        if (err && (err.code === 4902 || /unrecogniz|unsupported|4902/i.test(err.message || ""))) {
+        // 4902 = the wallet has never heard of this chain.
+        if (err && (err.code === 4902 || err.code === -32603)) {
           await provider.request({
             method: "wallet_addEthereumChain",
             params: [{
-              chainId: target,
-              chainName: "Quai Orchard (Cyprus1)",
-              rpcUrls: [want.rpcUrl || "https://orchard.rpc.quai.network/cyprus1"],
-              nativeCurrency: { name: "Quai", symbol: "QUAI", decimals: 18 },
-              blockExplorerUrls: [want.explorer || "https://orchard.quaiscan.io"],
+              chainId: hexId,
+              chainName: data.evmChainName || "Arbitrum One",
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: [data.evmRpcUrl],
             }],
           });
-          return;
+        } else {
+          throw err;
         }
-        throw new Error(
-          "This order settles on Quai Orchard testnet, but your wallet is on a " +
-          "different network and would not switch. A desktop wallet extension supports " +
-          "this network directly.",
-        );
       }
     }
 
-    async function payOnChain(provider, instruction, chain) {
-      const accounts = await provider.request({ method: "quai_requestAccounts" });
-      await ensureChain(provider, chain);
-      // Re-read: switching chains can change the app-wallet address Blip serves.
-      const after = await provider.request({ method: "quai_requestAccounts" }).catch(() => accounts);
-      const from = (after && after[0]) || accounts[0];
-      await fundAppWallet(provider, instruction);
-      const { quais } = await import("https://cdn.jsdelivr.net/npm/quais@latest/+esm").catch(() => ({}));
-      if (!quais) throw new Error("could not load quais.js — try again in the wallet's browser");
-      const orderIdHash = instruction.orderIdBytes32 || quais.id(orderId);
-      let dataHex, txParams;
-      if (instruction.method === "payNative") {
-        const iface = new quais.Interface(["function payNative(bytes32 orderId, address merchant)"]);
-        dataHex = iface.encodeFunctionData("payNative", [orderIdHash, instruction.merchantAddress]);
-        txParams = { from, to: instruction.contractAddress, data: dataHex, value: "0x" + BigInt(instruction.cryptoAmount).toString(16) };
-      } else {
-        const iface = new quais.Interface(["function payToken(bytes32 orderId, address merchant, address token, uint256 amount)"]);
-        dataHex = iface.encodeFunctionData("payToken", [orderIdHash, instruction.merchantAddress, instruction.tokenAddress, instruction.cryptoAmount]);
-        txParams = { from, to: instruction.contractAddress, data: dataHex };
+    // Minimal ABI encoding for the two calls we make — no library needed for
+    // four arguments, and a library here would be 200KB on a checkout page.
+    function pad32(hex) { return String(hex).replace(/^0x/, "").padStart(64, "0"); }
+    function encAddr(a) { return pad32(String(a).toLowerCase()); }
+    function encUint(v) { return pad32(BigInt(v).toString(16)); }
+
+    /**
+     * Pay the contract from the buyer's own wallet.
+     *
+     * A token payment is TWO transactions — approve, then pay. That is
+     * inherent to ERC-20, and the button says which one is in flight: a buyer
+     * who signs once and sees nothing happen assumes it failed and pays twice.
+     */
+    async function payOnChain(provider, inst) {
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      await ensureEvmChain(provider);
+      const from = (accounts && accounts[0]) || null;
+      if (!from) throw new Error("No account selected in your wallet.");
+
+      const contract = inst.contractAddress;
+      const orderHash = inst.orderIdBytes32;
+      if (!contract || !orderHash) throw new Error("This order is missing its contract details.");
+
+      const btn = $("pay");
+      if (inst.tokenAddress) {
+        if (btn) btn.innerHTML = "1 of 2 — approve in your wallet…";
+        // approve(address,uint256)
+        await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: from,
+            to: inst.tokenAddress,
+            data: "0x095ea7b3" + encAddr(contract) + encUint(inst.cryptoAmount),
+          }],
+        });
+        if (btn) btn.innerHTML = "2 of 2 — confirm payment…";
+        // payToken(bytes32,address,address,uint256)
+        return provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: from,
+            to: contract,
+            data: "0x5237f0bc" + pad32(orderHash) + encAddr(inst.tokenAddress) +
+                  encAddr(inst.merchantAddress) + encUint(inst.cryptoAmount),
+          }],
+        });
       }
-      const txHash = await provider.request({ method: "quai_sendTransaction", params: [txParams] });
-      await fetch("/api/crypto/confirm", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId, txHash }),
+
+      // payNative(bytes32,address)
+      return provider.request({
+        method: "eth_sendTransaction",
+        params: [{
+          from: from,
+          to: contract,
+          value: "0x" + BigInt(inst.cryptoAmount).toString(16),
+          data: "0xf775f5a9" + pad32(orderHash) + encAddr(inst.merchantAddress),
+        }],
       });
-      return txHash;
     }
 
     /**
@@ -582,14 +557,14 @@
     }
 
     function paid() {
-      const explorer = data.quaiExplorer;
+      const explorer = data.evmExplorerUrl;
       // Only ever show chain links for a CHAIN payment. A bank transfer was
       // offering "View contract", which is meaningless to a buyer
       // who just moved naira and makes the receipt look fraudulent.
       const isCrypto = data.order?.rail === "crypto";
-      const txLink = (isCrypto && lastTx && explorer && data.quaiMode === "live")
+      const txLink = (isCrypto && lastTx && explorer && true)
         ? `<a class="explorer" href="${explorer}/tx/${lastTx}" target="_blank" rel="noopener">${ICON.link} View transaction</a>`
-        : (isCrypto && explorer && data.instruction?.contractAddress && data.quaiMode === "live"
+        : (isCrypto && explorer && data.instruction?.contractAddress && true
             ? `<a class="explorer" href="${explorer}/address/${data.instruction.contractAddress}" target="_blank" rel="noopener">${ICON.link} View contract</a>`
             : "");
       const txHashLine = lastTx ? `<div class="txhash">${lastTx}</div>` : "";

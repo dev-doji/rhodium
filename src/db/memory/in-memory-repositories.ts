@@ -7,6 +7,7 @@ import type {
   PaymentStatus,
   LedgerEntry,
   Buyer,
+  RailKind,
 } from "../../domain/types.js";
 import type {
   Repositories,
@@ -141,6 +142,13 @@ class MemOrderRepo implements OrderRepo {
     const cur = this.o.get(id);
     if (!cur) throw new NotFoundError("order", { id });
     const next = { ...cur, status };
+    this.o.set(id, next);
+    return next;
+  }
+  async setRail(id: string, rail: RailKind): Promise<Order> {
+    const cur = this.o.get(id);
+    if (!cur) throw new NotFoundError("order", { id });
+    const next = { ...cur, rail };
     this.o.set(id, next);
     return next;
   }
