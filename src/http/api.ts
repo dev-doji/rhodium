@@ -675,6 +675,42 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  /** Every onboarded merchant, with whether she can actually be paid. */
+  server.get(
+    "/api/admin/merchants",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      res.json({ merchants: await app.adminViews.merchants() });
+    }),
+  );
+
+  /**
+   * One rail, measured.
+   *
+   * :rail rather than two routes so adding a third rail is a registry change
+   * and not another endpoint.
+   */
+  server.get(
+    "/api/admin/rail/:rail",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const which = String(req.params.rail);
+      if (which !== "fiat" && which !== "crypto") {
+        throw new ValidationError("rail must be fiat or crypto");
+      }
+      res.json(await app.adminViews.rail(which));
+    }),
+  );
+
+  /** Things that need a person, worst first. */
+  server.get(
+    "/api/admin/issues",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      res.json(await app.adminViews.issues());
+    }),
+  );
+
   /**
    * Platform-wide traction: GMV, sales, buyers, rail split.
    *

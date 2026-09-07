@@ -104,6 +104,49 @@
     .err { color:var(--accent-deep); font-size:14px; margin-top:12px; font-weight:600; }
     .muted { color:var(--ink-3); }
     [hidden] { display:none !important; }
+
+    /* --- section nav ---------------------------------------------------- */
+    nav.tabs { display:flex; flex-wrap:wrap; gap:2px; border-bottom:1px solid var(--line); }
+    nav.tabs a {
+      padding:11px 16px; font-size:14.5px; font-weight:600; text-decoration:none;
+      color:var(--ink-2); border:1px solid transparent; border-bottom:none;
+      margin-bottom:-1px;
+    }
+    nav.tabs a:hover { color:var(--ink); background:var(--surface-2); }
+    nav.tabs a[aria-current="page"] {
+      color:var(--ink); background:var(--surface);
+      border-color:var(--line); border-bottom:1px solid var(--surface);
+    }
+    nav.tabs a:focus-visible { outline:3px solid var(--brand); outline-offset:-3px; }
+
+    .mix { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .mix .chip {
+      border:1px solid var(--line); background:var(--surface-2);
+      padding:4px 10px; font-size:13px;
+    }
+    .mix .chip b { font-weight:700; }
+
+    /* --- issues --------------------------------------------------------- */
+    .issue { border:1px solid var(--line); border-left-width:4px; background:var(--surface);
+             padding:14px 16px; margin-bottom:10px; }
+    .issue.blocking { border-left-color:var(--accent-deep); }
+    .issue.warning  { border-left-color:var(--warn-ink); }
+    .issue .head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+    .issue h3 { font-size:15.5px; font-weight:700; margin:0; }
+    .issue .sev {
+      font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+      padding:2px 7px; border:1px solid currentColor;
+    }
+    .issue.blocking .sev { color:var(--accent-deep); }
+    .issue.warning  .sev { color:var(--warn-ink); }
+    .issue p { margin:7px 0 0; font-size:14.5px; color:var(--ink-2); }
+    .issue .todo { margin-top:7px; font-size:14px; color:var(--ink); }
+    .issue .todo b { font-weight:700; }
+    .allclear { border:1px solid var(--good-ink); background:var(--good-bg);
+                color:var(--good-ink); padding:16px; font-weight:600; }
+    .yes { color:var(--good-ink); font-weight:700; }
+    .no  { color:var(--accent-deep); font-weight:700; }
+
   </style>
 </head>
 <body>
@@ -114,6 +157,20 @@
     <div class="who"><span id="whoami"></span> · <button class="ghost" id="signout" style="padding:6px 12px">Sign out</button></div>
   </div>
 </header>
+
+<!-- Hash routing, not paths: /admin/merchants and /admin/issues would collide
+     with the /admin/* API routes this same server already answers. A hash also
+     keeps every view inside one page, so the nav never disappears the way it
+     does when the merchant dashboard links out to /wallet. -->
+<div class="wrap" id="navWrap" hidden style="padding-bottom:0">
+  <nav class="tabs" id="tabs" aria-label="Admin sections">
+    <a href="#overview"  data-view="overview">Overview</a>
+    <a href="#fiat"      data-view="fiat">Fiat</a>
+    <a href="#crypto"    data-view="crypto">Crypto</a>
+    <a href="#merchants" data-view="merchants">Merchants</a>
+    <a href="#issues"    data-view="issues">Issues <span id="issueCount" class="pill" hidden></span></a>
+  </nav>
+</div>
 
 <!-- ---------------- sign in ---------------- -->
 <div class="wrap" id="signinView">
@@ -139,63 +196,102 @@
   </form>
 </div>
 
-<!-- ---------------- dashboard ---------------- -->
 <main class="wrap" id="dashView" hidden>
-  <section style="margin-top:8px">
-    <h2>Merchants</h2>
-    <p class="lede">Everyone who has onboarded, and how many can actually take money.</p>
-    <div class="grid">
-      <div class="card"><div class="k">Total</div><div class="v" id="mTotal">—</div>
-        <div class="sub" id="mStatuses"></div></div>
-      <div class="card"><div class="k">New · 7 days</div><div class="v" id="m7">—</div>
-        <div class="sub" id="m30"></div></div>
-      <div class="card"><div class="k">Ready to sell</div><div class="v" id="mReady">—</div>
-        <div class="sub">Payout subaccount created</div></div>
-      <div class="card"><div class="k">Have sold</div><div class="v" id="mTx">—</div>
-        <div class="sub">At least one confirmed sale</div></div>
-    </div>
-  </section>
+  <p class="err" id="viewErr" role="alert" hidden></p>
 
-  <section>
-    <h2>Money processed</h2>
-    <p class="lede">Confirmed payments only. Volume per rail is money, not a count of orders.</p>
-    <div class="grid">
-      <div class="card"><div class="k">Gross volume</div><div class="v" id="vGross">—</div>
-        <div class="sub"><span id="vSales"></span> · <span id="vBuyers"></span></div></div>
-      <div class="card"><div class="k">Bank transfer</div><div class="v" id="vFiat">—</div>
-        <div class="sub" id="vFiatN"></div></div>
-      <div class="card"><div class="k">Crypto</div><div class="v" id="vCrypto">—</div>
-        <div class="sub" id="vCryptoN"></div></div>
-    </div>
-  </section>
+  <!-- ============ OVERVIEW ============ -->
+  <div id="view-overview">
+    <section style="margin-top:8px">
+      <h2>Merchants</h2>
+      <p class="lede">Everyone who has onboarded, and how many can actually take money.</p>
+      <div class="grid">
+        <div class="card"><div class="k">Total</div><div class="v" id="mTotal">—</div>
+          <div class="sub" id="mStatuses"></div></div>
+        <div class="card"><div class="k">New · 7 days</div><div class="v" id="m7">—</div>
+          <div class="sub" id="m30"></div></div>
+        <div class="card"><div class="k">Ready to sell</div><div class="v" id="mReady">—</div>
+          <div class="sub">Payout subaccount created</div></div>
+        <div class="card"><div class="k">Have sold</div><div class="v" id="mTx">—</div>
+          <div class="sub">At least one confirmed sale</div></div>
+      </div>
+    </section>
 
-  <section>
-    <h2>Fees</h2>
-    <p class="lede">What the current schedule would have earned on the sales above.</p>
-    <div class="note">
-      <strong>Projected, not collected.</strong> The fee engine is not yet applied to
-      live orders — no buyer has been charged a platform fee and no merchant has had
-      one deducted. These figures show what the schedule would produce if it were on.
-    </div>
-    <div class="grid">
-      <div class="card"><div class="k">Rhodium fee</div><div class="v" id="fTotal">—</div>
-        <div class="sub" id="fSplit"></div></div>
-      <div class="card"><div class="k">Paystack took</div><div class="v" id="fProc">—</div>
-        <div class="sub">1% capped at ₦300 — actually charged</div></div>
-    </div>
-  </section>
+    <section>
+      <h2>Money processed</h2>
+      <p class="lede">Confirmed payments only. Volume per rail is money, not a count of orders.</p>
+      <div class="grid">
+        <div class="card"><div class="k">Gross volume</div><div class="v" id="vGross">—</div>
+          <div class="sub"><span id="vSales"></span> · <span id="vBuyers"></span></div></div>
+        <div class="card"><div class="k">Bank transfer</div><div class="v" id="vFiat">—</div>
+          <div class="sub" id="vFiatN"></div></div>
+        <div class="card"><div class="k">Crypto</div><div class="v" id="vCrypto">—</div>
+          <div class="sub" id="vCryptoN"></div></div>
+      </div>
+    </section>
 
-  <section>
-    <h2>Recent sales</h2>
-    <p class="lede">Most recent confirmed payments.</p>
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>When</th><th>Merchant</th><th>Rail</th><th>Amount</th><th>Order</th></tr></thead>
-        <tbody id="recent"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
-      </table>
-    </div>
-    <p class="hint" id="stamp"></p>
-  </section>
+    <section>
+      <h2>Fees</h2>
+      <p class="lede">What the current schedule would have earned on the sales above.</p>
+      <div class="note">
+        <strong>Projected, not collected.</strong> The fee engine is not yet applied to
+        live orders — no buyer has been charged a platform fee and no merchant has had
+        one deducted. These figures show what the schedule would produce if it were on.
+      </div>
+      <div class="grid">
+        <div class="card"><div class="k">Rhodium fee</div><div class="v" id="fTotal">—</div>
+          <div class="sub" id="fSplit"></div></div>
+        <div class="card"><div class="k">Paystack took</div><div class="v" id="fProc">—</div>
+          <div class="sub">1% capped at ₦300 — actually charged</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent sales</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>When</th><th>Merchant</th><th>Rail</th><th>Amount</th><th>Order</th></tr></thead>
+          <tbody id="recent"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="hint" id="stamp"></p>
+    </section>
+  </div>
+
+  <!-- ============ FIAT / CRYPTO (same shape, one renderer) ============ -->
+  <div id="view-fiat" hidden></div>
+  <div id="view-crypto" hidden></div>
+
+  <!-- ============ MERCHANTS ============ -->
+  <div id="view-merchants" hidden>
+    <section style="margin-top:8px">
+      <h2>Merchants</h2>
+      <p class="lede">
+        Every onboarded shop. <strong>Payout</strong> is the one that decides whether a
+        buyer can pay her — without a subaccount, checkout refuses the order.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>Business</th><th>Status</th><th>Bank</th><th>Payout</th>
+            <th>Crypto</th><th>Sales</th><th>Volume</th><th>Joined</th>
+          </tr></thead>
+          <tbody id="merchantRows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ ISSUES ============ -->
+  <div id="view-issues" hidden>
+    <section style="margin-top:8px">
+      <h2>Issues</h2>
+      <p class="lede">
+        Things that need a person, worst first. Built from the database alone — opening
+        this page makes no calls to Paystack, so it costs nothing and cannot hang.
+      </p>
+      <div id="issueList"><p class="muted">Loading…</p></div>
+    </section>
+  </div>
 </main>
 
 <script>
@@ -222,10 +318,17 @@
   var $ = function (id) { return document.getElementById(id); };
   var token = read(TOKEN_KEY);
   var pendingEmail = "";
+  var VIEWS = ["overview", "fiat", "crypto", "merchants", "issues"];
+  var loaded = {};
 
   function showError(message) {
     var el = $("err");
     el.textContent = message;
+    el.hidden = !message;
+  }
+  function showViewError(message) {
+    var el = $("viewErr");
+    el.textContent = message || "";
     el.hidden = !message;
   }
 
@@ -294,24 +397,65 @@
     token = null;
     store(TOKEN_KEY, null);
     store(EMAIL_KEY, null);
+    location.hash = "";
     location.reload();
   });
 
-  // ---------------- dashboard ----------------
+  // ---------------- helpers ----------------
 
   function text(id, value) { $(id).textContent = value; }
+  function el(tag, className, value) {
+    var n = document.createElement(tag);
+    if (className) n.className = className;
+    // textContent everywhere: business names are written by merchants and must
+    // never be able to inject markup into the admin's own screen.
+    if (value !== undefined) n.textContent = value;
+    return n;
+  }
+  function cell(value, className) { return el("td", className, value); }
 
-  function render(d) {
+  function naira(kobo) {
+    return "₦" + (kobo / 100).toLocaleString("en-NG", {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+  function when(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleString("en-NG", {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+    });
+  }
+  function day(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-NG", {
+      day: "numeric", month: "short", year: "numeric"
+    });
+  }
+  function mixChips(into, label, counts) {
+    var keys = Object.keys(counts || {});
+    if (!keys.length) return;
+    var wrap = el("div", "mix");
+    keys.sort().forEach(function (k) {
+      var chip = el("span", "chip");
+      chip.appendChild(el("b", null, counts[k]));
+      chip.appendChild(document.createTextNode(" " + k));
+      wrap.appendChild(chip);
+    });
+    into.appendChild(el("p", "lede", label));
+    into.appendChild(wrap);
+  }
+
+  // ---------------- renderers ----------------
+
+  function renderOverview(d) {
     text("mTotal", d.merchants.total);
     text("m7", d.merchants.newLast7d);
     text("m30", d.merchants.newLast30d + " in the last 30 days");
     text("mReady", d.merchants.readyToSell);
     text("mTx", d.merchants.transacting);
-
-    var statuses = Object.keys(d.merchants.byStatus)
-      .map(function (k) { return d.merchants.byStatus[k] + " " + k; })
-      .join(" · ");
-    text("mStatuses", statuses);
+    text("mStatuses", Object.keys(d.merchants.byStatus).map(function (k) {
+      return d.merchants.byStatus[k] + " " + k;
+    }).join(" · "));
 
     text("vGross", d.volume.grossFormatted);
     text("vSales", d.volume.salesCount + (d.volume.salesCount === 1 ? " sale" : " sales"));
@@ -322,73 +466,265 @@
     text("vCryptoN", d.volume.byRail.crypto.count + " sales");
 
     text("fTotal", d.projectedFees.platformFormatted);
-    text("fSplit",
-      "buyers " + naira(d.projectedFees.buyerShareKobo) +
-      " · merchants " + naira(d.projectedFees.merchantShareKobo));
+    text("fSplit", "buyers " + naira(d.projectedFees.buyerShareKobo) +
+                   " · merchants " + naira(d.projectedFees.merchantShareKobo));
     text("fProc", d.projectedFees.processorFormatted);
 
     var body = $("recent");
     body.innerHTML = "";
     if (!d.recent.length) {
-      var empty = document.createElement("tr");
-      var cell = document.createElement("td");
-      cell.colSpan = 5; cell.className = "muted"; cell.textContent = "No confirmed sales yet.";
-      empty.appendChild(cell); body.appendChild(empty);
+      var tr = el("tr");
+      var td = cell("No confirmed sales yet.", "muted");
+      td.colSpan = 5; tr.appendChild(td); body.appendChild(tr);
     } else {
       d.recent.forEach(function (r) {
-        var tr = document.createElement("tr");
-        // textContent throughout: business names come from merchants and must
-        // never be able to inject markup into the admin's own screen.
-        tr.appendChild(cell_(when(r.at)));
-        tr.appendChild(cell_(r.businessName));
-        var rail = document.createElement("td");
-        var pill = document.createElement("span");
-        pill.className = "pill" + (r.rail === "fiat" ? " fiat" : "");
-        pill.textContent = r.rail === "fiat" ? "transfer" : r.rail;
-        rail.appendChild(pill); tr.appendChild(rail);
-        var amt = cell_(r.amountFormatted); amt.className = "num"; tr.appendChild(amt);
-        var id = cell_(r.orderId); id.className = "muted"; tr.appendChild(id);
-        body.appendChild(tr);
+        var row = el("tr");
+        row.appendChild(cell(when(r.at)));
+        row.appendChild(cell(r.businessName));
+        var railCell = el("td");
+        var pill = el("span", "pill" + (r.rail === "fiat" ? " fiat" : ""),
+                      r.rail === "fiat" ? "transfer" : r.rail);
+        railCell.appendChild(pill); row.appendChild(railCell);
+        row.appendChild(cell(r.amountFormatted, "num"));
+        row.appendChild(cell(r.orderId, "muted"));
+        body.appendChild(row);
       });
     }
     text("stamp", "Generated " + when(d.generatedAt) + ".");
   }
 
-  function cell_(value) {
-    var td = document.createElement("td");
-    td.textContent = value;
-    return td;
+  /** Fiat and crypto are the same report; only the words differ. */
+  function renderRail(mount, d) {
+    mount.innerHTML = "";
+    var isFiat = d.rail === "fiat";
+
+    var head = el("section");
+    head.style.marginTop = "8px";
+    head.appendChild(el("h2", null, isFiat ? "Bank transfer" : "Crypto"));
+    head.appendChild(el("p", "lede", isFiat
+      ? "Naira paid into a dedicated virtual account and split to the merchant's bank."
+      : "Stablecoin paid on Arbitrum, settled either to the merchant's wallet or off-ramped to naira."));
+
+    if (d.note) {
+      var note = el("div", "note");
+      note.appendChild(el("strong", null, "Nothing here yet. "));
+      note.appendChild(document.createTextNode(d.note));
+      head.appendChild(note);
+    }
+
+    var grid = el("div", "grid");
+    function card(k, v, sub) {
+      var c = el("div", "card");
+      c.appendChild(el("div", "k", k));
+      c.appendChild(el("div", "v", v));
+      if (sub) c.appendChild(el("div", "sub", sub));
+      return c;
+    }
+    grid.appendChild(card("Volume", d.volumeFormatted, d.salesCount + " confirmed"));
+    grid.appendChild(card("Average sale", d.averageFormatted, "per confirmed order"));
+    grid.appendChild(card("Buyers", String(d.uniqueBuyers), "distinct"));
+    grid.appendChild(card("Merchants selling", String(d.merchantsSelling), "with a sale on this rail"));
+    head.appendChild(grid);
+
+    mixChips(head, "Payments by status", d.byStatus);
+    mixChips(head, "How the buyer was asked to pay", d.byInstruction);
+    mixChips(head, "Processor", d.byProvider);
+    mount.appendChild(head);
+
+    if (d.topMerchants.length) {
+      var top = el("section");
+      top.appendChild(el("h2", null, "Top merchants"));
+      var w1 = el("div", "tablewrap");
+      var t1 = el("table");
+      var h1 = el("thead");
+      var hr = el("tr");
+      ["Business", "Sales", "Volume"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
+      h1.appendChild(hr); t1.appendChild(h1);
+      var b1 = el("tbody");
+      d.topMerchants.forEach(function (m) {
+        var r = el("tr");
+        r.appendChild(cell(m.businessName));
+        r.appendChild(cell(String(m.salesCount), "num"));
+        r.appendChild(cell(m.volumeFormatted, "num"));
+        b1.appendChild(r);
+      });
+      t1.appendChild(b1); w1.appendChild(t1); top.appendChild(w1);
+      mount.appendChild(top);
+    }
+
+    var recent = el("section");
+    recent.appendChild(el("h2", null, "Recent payments"));
+    recent.appendChild(el("p", "lede", "Including the ones that never completed."));
+    var w2 = el("div", "tablewrap");
+    var t2 = el("table");
+    var h2 = el("thead");
+    var hr2 = el("tr");
+    ["When", "Merchant", "Amount", "Status", "Order"].forEach(function (h) { hr2.appendChild(el("th", null, h)); });
+    h2.appendChild(hr2); t2.appendChild(h2);
+    var b2 = el("tbody");
+    if (!d.recent.length) {
+      var er = el("tr"); var ec = cell("Nothing on this rail yet.", "muted");
+      ec.colSpan = 5; er.appendChild(ec); b2.appendChild(er);
+    } else {
+      d.recent.forEach(function (r) {
+        var row = el("tr");
+        row.appendChild(cell(when(r.at)));
+        row.appendChild(cell(r.businessName));
+        row.appendChild(cell(r.amountFormatted, "num"));
+        var sc = el("td");
+        sc.appendChild(el("span", "pill" + (r.status === "confirmed" ? " fiat" : ""), r.status));
+        row.appendChild(sc);
+        row.appendChild(cell(r.orderId, "muted"));
+        b2.appendChild(row);
+      });
+    }
+    t2.appendChild(b2); w2.appendChild(t2); recent.appendChild(w2);
+    mount.appendChild(recent);
   }
 
-  function naira(kobo) {
-    return "₦" + (kobo / 100).toLocaleString("en-NG", {
-      minimumFractionDigits: 2, maximumFractionDigits: 2
+  function renderMerchants(rows) {
+    var body = $("merchantRows");
+    body.innerHTML = "";
+    if (!rows.length) {
+      var tr = el("tr"); var td = cell("Nobody has onboarded yet.", "muted");
+      td.colSpan = 8; tr.appendChild(td); body.appendChild(tr);
+      return;
+    }
+    rows.forEach(function (m) {
+      var r = el("tr");
+      r.appendChild(cell(m.businessName));
+      r.appendChild(cell(m.status));
+      r.appendChild(cell(m.hasBankAccount ? "yes" : "no", m.hasBankAccount ? "yes" : "no"));
+      r.appendChild(cell(m.payoutReady ? "ready" : "MISSING", m.payoutReady ? "yes" : "no"));
+      r.appendChild(cell(m.cryptoEnabled ? (m.cryptoSettlement || "on") : "off"));
+      r.appendChild(cell(String(m.salesCount), "num"));
+      r.appendChild(cell(m.volumeFormatted, "num"));
+      r.appendChild(cell(day(m.joined), "muted"));
+      body.appendChild(r);
     });
   }
 
-  function when(iso) {
-    var d = new Date(iso);
-    return isNaN(d.getTime()) ? iso : d.toLocaleString("en-NG", {
-      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+  function renderIssues(report) {
+    var issues = report.issues;
+    var mount = $("issueList");
+    mount.innerHTML = "";
+
+    var badge = $("issueCount");
+    if (report.total) {
+      badge.hidden = false;
+      badge.textContent = String(report.total);
+      badge.style.borderColor = report.blocking ? "var(--accent-deep)" : "var(--line)";
+      badge.style.color = report.blocking ? "var(--accent-deep)" : "var(--ink-2)";
+    } else {
+      badge.hidden = true;
+    }
+
+    // The totals first: a hundred merchants missing the same subaccount is one
+    // problem to fix once, and the count says so better than a hundred cards.
+    if (report.total) {
+      mixChips(mount, report.total + " to look at — " + report.blocking + " blocking", report.totals);
+    }
+    if (report.omitted) {
+      var more = el("p", "hint",
+        "Showing the first " + issues.length + ". " + report.omitted + " more of the same kinds are not listed.");
+      mount.appendChild(more);
+    }
+
+    if (!report.total) {
+      mount.appendChild(el("div", "allclear",
+        "Nothing needs attention. Every active merchant can be paid, and every confirmed payment is in the ledger."));
+      return;
+    }
+
+    issues.forEach(function (i) {
+      var card = el("div", "issue " + i.severity);
+      var head = el("div", "head");
+      head.appendChild(el("h3", null, i.title));
+      head.appendChild(el("span", "sev", i.severity));
+      card.appendChild(head);
+      card.appendChild(el("p", null, i.detail));
+      var todo = el("p", "todo");
+      todo.appendChild(el("b", null, "Do: "));
+      todo.appendChild(document.createTextNode(i.action));
+      card.appendChild(todo);
+      mount.appendChild(card);
     });
+  }
+
+  // ---------------- routing ----------------
+
+  function currentView() {
+    var want = (location.hash || "#overview").slice(1);
+    return VIEWS.indexOf(want) === -1 ? "overview" : want;
+  }
+
+  async function loadView(name) {
+    // Each view is fetched once per session and then cached: these pages walk
+    // every payment, and re-fetching on every tab click would make the nav feel
+    // broken on a slow connection. Sign out and back in for fresh numbers.
+    if (loaded[name]) return;
+    showViewError("");
+    try {
+      if (name === "overview") {
+        renderOverview(await api("/api/admin/overview"));
+      } else if (name === "fiat" || name === "crypto") {
+        renderRail($("view-" + name), await api("/api/admin/rail/" + name));
+      } else if (name === "merchants") {
+        renderMerchants((await api("/api/admin/merchants")).merchants);
+      } else if (name === "issues") {
+        renderIssues(await api("/api/admin/issues"));
+      }
+      loaded[name] = true;
+    } catch (e) {
+      if (e.status === 401) { signedOut(); return; }
+      showViewError(e.message);
+    }
+  }
+
+  async function route() {
+    var name = currentView();
+    VIEWS.forEach(function (v) { $("view-" + v).hidden = v !== name; });
+    Array.prototype.forEach.call($("tabs").querySelectorAll("a"), function (a) {
+      if (a.dataset.view === name) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+    await loadView(name);
+  }
+
+  window.addEventListener("hashchange", function () { void route(); });
+
+  function signedOut() {
+    token = null;
+    store(TOKEN_KEY, null);
+    $("signinView").hidden = false;
+    $("navWrap").hidden = true;
+    $("bar").hidden = true;
+    $("dashView").hidden = true;
   }
 
   async function enter() {
     try {
-      var data = await api("/api/admin/overview");
+      // The overview doubles as the auth check: if the session is dead this
+      // throws 401 and we land on the sign-in form instead of an empty shell.
+      renderOverview(await api("/api/admin/overview"));
+      loaded.overview = true;
+
       $("signinView").hidden = true;
       $("bar").hidden = false;
+      $("navWrap").hidden = false;
       $("dashView").hidden = false;
       text("whoami", read(EMAIL_KEY) || "");
-      render(data);
+
+      // Issues are fetched up front so the tab can carry a count without
+      // needing to be opened — the point of the page is to notice.
+      try {
+        renderIssues(await api("/api/admin/issues"));
+        loaded.issues = true;
+      } catch (e) { /* the tab still works when opened */ }
+
+      await route();
     } catch (e) {
-      // An expired or revoked session lands here on load. Drop it and show the
-      // sign-in form rather than an error page with no way forward.
-      token = null;
-      store(TOKEN_KEY, null);
-      $("signinView").hidden = false;
-      $("bar").hidden = true;
-      $("dashView").hidden = true;
+      signedOut();
       if (e.status !== 401) showError(e.message);
     }
   }

@@ -25,7 +25,7 @@ import { AuthService } from "./modules/auth/auth-service.js";
 import { ReconciliationJob } from "./jobs/reconciliation-job.js";
 import { TractionService } from "./modules/traction/traction-service.js";
 import { AdminAuthService } from "./modules/auth/admin-auth-service.js";
-import { AdminMetricsService } from "./modules/admin/admin-metrics.js";
+import { AdminMetricsService, AdminViews } from "./modules/admin/admin-metrics.js";
 import { MockEmailSender, ResendEmailSender, type EmailSender } from "./modules/email/email-sender.js";
 import { WalletService } from "./modules/wallet/wallet-service.js";
 import { AuditService, InMemoryAuditSink, type AuditSink } from "./modules/audit/audit-service.js";
@@ -49,6 +49,7 @@ export interface App {
   traction: TractionService;
   adminAuth: AdminAuthService;
   adminMetrics: AdminMetricsService;
+  adminViews: AdminViews;
   email: EmailSender;
   wallets: WalletService;
   waTransport: NotificationTransport;
@@ -171,6 +172,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     secret: () => config.APP_SECRET,
   });
   const adminMetrics = new AdminMetricsService(repos, clock);
+  const adminViews = new AdminViews(repos, clock);
 
   // Wire the downstream event chain: order.paid → receipt → ledger.entry.
   wirePaymentEvents({ bus, ledger, notifications, repos });
@@ -193,6 +195,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     traction,
     adminAuth,
     adminMetrics,
+    adminViews,
     email,
     wallets,
     waTransport,
