@@ -53,9 +53,31 @@ echo "  from: $(mask "$SRC")"
 echo "    to: $(mask "$DST")"
 echo
 
-for tool in pg_dump psql; do
-  command -v "$tool" >/dev/null || { echo "$tool not found: sudo apt install postgresql-client" >&2; exit 1; }
-done
+command -v psql >/dev/null || {
+  echo "psql not found: sudo apt install postgresql-client" >&2; exit 1; }
+
+# pg_dump refuses to dump from a server NEWER than itself, and says so only on
+# stderr — piped into a file that is a zero-table "backup" that looks fine.
+# Render runs Postgres 18; Ubuntu 24.04 ships client 16. Rather than require a
+# system upgrade, fall back to the matching client in a container.
+SRC_MAJOR=$(psql "$SRC" -Atc "select current_setting('server_version_num')::int / 10000" </dev/null)
+LOCAL_MAJOR=$(pg_dump --version 2>/dev/null | awk '{print $3}' | cut -d. -f1)
+
+if [ -n "$LOCAL_MAJOR" ] && [ "$LOCAL_MAJOR" -ge "$SRC_MAJOR" ]; then
+  echo "  client: local pg_dump $LOCAL_MAJOR (server $SRC_MAJOR)"
+  do_dump()    { pg_dump "$@"; }
+  do_restore() { psql "$@"; }
+else
+  command -v docker >/dev/null || {
+    echo "Source server is Postgres $SRC_MAJOR but local pg_dump is ${LOCAL_MAJOR:-absent}." >&2
+    echo "Install postgresql-client-$SRC_MAJOR, or install Docker for the fallback." >&2
+    exit 1
+  }
+  echo "  client: postgres:$SRC_MAJOR via docker (local pg_dump is ${LOCAL_MAJOR:-absent})"
+  docker pull -q "postgres:$SRC_MAJOR" >/dev/null
+  do_dump()    { docker run --rm "postgres:$SRC_MAJOR" pg_dump "$@"; }
+  do_restore() { docker run --rm -i "postgres:$SRC_MAJOR" psql "$@"; }
+fi
 
 # Refuse to write into a database that already has tables. Restoring over live
 # data is the one mistake with no undo, and "it was empty when I checked" is
@@ -75,13 +97,13 @@ DUMP="$OUT_DIR/pre-neon-$(date +%Y%m%d-%H%M%S).sql"
 # --no-owner / --no-acl: Neon's role (neondb_owner) is not Render's, and
 # ownership statements would fail against it.
 echo "Dumping ..."
-pg_dump "$SRC" --no-owner --no-acl > "$DUMP"
+do_dump "$SRC" --no-owner --no-acl > "$DUMP"
 echo "  $DUMP ($(du -h "$DUMP" | cut -f1))"
 
 echo "Restoring ..."
 # ON_ERROR_STOP so a failed statement fails the script instead of leaving a
 # half-populated database that looks migrated.
-psql "$DST" -v ON_ERROR_STOP=1 -q -f "$DUMP" </dev/null
+do_restore "$DST" -v ON_ERROR_STOP=1 -q < "$DUMP"
 echo "  done"
 
 echo
