@@ -48,9 +48,14 @@ export const site = {
     "Hi Rhodium — I want to register my shop.",
   )}`,
   dashboardUrl: DASHBOARD_URL,
-  email: "hello@userhodium.xyz", // [PLACEHOLDER]
+  /**
+   * Real, and monitored: an ImprovMX alias on the verified domain, forwarding
+   * to the operator's inbox. It was a placeholder on a domain with no mailbox
+   * behind it — a contact address that silently discards what is sent to it.
+   */
+  email: "support@userhodium.xyz",
   /** Where data-protection and legal requests go — cited in the policies. */
-  legalEmail: "admin@foniolabs.xyz",
+  legalEmail: "support@userhodium.xyz",
   /** Canonical marketing origin. Meta's app settings must match this exactly. */
   origin: "https://www.userhodium.xyz",
   /**
