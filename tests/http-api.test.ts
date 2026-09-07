@@ -1,10 +1,35 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Server } from "node:http";
+import { request as httpRequest } from "node:http";
 import { buildApp } from "../src/app.js";
 import { loadConfig, resetConfigCache } from "../src/config/index.js";
 import { CaptureTransport } from "../src/modules/notification/transport.js";
 import { buildApi } from "../src/http/api.js";
 import type { MockableFiatRail } from "./helpers/harness.js";
+
+/** GET over node:http, so headers fetch refuses to send (Host) can be set. */
+function rawGet(path: string, headers: Record<string, string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, base);
+    const req = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: "GET",
+        headers: { accept: "text/html", ...headers },
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => resolve(body));
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 let server: Server;
 let base: string;
@@ -368,6 +393,28 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(checkoutHtml).toContain('id="card"');
     expect(checkoutHtml).toContain("Secure checkout");
     expect(await (await fetch(`${base}/traction`)).text()).toContain("Traction");
+  });
+
+  it("serves the admin dashboard at the root of an admin host", async () => {
+    // admin.userhodium.xyz and the service's own hostname reach the same app,
+    // and "/" belongs to the merchant dashboard. Without host routing the
+    // subdomain would resolve, get a certificate, and show a merchant login.
+    //
+    // Sent over node:http rather than fetch: Host is a forbidden header name
+    // in undici, which drops it silently — the request would go out with the
+    // real host and the assertion would pass against nothing.
+    const onAdminHost = await rawGet("/", { host: "admin.userhodium.xyz" });
+    expect(onAdminHost).toContain("Admin · Rhodium");
+
+    const normal = await rawGet("/", { host: "www.userhodium.xyz" });
+    expect(normal).toContain("Merchant Dashboard");
+
+    // Render terminates TLS and proxies, so the original host may arrive only
+    // in X-Forwarded-Host. That one fetch can set.
+    const forwarded = await fetch(`${base}/`, {
+      headers: { "x-forwarded-host": "admin.userhodium.xyz", accept: "text/html" },
+    });
+    expect(await forwarded.text()).toContain("Admin · Rhodium");
   });
 
   it("refuses the traction figures to anyone not signed in as an admin", async () => {

@@ -1483,6 +1483,29 @@ export function buildApi(app: App): Express {
   server.get("/admin", (_req, res) => {
     res.sendFile(resolve("public/admin.html"));
   });
+
+  /**
+   * A dedicated host for the admin surface, e.g. admin.userhodium.xyz.
+   *
+   * Point a CNAME at this service and its root serves the admin dashboard
+   * instead of the merchant one. Without this the subdomain would work but
+   * land on a merchant login screen, because both hosts reach the same app and
+   * "/" belongs to the merchant dashboard.
+   *
+   * Registered before the static handlers: express.static serves index.html
+   * for a directory request, so dashboard/dist/index.html would otherwise
+   * claim "/" before any route below could.
+   *
+   * This is convenience and legibility, NOT a security boundary — every admin
+   * figure is behind requireAdmin regardless of which host asked.
+   */
+  server.get("/", (req, res, next) => {
+    if (isAdminHost(req)) {
+      res.sendFile(resolve("public/admin.html"));
+      return;
+    }
+    next();
+  });
   server.use(express.static(resolve("public")));
 
   // Serve product images (local object store) + built dashboard, if present.
@@ -1548,6 +1571,20 @@ export function buildApi(app: App): Express {
 
   server.use(errorHandler);
   return server;
+}
+
+/**
+ * Whether this request arrived on the admin host.
+ *
+ * X-Forwarded-Host first: Render terminates TLS and proxies, and `trust proxy`
+ * is not enabled here, so req.hostname reads the raw Host header — which is
+ * usually right and is not guaranteed to be. Same order clientIp uses.
+ */
+function isAdminHost(req: Request): boolean {
+  const forwarded = req.header("x-forwarded-host");
+  const raw = (forwarded?.split(",")[0] ?? req.header("host") ?? "").trim().toLowerCase();
+  const host = raw.split(":")[0] ?? "";
+  return host === "admin" || host.startsWith("admin.");
 }
 
 /** Last four digits only — a receipt gets forwarded, a phone number should not. */
