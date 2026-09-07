@@ -59,7 +59,7 @@ export function Hero() {
           />
 
           <FloatCard
-            title="Today's sales"
+            title="Today's sales · example"
             value={heroStats.ledger.amount}
             note={heroStats.ledger.delta}
             className="mt-3 sm:absolute sm:-bottom-6 sm:left-6 sm:mt-0 sm:w-44 lg:left-8"

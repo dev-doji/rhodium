@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { enterprisePlan, plans, site } from "@/lib/site";
+import { enterprisePlan, plans, pricingProvisional, site } from "@/lib/site";
 import { Button, SectionLabel, WhatsAppIcon } from "./ui";
 
 export function Pricing() {
@@ -14,7 +14,14 @@ export function Pricing() {
             Plans that scale with
             <br className="hidden sm:block" /> your sales, not your stress
           </h2>
-          <p className="measure mx-auto mt-4 max-w-lg text-sm text-white/50 sm:text-base">
+          
+        {pricingProvisional && (
+          <p className="mx-auto mt-4 max-w-xl text-center text-sm text-brand-100/80">
+            Indicative pricing while we are in early access — we will confirm
+            final plans with you before charging anything.
+          </p>
+        )}
+<p className="measure mx-auto mt-4 max-w-lg text-sm text-white/50 sm:text-base">
             Start free on the bank rail. Move up when you want crypto payments
             and the traction dashboard.
           </p>

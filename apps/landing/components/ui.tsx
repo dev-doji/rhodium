@@ -166,6 +166,14 @@ export function PhotoSlot({
 }
 
 /** A floating figure card, laid over the hero photograph. */
+/**
+ * A figure card laid over the hero photograph.
+ *
+ * Whatever is shown here is ILLUSTRATIVE — the product has no traction to
+ * report yet, and a number that reads as real revenue on a marketing page is
+ * a claim we cannot support. The title carries the word "example" rather than
+ * relying on a footnote nobody reads.
+ */
 export function FloatCard({
   title,
   value,

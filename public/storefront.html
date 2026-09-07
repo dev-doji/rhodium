@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Shop · Rhodium</title>
   <meta name="description" content="Browse and buy. Pay by bank transfer, confirmed in seconds." />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Self-hosted: loading these from Google would hand every visitor's IP
+       to a third party before they had agreed to anything. -->
+  <link rel="stylesheet" href="/fonts/fonts.css">
   <style>
     /* ------------------------------------------------------------------
        A vendor's public shop.
@@ -27,12 +27,16 @@
       color-scheme: light;
       /* Rhodium brand, mirroring apps/landing/app/globals.css */
       --brand:#0033e7;   --brand-600:#002bc4; --brand-50:#eef2fe;
-      --accent:#ff3131;
+      /* The brand red is 3.66:1 against white — fine for a large shape, not
+         for the white digits sat on it. --accent-deep carries the text. */
+      --accent:#ff3131;  --accent-deep:#d11414;
       --panel:#04123f;   --panel-soft:#0a2160; --ink-band:#05061a;
 
       --bg:#ffffff;      --surface:#ffffff;    --surface-2:#f7f8fc;
       --line:#e4e7f2;    --ink:#05061a;        --ink-2:#4a4f68;
-      --ink-3:#767c96;   --on-brand:#ffffff;
+      /* #767c96 measured 4.12:1 on white — below the 4.5:1 needed for body
+         text. Darkened to 4.83:1. */
+      --ink-3:#6b7189;   --on-brand:#ffffff;
       --good-bg:#eaf7ef; --good-ink:#0f5132;
       --bad-bg:#fdeceb;  --bad-ink:#8a2019;
 
@@ -116,7 +120,7 @@
     .cartbtn .count {
       position:absolute; top:2px; right:2px; min-width:19px; height:19px;
       padding:0 5px; border-radius:var(--radius-pill);
-      background:var(--accent); color:#fff;
+      background:var(--accent-deep); color:#fff;
       font-size:11px; font-weight:700; line-height:19px; text-align:center;
     }
 
@@ -281,6 +285,10 @@
     }
     .field input:focus { border-color:var(--brand); }
     .field .help { font-size:12px; color:var(--ink-3); margin-top:5px; }
+    .consent {
+      margin:0 0 14px; font-size:12px; line-height:1.5; color:var(--ink-2);
+    }
+    .consent a { color:var(--brand); }
     .field .err { font-size:12.5px; color:var(--bad-ink); margin-top:5px; font-weight:600; }
 
     .alert {
@@ -363,8 +371,9 @@
 
   <footer class="wrap foot">
     <span>Powered by <strong>Rhodium</strong></span>
-    <a href="/terms">Terms</a>
-    <a href="/privacy">Privacy</a>
+    <a href="https://www.userhodium.xyz/terms">Terms</a>
+    <a href="https://www.userhodium.xyz/privacy">Privacy</a>
+    <a href="https://www.userhodium.xyz/cookies">Cookies</a>
   </footer>
 
   <div class="scrim" id="scrim" hidden></div>
@@ -390,6 +399,15 @@
           <input id="bphone" name="bphone" type="tel" inputmode="tel" autocomplete="tel"
                  placeholder="0803 000 0000" required aria-describedby="phonehelp" />
           <div class="help" id="phonehelp">So the seller can reach you about delivery.</div>
+        </div>
+        <!-- Notice where the data is actually given, not only in a policy page
+             nobody opens. It says who receives it and what for, in one line. -->
+        <p class="consent">
+          By placing this order you agree that your name and number are shared
+          with this seller so they can deliver your order and send your receipt.
+          See our <a href="https://www.userhodium.xyz/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+        </p>
+        <div style="display:none">
         </div>
         <button class="btn btn-primary btn-block" id="pay" type="submit">Continue to payment</button>
       </form>

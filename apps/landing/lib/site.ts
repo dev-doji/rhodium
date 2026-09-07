@@ -216,8 +216,15 @@ export const benefits = [
 ] as const;
 
 /**
- * [PLACEHOLDER] Pricing is illustrative — set real numbers before launch.
+ * PRICING IS NOT CONFIRMED.
+ *
+ * These numbers were placeholders in code while being presented to visitors as
+ * real. Either set the real ones or keep `pricingProvisional` true, which puts
+ * a visible note on the section — a price a visitor relies on and we do not
+ * honour is the kind of claim this whole page is being cleaned up to avoid.
  */
+export const pricingProvisional = true;
+
 export const plans = [
   {
     name: "Starter",
@@ -257,13 +264,21 @@ export const enterprisePlan = {
 } as const;
 
 /** `mark` keys map to the logo marks in `components/logos.tsx`. */
+/**
+ * What the product actually runs on today.
+ *
+ * This list claimed Quai and BlipPay, both retired, and Monnify, whose keys
+ * are not even set — a visitor could reasonably read those as live
+ * partnerships. It also showed NDPR as a badge beside them, which reads as a
+ * certification rather than a law we comply with; that belongs in the privacy
+ * policy, where it is explained, not in a logo row implying accreditation.
+ */
 export const integrations = [
   { name: "WhatsApp", note: "Cloud API", mark: "whatsapp" },
-  { name: "Quai", note: "Network", mark: "quai" },
-  { name: "BlipPay", note: "Wallet", mark: "blippay" },
-  { name: "Monnify", note: "Bank rail", mark: "monnify" },
-  { name: "USDT", note: "Stable value", mark: "usdt" },
-  { name: "NDPR", note: "Compliance", mark: "ndpr" },
+  { name: "Paystack", note: "Bank rail", mark: "paystack" },
+  { name: "Arbitrum", note: "Network", mark: "arbitrum" },
+  { name: "USDC", note: "Stablecoin", mark: "usdc" },
+  { name: "OnSwitch", note: "Crypto to naira", mark: "onswitch" },
 ] as const;
 
 export const footerColumns = [
@@ -291,6 +306,7 @@ export const footerColumns = [
       { label: "How it works", href: "#how" },
       { label: "Pricing", href: "#pricing" },
       { label: "Privacy Policy", href: "/privacy" },
+      { label: "Cookie Policy", href: "/cookies" },
       { label: "Terms of Service", href: "/terms" },
     ],
   },
