@@ -581,17 +581,102 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  // --- Admin sign-in: email address, one-time code ---
+  server.post(
+    "/api/admin/auth/request-otp",
+    asyncRoute(async (req, res) => {
+      const email = String(req.body?.email ?? "").trim().toLowerCase();
+
+      const byEmail = limiter.check(
+        `admin-otp:email:${email}`,
+        LIMITS.adminOtpPerEmail.limit,
+        LIMITS.adminOtpPerEmail.windowMs,
+      );
+      if (!byEmail.ok) {
+        logRefusal("admin-otp:email", email, byEmail.retryAfter);
+        res.set("Retry-After", String(byEmail.retryAfter));
+        res.status(429).json({
+          error: "rate_limited",
+          message: `Too many codes requested. Try again in ${Math.ceil(byEmail.retryAfter / 60)} minute(s).`,
+        });
+        return;
+      }
+      const ip = clientIp(req);
+      const byIp = limiter.check(
+        `admin-otp:ip:${ip}`,
+        LIMITS.adminOtpPerIp.limit,
+        LIMITS.adminOtpPerIp.windowMs,
+      );
+      if (!byIp.ok) {
+        logRefusal("admin-otp:ip", ip, byIp.retryAfter);
+        res.set("Retry-After", String(byIp.retryAfter));
+        res.status(429).json({ error: "rate_limited", message: "Too many attempts from here." });
+        return;
+      }
+
+      await app.adminAuth.requestOtp(email);
+      // The same answer whether or not that address is an admin. Anything else
+      // turns this into a way to enumerate who the admins are.
+      res.json({ ok: true });
+    }),
+  );
+
+  server.post(
+    "/api/admin/auth/verify-otp",
+    asyncRoute(async (req, res) => {
+      const ip = clientIp(req);
+      const guard = limiter.check(
+        `admin-verify:ip:${ip}`,
+        LIMITS.adminVerifyPerIp.limit,
+        LIMITS.adminVerifyPerIp.windowMs,
+      );
+      if (!guard.ok) {
+        logRefusal("admin-verify:ip", ip, guard.retryAfter);
+        res.set("Retry-After", String(guard.retryAfter));
+        res.status(429).json({ error: "rate_limited", message: "Too many attempts from here." });
+        return;
+      }
+
+      const result = await app.adminAuth.verifyOtp(
+        String(req.body?.email ?? ""),
+        String(req.body?.code ?? ""),
+      );
+      res.json(result);
+    }),
+  );
+
+  /** Everything the admin dashboard shows, in one call. */
+  server.get(
+    "/api/admin/overview",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      res.json(await app.adminMetrics.overview());
+    }),
+  );
+
   // --- Admin (bearer = APP_SECRET) — manage merchants over HTTPS. Used to seed
   //     a merchant / set a Quai wallet when direct DB access isn't available. ---
   const requireAdmin = (req: Request): void => {
     const header = req.header("authorization") ?? "";
     const provided = header.startsWith("Bearer ") ? header.slice(7) : "";
+
+    // Two ways in, serving different callers:
+    //
+    //   APP_SECRET — the shared secret used by curl and the maintenance
+    //     scripts that predate any UI. Kept working so nothing breaks.
+    //   An admin session token — issued by email OTP, expires after 12h, and
+    //     is revoked by removing the address from ADMIN_EMAILS.
+    //
+    // Still compared in constant time: === on a shared secret leaks it one
+    // byte at a time to anyone who can measure the response.
     const expected = app.config.APP_SECRET;
     const a = Buffer.from(provided);
     const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new UnauthorizedError("bad admin token");
-    }
+    if (a.length === b.length && timingSafeEqual(a, b)) return;
+
+    // Throws its own UnauthorizedError, distinguishing an expired session from
+    // a bad one — those need different actions from whoever hit it.
+    app.adminAuth.verifyToken(provided);
   };
 
   server.post(
@@ -1373,6 +1458,16 @@ export function buildApi(app: App): Express {
   });
   server.get("/wallet", (_req, res) => {
     res.sendFile(resolve("public/wallet.html"));
+  });
+  /**
+   * The admin dashboard shell.
+   *
+   * Exact path only, so it does not shadow the /admin/* API routes above. The
+   * page itself holds no secrets — it signs in against /api/admin/auth and
+   * every figure it shows comes from an endpoint that checks the session.
+   */
+  server.get("/admin", (_req, res) => {
+    res.sendFile(resolve("public/admin.html"));
   });
   server.use(express.static(resolve("public")));
 

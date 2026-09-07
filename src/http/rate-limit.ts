@@ -126,6 +126,19 @@ export const LIMITS = {
    * back a few times stays far under this.
    */
   ordersPerIp: { limit: 30, windowMs: 60 * 60_000 },
+  /**
+   * Admin sign-in codes, per address.
+   *
+   * Tighter than the merchant limit because the set of valid addresses is tiny
+   * and known to us: anyone hammering this is either locked out or attacking.
+   */
+  adminOtpPerEmail: { limit: 3, windowMs: 15 * 60_000 },
+  adminOtpPerIp: { limit: 10, windowMs: 60 * 60_000 },
+  /**
+   * Code guesses. AdminAuthService already burns a challenge after 5 wrong
+   * attempts; this stops someone requesting fresh codes to keep guessing.
+   */
+  adminVerifyPerIp: { limit: 20, windowMs: 15 * 60_000 },
 } as const;
 
 /** Log a refusal once, with enough to tell abuse from a misconfiguration. */

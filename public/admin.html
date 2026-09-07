@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · Rhodium</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <style>
+    /* ------------------------------------------------------------------
+       Rhodium admin.
+
+       Same flat language as the storefront and checkout — square corners,
+       solid borders, no shadows, Outfit for headings and Inter for body —
+       so this reads as the same product rather than an internal tool
+       someone bolted on.
+
+       Deliberately dense: this screen is read, not browsed. The numbers
+       come first and the chrome stays out of the way.
+       ------------------------------------------------------------------ */
+    :root {
+      color-scheme: light;
+      --brand:#0033e7; --brand-600:#002bc4; --brand-50:#eef2fe;
+      --accent-deep:#d11414;
+      --bg:#f7f8fc; --surface:#ffffff; --surface-2:#f7f8fc;
+      --line:#e4e7f2; --ink:#05061a; --ink-2:#4a4f68; --ink-3:#6b7189;
+      --on-brand:#ffffff;
+      --good-bg:#eaf7ef; --good-ink:#0f5132;
+      --warn-bg:#fff6e6; --warn-ink:#7a4b00;
+      --radius:0px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--ink);
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size:15px; line-height:1.5;
+    }
+    h1,h2,h3 { font-family:Outfit, Inter, system-ui, sans-serif; margin:0; letter-spacing:-0.02em; }
+    a { color:var(--brand-600); }
+
+    .wrap { max-width:1120px; margin:0 auto; padding:24px 20px 64px; }
+
+    header.bar {
+      border-bottom:1px solid var(--line); background:var(--surface);
+    }
+    header.bar .wrap { padding:16px 20px; display:flex; align-items:center; gap:16px; }
+    .mark { font-family:Outfit, sans-serif; font-weight:800; font-size:20px; letter-spacing:-0.03em; }
+    .mark span { color:var(--brand); }
+    .who { margin-left:auto; color:var(--ink-3); font-size:13px; }
+
+    button {
+      font:inherit; font-weight:600; cursor:pointer; border-radius:var(--radius);
+      border:1px solid var(--brand); background:var(--brand); color:var(--on-brand);
+      padding:11px 18px;
+    }
+    button:hover { background:var(--brand-600); border-color:var(--brand-600); }
+    button.ghost { background:transparent; color:var(--brand-600); }
+    button.ghost:hover { background:var(--brand-50); }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    button:focus-visible, input:focus-visible { outline:3px solid var(--brand); outline-offset:2px; }
+
+    label { display:block; font-weight:600; font-size:13px; margin-bottom:6px; }
+    input {
+      font:inherit; width:100%; padding:11px 13px; border-radius:var(--radius);
+      border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    }
+    .hint { color:var(--ink-3); font-size:13px; margin:8px 0 0; }
+
+    /* --- sign in --- */
+    .signin { max-width:400px; margin:64px auto; background:var(--surface);
+              border:1px solid var(--line); padding:28px; }
+    .signin h1 { font-size:24px; margin-bottom:6px; }
+    .signin .row { margin-top:16px; }
+    .signin button { width:100%; margin-top:16px; }
+
+    /* --- cards --- */
+    .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
+    .card { background:var(--surface); border:1px solid var(--line); padding:18px; }
+    .card .k { font-size:12px; font-weight:600; text-transform:uppercase;
+               letter-spacing:.06em; color:var(--ink-3); }
+    .card .v { font-family:Outfit, sans-serif; font-weight:700; font-size:30px;
+               letter-spacing:-0.03em; margin-top:6px; }
+    .card .sub { color:var(--ink-3); font-size:13px; margin-top:4px; }
+
+    section { margin-top:34px; }
+    section > h2 { font-size:19px; margin-bottom:4px; }
+    section > .lede { color:var(--ink-2); font-size:14px; margin:0 0 14px; }
+
+    .note { border:1px solid var(--line); border-left:4px solid var(--warn-ink);
+            background:var(--warn-bg); color:var(--warn-ink); padding:12px 14px;
+            font-size:13.5px; margin-bottom:14px; }
+
+    .tablewrap { overflow-x:auto; border:1px solid var(--line); background:var(--surface); }
+    table { border-collapse:collapse; width:100%; font-size:14px; min-width:640px; }
+    th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); }
+    th { font-size:12px; text-transform:uppercase; letter-spacing:.06em;
+         color:var(--ink-3); background:var(--surface-2); }
+    tr:last-child td { border-bottom:none; }
+    td.num { font-variant-numeric:tabular-nums; }
+    .pill { display:inline-block; padding:2px 8px; font-size:12px; font-weight:600;
+            border:1px solid var(--line); background:var(--surface-2); }
+    .pill.fiat { background:var(--good-bg); color:var(--good-ink); border-color:var(--good-ink); }
+
+    .err { color:var(--accent-deep); font-size:14px; margin-top:12px; font-weight:600; }
+    .muted { color:var(--ink-3); }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+
+<header class="bar" id="bar" hidden>
+  <div class="wrap">
+    <div class="mark">Rhodium<span>.</span> admin</div>
+    <div class="who"><span id="whoami"></span> · <button class="ghost" id="signout" style="padding:6px 12px">Sign out</button></div>
+  </div>
+</header>
+
+<!-- ---------------- sign in ---------------- -->
+<div class="wrap" id="signinView">
+  <form class="signin" id="signinForm" novalidate>
+    <h1>Rhodium admin</h1>
+    <p class="hint" id="step1Hint">Sign in with your admin email address. We'll send you a one-time code.</p>
+
+    <div class="row" id="emailRow">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email"
+             inputmode="email" required placeholder="you@example.com" />
+    </div>
+
+    <div class="row" id="codeRow" hidden>
+      <label for="code">6-digit code</label>
+      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="6" pattern="[0-9]{6}" placeholder="123456" />
+      <p class="hint">Sent to <strong id="sentTo"></strong>. It expires in 10 minutes.</p>
+    </div>
+
+    <button type="submit" id="submitBtn">Send code</button>
+    <p class="err" id="err" role="alert" hidden></p>
+  </form>
+</div>
+
+<!-- ---------------- dashboard ---------------- -->
+<main class="wrap" id="dashView" hidden>
+  <section style="margin-top:8px">
+    <h2>Merchants</h2>
+    <p class="lede">Everyone who has onboarded, and how many can actually take money.</p>
+    <div class="grid">
+      <div class="card"><div class="k">Total</div><div class="v" id="mTotal">—</div>
+        <div class="sub" id="mStatuses"></div></div>
+      <div class="card"><div class="k">New · 7 days</div><div class="v" id="m7">—</div>
+        <div class="sub" id="m30"></div></div>
+      <div class="card"><div class="k">Ready to sell</div><div class="v" id="mReady">—</div>
+        <div class="sub">Payout subaccount created</div></div>
+      <div class="card"><div class="k">Have sold</div><div class="v" id="mTx">—</div>
+        <div class="sub">At least one confirmed sale</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Money processed</h2>
+    <p class="lede">Confirmed payments only. Volume per rail is money, not a count of orders.</p>
+    <div class="grid">
+      <div class="card"><div class="k">Gross volume</div><div class="v" id="vGross">—</div>
+        <div class="sub"><span id="vSales"></span> · <span id="vBuyers"></span></div></div>
+      <div class="card"><div class="k">Bank transfer</div><div class="v" id="vFiat">—</div>
+        <div class="sub" id="vFiatN"></div></div>
+      <div class="card"><div class="k">Crypto</div><div class="v" id="vCrypto">—</div>
+        <div class="sub" id="vCryptoN"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fees</h2>
+    <p class="lede">What the current schedule would have earned on the sales above.</p>
+    <div class="note">
+      <strong>Projected, not collected.</strong> The fee engine is not yet applied to
+      live orders — no buyer has been charged a platform fee and no merchant has had
+      one deducted. These figures show what the schedule would produce if it were on.
+    </div>
+    <div class="grid">
+      <div class="card"><div class="k">Rhodium fee</div><div class="v" id="fTotal">—</div>
+        <div class="sub" id="fSplit"></div></div>
+      <div class="card"><div class="k">Paystack took</div><div class="v" id="fProc">—</div>
+        <div class="sub">1% capped at ₦300 — actually charged</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Recent sales</h2>
+    <p class="lede">Most recent confirmed payments.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>When</th><th>Merchant</th><th>Rail</th><th>Amount</th><th>Order</th></tr></thead>
+        <tbody id="recent"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="hint" id="stamp"></p>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var TOKEN_KEY = "rhodium.admin.token";
+  var EMAIL_KEY = "rhodium.admin.email";
+
+  // sessionStorage, not localStorage: this token opens every merchant and every
+  // naira on the platform, so it should not outlive the browser tab. Wrapped
+  // because storage throws outright in some privacy modes rather than failing
+  // soft, and a thrown getter here would leave a blank page with no explanation.
+  function store(key, value) {
+    try {
+      if (value === null) sessionStorage.removeItem(key);
+      else sessionStorage.setItem(key, value);
+    } catch (e) { /* no persistence available; the session lives in memory */ }
+  }
+  function read(key) {
+    try { return sessionStorage.getItem(key); } catch (e) { return null; }
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var token = read(TOKEN_KEY);
+  var pendingEmail = "";
+
+  function showError(message) {
+    var el = $("err");
+    el.textContent = message;
+    el.hidden = !message;
+  }
+
+  async function api(path, options) {
+    var opts = options || {};
+    var headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = "Bearer " + token;
+    var res = await fetch(path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) { /* empty or non-JSON body */ }
+    if (!res.ok) {
+      var err = new Error((data && (data.message || data.error)) || ("Request failed (" + res.status + ")"));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  // ---------------- sign in ----------------
+
+  $("signinForm").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    showError("");
+    var btn = $("submitBtn");
+    btn.disabled = true;
+
+    try {
+      if ($("codeRow").hidden) {
+        var email = $("email").value.trim();
+        if (!email) { showError("Enter your email address."); return; }
+        await api("/api/admin/auth/request-otp", { method: "POST", body: { email: email } });
+
+        // Deliberately the same message whether or not that address is an
+        // admin — the server does not say, and neither does this screen.
+        pendingEmail = email;
+        $("sentTo").textContent = email;
+        $("codeRow").hidden = false;
+        $("emailRow").hidden = true;
+        $("step1Hint").textContent = "If that address is an admin, a code is on its way.";
+        btn.textContent = "Sign in";
+        $("code").focus();
+      } else {
+        var code = $("code").value.trim();
+        if (!/^\d{6}$/.test(code)) { showError("Enter the 6-digit code."); return; }
+        var out = await api("/api/admin/auth/verify-otp", {
+          method: "POST",
+          body: { email: pendingEmail, code: code }
+        });
+        token = out.token;
+        store(TOKEN_KEY, token);
+        store(EMAIL_KEY, out.email);
+        await enter();
+      }
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("signout").addEventListener("click", function () {
+    token = null;
+    store(TOKEN_KEY, null);
+    store(EMAIL_KEY, null);
+    location.reload();
+  });
+
+  // ---------------- dashboard ----------------
+
+  function text(id, value) { $(id).textContent = value; }
+
+  function render(d) {
+    text("mTotal", d.merchants.total);
+    text("m7", d.merchants.newLast7d);
+    text("m30", d.merchants.newLast30d + " in the last 30 days");
+    text("mReady", d.merchants.readyToSell);
+    text("mTx", d.merchants.transacting);
+
+    var statuses = Object.keys(d.merchants.byStatus)
+      .map(function (k) { return d.merchants.byStatus[k] + " " + k; })
+      .join(" · ");
+    text("mStatuses", statuses);
+
+    text("vGross", d.volume.grossFormatted);
+    text("vSales", d.volume.salesCount + (d.volume.salesCount === 1 ? " sale" : " sales"));
+    text("vBuyers", d.volume.uniqueBuyers + (d.volume.uniqueBuyers === 1 ? " buyer" : " buyers"));
+    text("vFiat", d.volume.byRail.fiat.amountFormatted);
+    text("vFiatN", d.volume.byRail.fiat.count + " sales");
+    text("vCrypto", d.volume.byRail.crypto.amountFormatted);
+    text("vCryptoN", d.volume.byRail.crypto.count + " sales");
+
+    text("fTotal", d.projectedFees.platformFormatted);
+    text("fSplit",
+      "buyers " + naira(d.projectedFees.buyerShareKobo) +
+      " · merchants " + naira(d.projectedFees.merchantShareKobo));
+    text("fProc", d.projectedFees.processorFormatted);
+
+    var body = $("recent");
+    body.innerHTML = "";
+    if (!d.recent.length) {
+      var empty = document.createElement("tr");
+      var cell = document.createElement("td");
+      cell.colSpan = 5; cell.className = "muted"; cell.textContent = "No confirmed sales yet.";
+      empty.appendChild(cell); body.appendChild(empty);
+    } else {
+      d.recent.forEach(function (r) {
+        var tr = document.createElement("tr");
+        // textContent throughout: business names come from merchants and must
+        // never be able to inject markup into the admin's own screen.
+        tr.appendChild(cell_(when(r.at)));
+        tr.appendChild(cell_(r.businessName));
+        var rail = document.createElement("td");
+        var pill = document.createElement("span");
+        pill.className = "pill" + (r.rail === "fiat" ? " fiat" : "");
+        pill.textContent = r.rail === "fiat" ? "transfer" : r.rail;
+        rail.appendChild(pill); tr.appendChild(rail);
+        var amt = cell_(r.amountFormatted); amt.className = "num"; tr.appendChild(amt);
+        var id = cell_(r.orderId); id.className = "muted"; tr.appendChild(id);
+        body.appendChild(tr);
+      });
+    }
+    text("stamp", "Generated " + when(d.generatedAt) + ".");
+  }
+
+  function cell_(value) {
+    var td = document.createElement("td");
+    td.textContent = value;
+    return td;
+  }
+
+  function naira(kobo) {
+    return "₦" + (kobo / 100).toLocaleString("en-NG", {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+
+  function when(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleString("en-NG", {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+    });
+  }
+
+  async function enter() {
+    try {
+      var data = await api("/api/admin/overview");
+      $("signinView").hidden = true;
+      $("bar").hidden = false;
+      $("dashView").hidden = false;
+      text("whoami", read(EMAIL_KEY) || "");
+      render(data);
+    } catch (e) {
+      // An expired or revoked session lands here on load. Drop it and show the
+      // sign-in form rather than an error page with no way forward.
+      token = null;
+      store(TOKEN_KEY, null);
+      $("signinView").hidden = false;
+      $("bar").hidden = true;
+      $("dashView").hidden = true;
+      if (e.status !== 401) showError(e.message);
+    }
+  }
+
+  if (token) enter();
+})();
+</script>
+</body>
+</html>

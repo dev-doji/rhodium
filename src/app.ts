@@ -24,6 +24,9 @@ import { MediaFetcher } from "./modules/whatsapp/media.js";
 import { AuthService } from "./modules/auth/auth-service.js";
 import { ReconciliationJob } from "./jobs/reconciliation-job.js";
 import { TractionService } from "./modules/traction/traction-service.js";
+import { AdminAuthService } from "./modules/auth/admin-auth-service.js";
+import { AdminMetricsService } from "./modules/admin/admin-metrics.js";
+import { MockEmailSender, ResendEmailSender, type EmailSender } from "./modules/email/email-sender.js";
 import { WalletService } from "./modules/wallet/wallet-service.js";
 import { AuditService, InMemoryAuditSink, type AuditSink } from "./modules/audit/audit-service.js";
 import { InMemoryMetrics, type Metrics } from "./modules/metrics/metrics.js";
@@ -44,6 +47,9 @@ export interface App {
   auth: AuthService;
   reconciliation: ReconciliationJob;
   traction: TractionService;
+  adminAuth: AdminAuthService;
+  adminMetrics: AdminMetricsService;
+  email: EmailSender;
   wallets: WalletService;
   waTransport: NotificationTransport;
   fx: FxOracle;
@@ -151,6 +157,21 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const reconciliation = new ReconciliationJob(repos, rails, metrics, { pollProvider: true });
   const traction = new TractionService(repos);
 
+  // Admin sign-in. Mock mode logs the code rather than sending it, so the flow
+  // is exercisable with no Resend account; production refuses to boot with
+  // EMAIL_MODE=live and no key (see config).
+  const email: EmailSender =
+    config.EMAIL_MODE === "live"
+      ? new ResendEmailSender(config.RESEND_API_KEY, config.EMAIL_FROM)
+      : new MockEmailSender();
+  const adminAuth = new AdminAuthService({
+    clock,
+    email,
+    adminEmails: config.ADMIN_EMAILS,
+    secret: () => config.APP_SECRET,
+  });
+  const adminMetrics = new AdminMetricsService(repos, clock);
+
   // Wire the downstream event chain: order.paid → receipt → ledger.entry.
   wirePaymentEvents({ bus, ledger, notifications, repos });
 
@@ -170,6 +191,9 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     auth,
     reconciliation,
     traction,
+    adminAuth,
+    adminMetrics,
+    email,
     wallets,
     waTransport,
     fx,

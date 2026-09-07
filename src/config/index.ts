@@ -91,6 +91,24 @@ const schema = z.object({
     .default("0".repeat(64)),
   APP_SECRET: z.string().default("dev-secret-change-me"),
 
+  /**
+   * Who may sign in to the Rhodium admin dashboard, comma-separated.
+   *
+   * Empty means nobody, deliberately: an admin surface that defaults to open
+   * because a variable was forgotten is worse than one that is unreachable
+   * until configured. Matched case-insensitively after trimming.
+   */
+  ADMIN_EMAILS: z.string().default(""),
+  /** 'mock' logs the OTP; 'live' sends it through Resend. */
+  EMAIL_MODE: z.enum(["mock", "live"]).default("mock"),
+  RESEND_API_KEY: z.string().optional().default(""),
+  /**
+   * Sender address. Resend will only deliver from a domain you have verified;
+   * their onboarding@resend.dev works without verification, but only to the
+   * Resend account owner's own address.
+   */
+  EMAIL_FROM: z.string().default("Rhodium <onboarding@resend.dev>"),
+
   FIAT_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
 
   // --- Monnify (bank rail) ---
@@ -269,6 +287,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
     if (cfg.WHATSAPP_MODE === "live" && !cfg.WHATSAPP_ACCESS_TOKEN) {
       throw new Error("WHATSAPP_MODE=live requires WHATSAPP_ACCESS_TOKEN");
+    }
+    if (cfg.EMAIL_MODE === "live" && !cfg.RESEND_API_KEY) {
+      throw new Error("EMAIL_MODE=live requires RESEND_API_KEY");
     }
     if (cfg.FIELD_ENCRYPTION_KEY === "0".repeat(64)) {
       throw new Error("FIELD_ENCRYPTION_KEY must be set in production");
