@@ -97,9 +97,31 @@
     };
     const initials = (s) => (s || "").slice(-2).toUpperCase();
 
+    /**
+     * The admin session, shared with /admin.
+     *
+     * This board used to be public — the figures on it are platform-wide, and
+     * anyone holding the URL could read total GMV and other vendors' order ids.
+     */
+    function adminToken() {
+      try { return sessionStorage.getItem("rhodium.admin.token"); } catch (e) { return null; }
+    }
+
     async function tick() {
       try {
-        const t = await (await fetch("/api/traction")).json();
+        const token = adminToken();
+        if (!token) { location.replace("/admin"); return; }
+        const res = await fetch("/api/traction", {
+          headers: { Authorization: "Bearer " + token }
+        });
+        if (res.status === 401) {
+          // Expired or revoked. Drop it and send them to sign in, rather than
+          // leaving a board of dashes with no explanation.
+          try { sessionStorage.removeItem("rhodium.admin.token"); } catch (e) {}
+          location.replace("/admin");
+          return;
+        }
+        const t = await res.json();
         document.getElementById("tiles").innerHTML = `
           <div class="tile"><div class="top"><div class="ico dark">${ICONS.gmv}</div></div>
             <div class="label">Gross merchandise value</div><div class="value num">${t.gmvFormatted}</div></div>

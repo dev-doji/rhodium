@@ -573,13 +573,33 @@ export function buildApi(app: App): Express {
     }),
   );
 
-  // --- Traction (the graded metric) — public so judges can watch it live ---
-  server.get(
-    "/api/traction",
-    asyncRoute(async (_req, res) => {
-      res.json(await app.traction.snapshot());
-    }),
-  );
+  // --- Admin: platform-wide surfaces, all behind requireAdmin ---
+  //
+  // Defined before the routes that call it. It also worked below them —
+  // the handlers close over it and only run once a request arrives — but
+  // that is a subtlety, and a guard is the wrong place for one.
+  const requireAdmin = (req: Request): void => {
+    const header = req.header("authorization") ?? "";
+    const provided = header.startsWith("Bearer ") ? header.slice(7) : "";
+
+    // Two ways in, serving different callers:
+    //
+    //   APP_SECRET — the shared secret used by curl and the maintenance
+    //     scripts that predate any UI. Kept working so nothing breaks.
+    //   An admin session token — issued by email OTP, expires after 12h, and
+    //     is revoked by removing the address from ADMIN_EMAILS.
+    //
+    // Still compared in constant time: === on a shared secret leaks it one
+    // byte at a time to anyone who can measure the response.
+    const expected = app.config.APP_SECRET;
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length === b.length && timingSafeEqual(a, b)) return;
+
+    // Throws its own UnauthorizedError, distinguishing an expired session from
+    // a bad one — those need different actions from whoever hit it.
+    app.adminAuth.verifyToken(provided);
+  };
 
   // --- Admin sign-in: email address, one-time code ---
   server.post(
@@ -654,30 +674,23 @@ export function buildApi(app: App): Express {
     }),
   );
 
-  // --- Admin (bearer = APP_SECRET) — manage merchants over HTTPS. Used to seed
-  //     a merchant / set a Quai wallet when direct DB access isn't available. ---
-  const requireAdmin = (req: Request): void => {
-    const header = req.header("authorization") ?? "";
-    const provided = header.startsWith("Bearer ") ? header.slice(7) : "";
+  /**
+   * Platform-wide traction: GMV, sales, buyers, rail split.
+   *
+   * Was public — "so judges can watch it live", which was the right call for a
+   * hackathon and the wrong one for a live business. It exposed total GMV,
+   * merchant count and recent order ids to anyone with the URL, and the
+   * merchant dashboard linked to it, so any vendor could read the platform's
+   * numbers. Now admin-only, like every other platform-wide figure.
+   */
+  server.get(
+    "/api/traction",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      res.json(await app.traction.snapshot());
+    }),
+  );
 
-    // Two ways in, serving different callers:
-    //
-    //   APP_SECRET — the shared secret used by curl and the maintenance
-    //     scripts that predate any UI. Kept working so nothing breaks.
-    //   An admin session token — issued by email OTP, expires after 12h, and
-    //     is revoked by removing the address from ADMIN_EMAILS.
-    //
-    // Still compared in constant time: === on a shared secret leaks it one
-    // byte at a time to anyone who can measure the response.
-    const expected = app.config.APP_SECRET;
-    const a = Buffer.from(provided);
-    const b = Buffer.from(expected);
-    if (a.length === b.length && timingSafeEqual(a, b)) return;
-
-    // Throws its own UnauthorizedError, distinguishing an expired session from
-    // a bad one — those need different actions from whoever hit it.
-    app.adminAuth.verifyToken(provided);
-  };
 
   server.post(
     "/admin/merchants",

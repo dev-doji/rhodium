@@ -130,7 +130,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <button className={`navlink${tab === "orders" ? " active" : ""}`} onClick={() => setTab("orders")}>Orders</button>
           <button className={`navlink${tab === "products" ? " active" : ""}`} onClick={() => setTab("products")}>Products</button>
           <button className={`navlink${tab === "ledger" ? " active" : ""}`} onClick={() => setTab("ledger")}>Ledger</button>
-          <a className="navlink" href="/traction">Traction</a>
           <a className="navlink" href="/wallet">Wallet</a>
           {waNumber && (
             <a className="navlink" href={`https://wa.me/${waNumber}`} target="_blank" rel="noopener">

@@ -353,7 +353,9 @@ describe("HTTP API — end-to-end over the wire", () => {
     const after = await app.repos.orders.byId(order.id);
     expect(after!.status).toBe("paid");
     const traction = await json<{ railSplit: { crypto: number }; salesCount: number }>(
-      await fetch(`${base}/api/traction`),
+      await fetch(`${base}/api/traction`, {
+        headers: { authorization: `Bearer ${app.config.APP_SECRET}` },
+      }),
     );
     expect(traction.railSplit.crypto).toBeGreaterThanOrEqual(1);
   });
@@ -366,6 +368,19 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(checkoutHtml).toContain('id="card"');
     expect(checkoutHtml).toContain("Secure checkout");
     expect(await (await fetch(`${base}/traction`)).text()).toContain("Traction");
+  });
+
+  it("refuses the traction figures to anyone not signed in as an admin", async () => {
+    // This used to be public. It reports platform-wide GMV, how many merchants
+    // there are, and recent order ids — a competitor's first research stop,
+    // and one merchant's view of every other merchant.
+    const anon = await fetch(`${base}/api/traction`);
+    expect(anon.status).toBe(401);
+
+    const merchantShaped = await fetch(`${base}/api/traction`, {
+      headers: { authorization: "Bearer mch_abc.1788789000000.deadbeef" },
+    });
+    expect(merchantShaped.status).toBe(401);
   });
 });
 
