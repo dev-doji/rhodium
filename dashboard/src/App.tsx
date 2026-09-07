@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./styles.css";
 import {
-  api, getToken, setToken, naira, downloadFile,
+  api, getToken, setToken, naira, downloadFile, ApiError,
   type Product, type Order, type LedgerEntry,
 } from "./api.js";
 import {
@@ -110,7 +110,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       setWaNumber(me.waNumber ?? "");
       setShopUrl(me.shopUrl ?? "");
       setProducts(p.products); setOrders(o.orders); setLedger(l); setSummary(s); setErr("");
-    } catch (e) { setErr((e as Error).message); } finally { setLoading(false); }
+    } catch (e) {
+      // A dead session is not an error to display — it is a sign-in. Tokens
+      // here never expire and are signature-only, so one issued before the
+      // database was cleared still verifies while naming a shop that is gone.
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr((e as Error).message);
+    } finally { setLoading(false); }
   };
   useEffect(() => { void refresh(); }, []);
 

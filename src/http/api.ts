@@ -1319,11 +1319,19 @@ export function buildApi(app: App): Express {
     guard,
     asyncRoute(async (req: AuthedRequest, res) => {
       const merchant = await app.repos.merchants.byId(req.merchantId!);
+      // Merchant tokens are signature-only and never expire, so one issued
+      // before the database was cleared still verifies while naming a row that
+      // is gone. Returning `merchant: null` made the dashboard crash on
+      // `me.merchant.businessName` and show a stack message where a shop
+      // should be. A session pointing at nothing is not a session.
+      if (!merchant) {
+        throw new UnauthorizedError("that shop no longer exists — please sign in again");
+      }
       // `waNumber` and `shopUrl` ride along so the dashboard never bakes the
       // bot's digits or the public origin into its bundle: the number has
       // changed once already, and a rebuilt SPA is a far worse place to
       // discover that than one env var.
-      const handle = merchant?.slug ?? merchant?.id;
+      const handle = merchant.slug ?? merchant.id;
       res.json({
         merchant,
         waNumber: app.config.WHATSAPP_WA_NUMBER,

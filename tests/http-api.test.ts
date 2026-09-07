@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Server } from "node:http";
 import { request as httpRequest } from "node:http";
+import { createHmac } from "node:crypto";
 import { buildApp } from "../src/app.js";
 import { loadConfig, resetConfigCache } from "../src/config/index.js";
 import { CaptureTransport } from "../src/modules/notification/transport.js";
@@ -393,6 +394,23 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(checkoutHtml).toContain('id="card"');
     expect(checkoutHtml).toContain("Secure checkout");
     expect(await (await fetch(`${base}/traction`)).text()).toContain("Traction");
+  });
+
+  it("signs you out when the token names a shop that no longer exists", async () => {
+    // Merchant tokens are signature-only and never expire, so one issued
+    // before the database was cleared still verifies. /api/me used to answer
+    // `merchant: null`, and the dashboard read .businessName straight off it
+    // and rendered "Cannot read properties of null" where a shop name goes.
+    const issuedAt = String(Date.now());
+    const subject = `mch_deleted.${issuedAt}`;
+    const sig = createHmac("sha256", app.config.APP_SECRET).update(subject).digest("hex");
+
+    const res = await fetch(`${base}/api/me`, {
+      headers: { authorization: `Bearer ${subject}.${sig}` },
+    });
+    expect(res.status).toBe(401);
+    const body = await json<{ message: string }>(res);
+    expect(body.message).toMatch(/sign in again/i);
   });
 
   it("serves the admin dashboard at the root of an admin host", async () => {

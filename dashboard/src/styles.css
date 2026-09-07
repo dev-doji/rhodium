@@ -8,33 +8,48 @@
  * landing site and the logo all read as one product.
  */
 :root {
+  /* Palette lifted verbatim from public/storefront.html, so a merchant moving
+     between her shop and her dashboard sees one product rather than two. The
+     variable NAMES are unchanged — only their values — because 300 lines of
+     rules below already reference them.
+
+     What changed: a cream canvas (#f6f4ef) became the storefront's cool white,
+     and the 10/14/18px radii became zero. The storefront, checkout, receipts
+     and admin are all flat and square; the dashboard was the one surface that
+     was not. */
   --brand: #0033e7;
   --brand-dark: #002bc4;
   --brand-tint: #eef2fe;
   --brand-tint-2: #d9e2fd;
+  /* The brand red is 3.66:1 on white — fine for a large shape, not for text
+     sat on it. --coral-deep carries anything that has to be read. */
   --coral: #ff3131;
-  --ink: #14150f;
-  --muted: #5c5f55;
-  --faint: #8b8e83;
+  --coral-deep: #d11414;
+  --ink: #05061a;
+  --muted: #4a4f68;
+  /* 4.83:1 on white. The old #8b8e83 measured 2.9:1 and failed AA outright. */
+  --faint: #6b7189;
 
-  /* Cream canvas from the reference design. */
-  --paper: #f6f4ef;
-  --paper-2: #eeebe2;
-  --card-cream: #eae7dc;
-  --line: #e2ded2;
-  --line-soft: #eeeae0;
+  --paper: #f7f8fc;
+  --paper-2: #eef1f8;
+  --card-cream: #f7f8fc;
+  --line: #e4e7f2;
+  --line-soft: #eef0f6;
   --white: #ffffff;
 
-  --ok: #2f6b46;
-  --ok-bg: #dbeee1;
-  --warn: #8a5a12;
-  --warn-bg: #f7e9d2;
-  --idle: #5c5f55;
-  --idle-bg: #e5e3da;
+  --ok: #0f5132;
+  --ok-bg: #eaf7ef;
+  --warn: #7a4b00;
+  --warn-bg: #fff6e6;
+  --idle: #4a4f68;
+  --idle-bg: #eef0f6;
 
-  --r-sm: 10px;
-  --r: 14px;
-  --r-lg: 18px;
+  /* Flat: separation comes from borders, never elevation. Zeroed here rather
+     than rewriting every rule that asks for a radius. */
+  --r-sm: 0px;
+  --r: 0px;
+  --r-lg: 0px;
+  --tap: 44px;
 }
 
 * { box-sizing: border-box; }
@@ -43,8 +58,16 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Inter for body, Outfit for headings — the same pairing as the storefront
+     and the landing site, served from /fonts rather than Google. The dashboard
+     previously asked for "Plus Jakarta Sans" and never loaded it, so every
+     merchant saw whatever system font came first. */
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .wordmark span, .stat .v, .stat-value {
+  font-family: "Outfit", "Inter", system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
 a { color: inherit; }
 .num { font-variant-numeric: tabular-nums; }
@@ -75,7 +98,7 @@ a { color: inherit; }
 .navlink.active { color: var(--ink); font-weight: 600; }
 .navlink.active::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: -20px;
-  height: 2px; background: var(--ink); border-radius: 2px;
+  height: 2px; background: var(--ink); border-radius: 0px;
 }
 
 /* ------------------------------------------------------------ greeting bar */
@@ -128,8 +151,10 @@ a { color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .avatar {
-  width: 46px; height: 46px; border-radius: 50%;
-  background: linear-gradient(140deg, var(--brand) 0%, #4f74f4 100%);
+  /* Square and flat, like every other surface. A gradient circle was the last
+     thing on the page still styled as though separation came from shine. */
+  width: 46px; height: 46px; border-radius: 0;
+  background: var(--brand);
   color: #fff; display: grid; place-items: center;
   font-weight: 800; font-size: 16px; flex: none;
 }
@@ -219,7 +244,7 @@ a { color: inherit; }
 .chipbtn:hover { background: var(--paper); color: var(--ink); }
 .toggle { display: flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; }
 .toggle button {
-  border: 0; background: none; padding: 6px 9px; border-radius: 7px;
+  border: 0; background: none; padding: 6px 9px; border-radius: 0px;
   color: var(--muted); cursor: pointer; display: grid; place-items: center;
 }
 .toggle button.on { background: var(--ink); color: #fff; }
@@ -239,7 +264,7 @@ tbody tr:hover { background: var(--paper); }
 .right { text-align: right; }
 
 .pill {
-  display: inline-block; padding: 4px 11px; border-radius: 999px;
+  display: inline-block; padding: 4px 11px; border-radius: 0px;
   font-size: 12px; font-weight: 600;
 }
 .pill.paid { background: var(--ok-bg); color: var(--ok); }
@@ -251,7 +276,8 @@ tbody tr:hover { background: var(--paper); }
 
 /* ------------------------------------------------------------------ drawer */
 .scrim {
-  position: fixed; inset: 0; background: rgba(20, 21, 15, .38);
+  /* The old ink, hardcoded here and so missed by the token swap. */
+  position: fixed; inset: 0; background: rgba(5, 6, 26, .38);
   backdrop-filter: blur(2px); z-index: 40;
   animation: fade .18s ease;
 }
@@ -317,7 +343,7 @@ tbody tr:hover { background: var(--paper); }
 
 /* ------------------------------------------------------------------- chart */
 .chart { display: flex; align-items: flex-end; gap: 7px; height: 64px; }
-.bar { flex: 1; background: var(--brand-tint-2); border-radius: 5px 5px 3px 3px; min-height: 3px; }
+.bar { flex: 1; background: var(--brand-tint-2); border-radius: 0px 5px 3px 3px; min-height: 3px; }
 .bar.on { background: var(--brand); }
 .chart-axis { display: flex; gap: 7px; margin-top: 7px; }
 .chart-axis span { flex: 1; text-align: center; font-size: 10px; color: var(--faint); }

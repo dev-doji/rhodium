@@ -4,30 +4,112 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Rhodium — Back up your wallet</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
   <style>
-    :root { color-scheme: dark; }
+    /* ------------------------------------------------------------------
+       Back up your wallet.
+
+       Was a dark page with gradient buttons, 18px radii and system fonts —
+       a third visual identity beside the storefront and the dashboard, and
+       the page a merchant lands on when she clicks Wallet. Now the same
+       light, flat language as everything else: square corners, solid
+       borders, Outfit headings on Inter body.
+       ------------------------------------------------------------------ */
+    :root {
+      color-scheme: light;
+      --brand:#0033e7; --brand-600:#002bc4; --brand-50:#eef2fe;
+      --bg:#f7f8fc; --surface:#ffffff; --surface-2:#f7f8fc;
+      --line:#e4e7f2; --ink:#05061a; --ink-2:#4a4f68; --ink-3:#6b7189;
+      --warn-bg:#fff6e6; --warn-ink:#7a4b00;
+      --bad-bg:#fdeceb; --bad-ink:#8a2019;
+      --good-ink:#0f5132;
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, sans-serif; background:#0b0e13; color:#e8eaed;
-           display:flex; min-height:100vh; align-items:center; justify-content:center; padding:20px; }
-    .card { width:100%; max-width:440px; background:#141922; border:1px solid #232b38; border-radius:18px; padding:26px; }
-    h1 { font-size:20px; margin:0 0 6px; } .sub { color:#8b95a5; font-size:14px; margin-bottom:20px; }
-    label { font-size:13px; color:#aeb7c4; } input { width:100%; padding:12px; margin:6px 0 14px; border:1px solid #2b3444;
-            border-radius:10px; background:#0e1420; color:#fff; font-size:15px; }
-    button { width:100%; padding:13px; border:0; border-radius:10px; background:linear-gradient(135deg,#4b7bec,#3059d6);
-             color:#fff; font-weight:700; font-size:15px; cursor:pointer; } button:disabled { opacity:.6; }
-    .warn { background:#2a2418; border:1px solid #5c4a22; color:#e0b968; padding:12px; border-radius:10px; font-size:13px; margin:14px 0; }
-    .secret { font-family:ui-monospace,monospace; font-size:14px; background:#0e1420; border:1px solid #2b3444;
-              border-radius:10px; padding:14px; word-break:break-word; margin:8px 0; user-select:all; }
-    .lbl { font-size:12px; color:#7c8798; text-transform:uppercase; letter-spacing:.08em; margin-top:12px; }
-    .err { background:#2a1618; border:1px solid #5c2a2e; color:#f0a3a3; padding:10px; border-radius:8px; font-size:14px; margin-top:10px; }
-    .ok { color:#7ee6a6; }
+    body {
+      margin:0; background:var(--bg); color:var(--ink);
+      font-family:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size:15px; line-height:1.5;
+    }
+    .bar { border-bottom:1px solid var(--line); background:var(--surface); }
+    .bar-in {
+      max-width:1120px; margin:0 auto; padding:16px 20px;
+      display:flex; align-items:center; gap:16px;
+    }
+    .mark {
+      font-family:"Outfit","Inter",sans-serif; font-weight:800; font-size:19px;
+      letter-spacing:-0.03em; text-decoration:none; color:var(--ink);
+    }
+    .mark span { color:var(--brand); }
+    .back {
+      margin-left:auto; font-size:14px; font-weight:600; text-decoration:none;
+      color:var(--brand-600);
+    }
+    .back:hover { text-decoration:underline; }
+    .wrap { display:flex; justify-content:center; padding:40px 20px 64px; }
+    .card {
+      width:100%; max-width:460px; background:var(--surface);
+      border:1px solid var(--line); border-radius:0; padding:28px;
+    }
+    h1 {
+      font-family:"Outfit","Inter",sans-serif; font-size:23px; font-weight:700;
+      letter-spacing:-0.02em; margin:0 0 6px;
+    }
+    .sub { color:var(--ink-2); font-size:14.5px; margin-bottom:22px; }
+    label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
+    input {
+      width:100%; padding:12px 13px; margin:0 0 16px; font:inherit;
+      border:1px solid var(--line); border-radius:0;
+      background:var(--surface); color:var(--ink);
+    }
+    button {
+      width:100%; padding:13px; font:inherit; font-weight:600; font-size:15px;
+      border:1px solid var(--brand); border-radius:0;
+      background:var(--brand); color:#fff; cursor:pointer;
+    }
+    button:hover { background:var(--brand-600); border-color:var(--brand-600); }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    button:focus-visible, input:focus-visible {
+      outline:3px solid var(--brand); outline-offset:2px;
+    }
+    .warn {
+      background:var(--warn-bg); border:1px solid var(--warn-ink);
+      border-left-width:4px; color:var(--warn-ink);
+      padding:12px 14px; border-radius:0; font-size:13.5px; margin:16px 0;
+    }
+    .secret {
+      font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:14px;
+      background:var(--surface-2); border:1px solid var(--line);
+      border-radius:0; padding:14px; word-break:break-word; margin:8px 0;
+      user-select:all; line-height:1.7;
+    }
+    .lbl {
+      font-size:12px; color:var(--ink-3); text-transform:uppercase;
+      letter-spacing:.08em; font-weight:600; margin-top:14px;
+    }
+    .err {
+      background:var(--bad-bg); border:1px solid var(--bad-ink);
+      border-left-width:4px; color:var(--bad-ink);
+      padding:11px 13px; border-radius:0; font-size:14px; margin-top:12px;
+    }
+    .ok { color:var(--good-ink); font-weight:600; }
   </style>
 </head>
 <body>
+  <!-- Wallet, traction and the storefront are separate pages, not routes in
+       the dashboard SPA, so arriving here used to mean the nav simply vanished
+       with nothing to click back to. -->
+  <header class="bar">
+    <div class="bar-in">
+      <a class="mark" href="/">Rhodium<span>.</span></a>
+      <a class="back" href="/">&larr; Back to dashboard</a>
+    </div>
+  </header>
+  <div class="wrap">
   <div class="card">
     <h1>🔐 Back up your Rhodium wallet</h1>
     <div class="sub">Verify it's you, then save your secret recovery phrase. We show it once — keep it safe and never share it.</div>
     <div id="body"></div>
+  </div>
   </div>
   <script>
     const $ = (id) => document.getElementById(id);

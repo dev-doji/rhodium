@@ -1,5 +1,16 @@
 const TOKEN_KEY = "rhodium_token";
 
+/** An HTTP failure that still knows which one it was. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -20,7 +31,10 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? `HTTP ${res.status}`);
+    // The status rides along: a 401 means sign in again, anything else is a
+    // real failure worth showing. Without it every problem looked identical
+    // and the dashboard sat on a dead session displaying a stack message.
+    throw new ApiError(body.message ?? `HTTP ${res.status}`, res.status);
   }
   return res.json() as Promise<T>;
 }
