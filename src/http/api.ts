@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { App } from "../app.js";
 import { asyncRoute, errorHandler } from "./errors.js";
+import { renderErrorPage, wantsHtml } from "./error-page.js";
 import { requireMerchant, type AuthedRequest } from "./auth-middleware.js";
 import { ledgerToCsv, ledgerToStatement } from "./export.js";
 import { RateLimiter, clientIp, LIMITS, logRefusal } from "./rate-limit.js";
@@ -1513,10 +1514,37 @@ export function buildApi(app: App): Express {
   const dashboardDist = resolve("dashboard/dist");
   if (existsSync(dashboardDist)) {
     server.use(express.static(dashboardDist));
-    server.get(/^(?!\/api|\/webhooks|\/auth|\/health|\/metrics|\/media).*/, (_req, res) => {
+    /**
+     * The merchant dashboard, at the root only.
+     *
+     * This used to be a catch-all: EVERY unmatched path returned the
+     * dashboard's index.html with a 200. A mistyped shop link, a stale
+     * bookmark, a crawler probing /wp-admin — all got a merchant login screen
+     * and an "OK", which tells a buyer nothing and tells a search engine the
+     * page exists.
+     *
+     * The dashboard has no client-side router (it switches tabs in state), so
+     * it genuinely only needs "/".
+     */
+    server.get("/", (_req, res) => {
       res.sendFile(join(dashboardDist, "index.html"));
     });
   }
+
+  /**
+   * Anything left is genuinely not here.
+   *
+   * Registered last — after every page, the static handlers and the dashboard —
+   * so it only sees paths nothing else claimed. Browsers get the branded page;
+   * API clients keep getting JSON.
+   */
+  server.use((req, res) => {
+    if (wantsHtml(req)) {
+      res.status(404).type("html").send(renderErrorPage({ status: 404 }));
+      return;
+    }
+    res.status(404).json({ error: "not_found", message: `no route for ${req.method} ${req.path}` });
+  });
 
   server.use(errorHandler);
   return server;
