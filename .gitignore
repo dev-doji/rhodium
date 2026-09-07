@@ -17,3 +17,4 @@ apps/*/out/
 apps/*/next-env.d.ts
 apps/*/*.tsbuildinfo
 backups/
+.neon
