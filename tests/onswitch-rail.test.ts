@@ -66,3 +66,79 @@ describe("OnSwitch off-ramp — buyer pays stablecoin, merchant paid naira", () 
     expect(await app.ledger.entries(merchant.id)).toHaveLength(1);
   });
 });
+
+describe("when OnSwitch refuses the request", () => {
+  /**
+   * A live rail pointed at a stub, so the error path is exercised without a
+   * network. Only `api()` is under test here — the thing that decides what a
+   * failure tells whoever has to fix it.
+   */
+  function liveRailAgainst(status: number, body: string) {
+    const rail = new OnSwitchRail({
+      mode: "live",
+      serviceKey: "test-key",
+      baseUrl: "https://onswitch.invalid",
+      asset: "arbitrum:usdc",
+      callbackUrl: "https://example.test/webhooks/rails/onswitch",
+    });
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(body, { status, headers: { "content-type": "application/json" } })) as typeof fetch;
+    return {
+      rail,
+      restore: () => {
+        globalThis.fetch = original;
+      },
+    };
+  }
+
+  async function messageFrom(status: number, body: string): Promise<string> {
+    const { rail, restore } = liveRailAgainst(status, body);
+    try {
+      const app = makeApp();
+      const merchant = await seedMerchant(app);
+      const product = await seedProduct(app, merchant.id, 10_000);
+      const order = await offrampOrder(app, merchant.id, product.id);
+      await rail.createPaymentInstruction(order, merchant);
+      throw new Error("expected the rail to throw");
+    } catch (e) {
+      if (!(e instanceof AppError)) throw e;
+      return e.message;
+    } finally {
+      restore();
+    }
+  }
+
+  it("repeats what OnSwitch actually said, not just the status", async () => {
+    // A ₦100 order is about six cents. Whatever the real reason, the provider
+    // states it plainly in the 422 — and "onswitch api 422" threw that away,
+    // leaving a 502 in the browser and nothing to act on.
+    const msg = await messageFrom(422, JSON.stringify({ message: "amount is below the minimum of 5000 NGN" }));
+    expect(msg).toContain("below the minimum");
+    expect(msg).toContain("422");
+  });
+
+  it("names the field when the error is a validation map", async () => {
+    const msg = await messageFrom(
+      422,
+      JSON.stringify({ errors: { amount: ["must be at least 5000"], "beneficiary.bank_code": ["is invalid"] } }),
+    );
+    expect(msg).toContain("amount: must be at least 5000");
+    expect(msg).toContain("beneficiary.bank_code: is invalid");
+  });
+
+  it("handles a plain array of errors", async () => {
+    const msg = await messageFrom(422, JSON.stringify({ errors: ["asset not supported"] }));
+    expect(msg).toContain("asset not supported");
+  });
+
+  it("falls back to the raw body when the response is not JSON", async () => {
+    const msg = await messageFrom(502, "<html>Bad Gateway</html>");
+    expect(msg).toContain("Bad Gateway");
+  });
+
+  it("still says which call failed", async () => {
+    const msg = await messageFrom(422, JSON.stringify({ message: "nope" }));
+    expect(msg).toContain("/offramp/initiate");
+  });
+});

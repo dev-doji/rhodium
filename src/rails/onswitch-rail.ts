@@ -156,8 +156,35 @@ export class OnSwitchRail implements PaymentRail {
       headers: { "x-service-key": this.cfg.serviceKey, "Content-Type": "application/json", ...(init.headers ?? {}) },
     });
     if (!res.ok) {
-      log.error({ path, status: res.status, text: await res.text() }, "onswitch api error");
-      throw new AppError(`onswitch api ${res.status}`, "provider_error", 502);
+      const text = await res.text();
+      log.error({ path, status: res.status, text }, "onswitch api error");
+      // Carry OnSwitch's own words, the way the Paystack rail does. "onswitch
+      // api 422" is true and useless: a 422 is the provider naming the field
+      // it rejected, and discarding that turns a one-line answer into an
+      // afternoon of guessing.
+      let detail = text.slice(0, 300);
+      try {
+        const body = JSON.parse(text) as { message?: string; error?: string; errors?: unknown };
+        // Validation errors arrive as `errors` — an array of strings, or an
+        // object keyed by field name. Flattened so the message names the field
+        // either way.
+        if (body.errors && typeof body.errors === "object") {
+          const entries = Object.entries(body.errors as Record<string, unknown>);
+          const isArray = Array.isArray(body.errors);
+          const parts = entries.map(([key, value]) => {
+            const said = Array.isArray(value) ? value.join(", ") : String(value);
+            return isArray ? said : `${key}: ${said}`;
+          });
+          if (parts.length) detail = parts.join("; ");
+        } else if (body.message) {
+          detail = body.message;
+        } else if (body.error) {
+          detail = body.error;
+        }
+      } catch {
+        /* not JSON; the raw text is the best we have */
+      }
+      throw new AppError(`onswitch ${path} ${res.status}: ${detail}`, "provider_error", 502);
     }
     return res.json();
   }
