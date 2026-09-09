@@ -532,10 +532,39 @@ export function buildApi(app: App): Express {
     "/api/crypto/confirm",
     asyncRoute(async (req, res) => {
       const { txHash, orderId } = req.body ?? {};
+      // Both are required. The EVM rail matches the on-chain Paid log against
+      // THIS order's id hash, so a hash alone cannot confirm anything — it used
+      // to be optional here, which only worked for the retired Quai rail that
+      // matched on hash alone.
       if (!txHash) throw new ValidationError("txHash required");
-      await app.payments.handleRailWebhook("quai", {
+      if (!orderId) throw new ValidationError("orderId required");
+
+      const order = await app.repos.orders.byId(String(orderId));
+      if (!order) throw new NotFoundError("order", { id: orderId });
+
+      // Dispatch to the rail that actually issued this payment. This said
+      // "quai" — a rail not registered since Quai was retired — so every real
+      // on-chain payment reported here threw instead of confirming. Nothing
+      // caught it because the page never called this endpoint either.
+      //
+      // The instruction must already exist: you cannot report having paid
+      // something that was never issued, and its railId is the only honest
+      // answer to "which rail should verify this?". Guessing from the
+      // merchant's settlement preference would send an on-chain hash to the
+      // off-ramp, which rejects it as an unsigned webhook — a confusing 401
+      // for what is really a misrouted call.
+      const existing = await app.repos.payments.byOrderId(order.id);
+      if (!existing) {
+        throw new ValidationError("no payment has been issued for this order yet");
+      }
+      const railId = existing.railId;
+
+      // Safe to accept from a browser: the rail fetches the receipt itself and
+      // refuses anything without a Paid log carrying this order's id. A forged
+      // or borrowed hash confirms nothing.
+      await app.payments.handleRailWebhook(railId, {
         headers: {},
-        rawBody: JSON.stringify({ txHash, orderId }),
+        rawBody: JSON.stringify({ orderId: order.id, txHash: String(txHash) }),
       });
       res.json({ ok: true });
     }),

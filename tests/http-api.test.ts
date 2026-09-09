@@ -396,6 +396,81 @@ describe("HTTP API — end-to-end over the wire", () => {
     expect(await (await fetch(`${base}/traction`)).text()).toContain("Traction");
   });
 
+  it("reports an on-chain payment to the rail that issued it", async () => {
+    // This route dispatched to "quai" — a rail retired and no longer
+    // registered — so every real on-chain payment reported here threw instead
+    // of confirming. Nothing caught it because the checkout page never called
+    // the endpoint either; both halves were broken, so neither showed.
+    const merchant = await app.repos.merchants.create({
+      id: "mch_onchain",
+      phone: "+2348090002222",
+      businessName: "On-chain Store",
+      status: "active",
+      kycState: "verified",
+      cryptoEnabled: true,
+      cryptoSettlement: "usdc", // routes to the EVM rail, not the off-ramp
+      quaiAddress: "0x000000000000000000000000000000000000dEaD",
+    });
+    const product = await app.commerce.createProduct({
+      merchantId: merchant.id,
+      name: "On-chain test item",
+      price: 500_000,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: merchant.id,
+      buyerRef: "+2348090001111",
+      lines: [{ productId: product.id, qty: 1 }],
+      rail: "crypto",
+    });
+    // The instruction has to exist before it can be reported paid.
+    await app.payments.requestPayment(order.id);
+
+    const res = await fetch(`${base}/api/crypto/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, txHash: "0x" + "ab".repeat(32) }),
+    });
+    // It reaches a registered rail rather than throwing "payment rail not found".
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    // ...and a hash nobody can vouch for confirms nothing. The rail matches the
+    // on-chain Paid log against this order's id, so a borrowed or invented hash
+    // is ignored.
+    const after = await app.repos.orders.byId(order.id);
+    expect(after!.status).not.toBe("paid");
+  });
+
+  it("refuses to confirm a payment that was never issued", async () => {
+    const product = await app.commerce.createProduct({
+      merchantId: "mch_http",
+      name: "Unissued item",
+      price: 100_000,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: "mch_http",
+      buyerRef: "+2348090003333",
+      lines: [{ productId: product.id, qty: 1 }],
+      rail: "crypto",
+    });
+    const res = await fetch(`${base}/api/crypto/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, txHash: "0x" + "ef".repeat(32) }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("refuses a confirmation with no order to match it against", async () => {
+    // orderId used to be optional here, which only made sense for the retired
+    // rail that matched on hash alone.
+    const res = await fetch(`${base}/api/crypto/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ txHash: "0x" + "cd".repeat(32) }),
+    });
+    expect(res.status).toBe(422);
+  });
+
   it("signs you out when the token names a shop that no longer exists", async () => {
     // Merchant tokens are signature-only and never expire, so one issued
     // before the database was cleared still verifies. /api/me used to answer

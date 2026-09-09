@@ -430,8 +430,25 @@
         try {
           btn.disabled = true;
           btn.textContent = "Confirm in your wallet…";
-          await payOnChain(provider, inst);
+          const txHash = await payOnChain(provider, inst);
           btn.textContent = "Waiting for the network…";
+
+          // Tell the server which transaction to look at. Without this the
+          // order sat unpaid until the nightly reconciliation noticed, because
+          // nothing on this page ever reported the hash. The server does not
+          // take our word for it — it fetches the receipt and requires a Paid
+          // log carrying this order's id — so this only speeds up a confirmation
+          // that would otherwise be late, and cannot fake one.
+          if (txHash) {
+            await fetch("/api/crypto/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: orderId, txHash: txHash }),
+            }).catch(function () {
+              // Reporting is an optimisation. If it fails, pollPaid keeps
+              // waiting and reconciliation still catches the payment.
+            });
+          }
         } catch (e) {
           // A rejected signature is a decision, not a failure — say so without
           // alarming language, and give the button back.
