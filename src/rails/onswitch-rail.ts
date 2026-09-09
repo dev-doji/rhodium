@@ -91,7 +91,7 @@ export class OnSwitchRail implements PaymentRail {
 
   async handleWebhook(raw: WebhookPayload): Promise<PaymentEvent> {
     const sig = raw.headers["x-switch-signature"];
-    if (!this.verifySignature(raw.rawBody, sig)) {
+    if (!this.verifySignature(raw.rawBody, sig, raw.headers)) {
       throw new AppError("invalid onswitch signature", "bad_signature", 401);
     }
     const body = JSON.parse(raw.rawBody) as {
@@ -142,12 +142,51 @@ export class OnSwitchRail implements PaymentRail {
     };
   }
 
-  private verifySignature(rawBody: string, sig: string | undefined): boolean {
-    if (!sig) return false;
+  /**
+   * Check OnSwitch's webhook signature.
+   *
+   * NOTE: this scheme — HMAC-SHA256 of the raw body with the service key, hex,
+   * under `x-switch-signature` — is our assumption. Nothing here cites
+   * OnSwitch's documentation for it, and the mock signs exactly the way this
+   * verifies, so the tests are a closed loop that proves the logic and nothing
+   * about the provider.
+   *
+   * If the real scheme differs, a genuine settlement webhook is rejected as a
+   * forgery. That is recoverable — verifyPayment polls GET /offramp/{ref},
+   * which needs no signature, and /api/checkout/:orderId/verify triggers it —
+   * but only if someone can SEE it happened. Hence the diagnostic below: the
+   * first real webhook that fails tells us which header they actually sent and
+   * how long their digest is, which is usually enough to identify the scheme.
+   *
+   * Header names and digest lengths only. The service key never appears, and
+   * an HMAC digest does not reveal the key that produced it.
+   */
+  private verifySignature(
+    rawBody: string,
+    sig: string | undefined,
+    headers?: Record<string, string | undefined>,
+  ): boolean {
     const expected = createHmac("sha256", this.cfg.serviceKey || "mock-key").update(rawBody).digest("hex");
+    if (!sig) {
+      log.error(
+        { headerNames: Object.keys(headers ?? {}), expectedLength: expected.length },
+        "onswitch webhook carried no x-switch-signature — if one of these header " +
+          "names is theirs, the scheme differs from what this rail assumes",
+      );
+      return false;
+    }
     const a = Buffer.from(expected);
     const b = Buffer.from(sig.trim());
-    return a.length === b.length && timingSafeEqual(a, b);
+    const ok = a.length === b.length && timingSafeEqual(a, b);
+    if (!ok) {
+      log.error(
+        { receivedLength: sig.trim().length, expectedLength: expected.length, bodyLength: rawBody.length },
+        "onswitch webhook signature did not match. A different LENGTH means a " +
+          "different encoding or algorithm, not a forgery — confirm the payment " +
+          "with POST /api/checkout/:orderId/verify, which polls instead",
+      );
+    }
+    return ok;
   }
 
   private async api(path: string, init: RequestInit): Promise<unknown> {
