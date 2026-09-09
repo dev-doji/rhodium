@@ -161,7 +161,12 @@ export class OnSwitchRail implements PaymentRail {
 
   private instruction(order: Order, reference: string, address: string, amount: number, asset: string): PaymentInstruction {
     const [network, token] = asset.split(":");
-    const payable = PAYABLE_FROM_WALLET[asset.toLowerCase()];
+    // Live only. A mock deposit address is "0x" + random hex — it belongs to
+    // nobody and nothing watches it. Attaching a real chain id and Circle's
+    // real USDC contract to that would put a "Pay from my wallet" button in
+    // front of a buyer that moves REAL mainnet money into a void. The rest of
+    // the mock instruction is harmless; this part is not.
+    const payable = this.cfg.mode === "live" ? PAYABLE_FROM_WALLET[asset.toLowerCase()] : undefined;
     return {
       railId: this.id,
       instructionType: "crypto",

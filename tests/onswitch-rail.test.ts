@@ -144,25 +144,55 @@ describe("when OnSwitch refuses the request", () => {
 });
 
 describe("which deposits a browser wallet can pay", () => {
-  async function instructionFor(asset: string) {
+  async function instructionFor(asset: string, mode: "mock" | "live" = "mock") {
     const app = makeApp();
     const merchant = await seedMerchant(app);
     const product = await seedProduct(app, merchant.id, 420_000);
     const order = await offrampOrder(app, merchant.id, product.id);
     const rail = new OnSwitchRail({
-      mode: "mock",
+      mode,
       serviceKey: "test-key",
       baseUrl: "https://onswitch.invalid",
       asset,
       callbackUrl: "https://example.test/webhooks/rails/onswitch",
     });
-    return rail.createPaymentInstruction(order, merchant);
+    if (mode === "mock") return rail.createPaymentInstruction(order, merchant);
+
+    // Live path against a stubbed provider, so the wallet metadata is exercised
+    // without a network call.
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: {
+            reference: "ref_live",
+            deposit: { address: "0x000000000000000000000000000000000000dEaD", amount: 4.0625, asset },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      return await rail.createPaymentInstruction(order, merchant);
+    } finally {
+      globalThis.fetch = original;
+    }
   }
+
+  it("offers NO wallet payment in mock mode, whatever the asset", async () => {
+    // A mock deposit address is invented and belongs to nobody. Pairing it
+    // with chain 42161 and Circle's real USDC contract would have put a button
+    // in front of a buyer that sends REAL money into a void — a mistake this
+    // code made for exactly one commit.
+    const inst = await instructionFor("arbitrum:usdc");
+    expect(inst.walletChainId).toBeUndefined();
+    expect(inst.tokenAddress).toBeUndefined();
+    expect(inst.depositAddress).toBeTruthy();
+  });
 
   it("carries the chain and token for an EVM asset", async () => {
     // The checkout needs both to build a transfer. Without them it can only
     // offer "copy the address", which is what a buyer was left with.
-    const inst = await instructionFor("arbitrum:usdc");
+    const inst = await instructionFor("arbitrum:usdc", "live");
     expect(inst.walletChainId).toBe(42161);
     // Circle's NATIVE USDC on Arbitrum One, verified on chain (symbol USDC,
     // decimals 6) rather than copied from a list. The bridged USDC.e at
@@ -174,7 +204,7 @@ describe("which deposits a browser wallet can pay", () => {
   it("carries nothing for an asset no EVM wallet can send", async () => {
     // Tron is the production default today. MetaMask cannot send TRC-20 at
     // all, so offering a wallet button there would be a broken promise.
-    const inst = await instructionFor("tron:usdt");
+    const inst = await instructionFor("tron:usdt", "live");
     expect(inst.walletChainId).toBeUndefined();
     expect(inst.tokenAddress).toBeUndefined();
     expect(inst.depositAddress).toBeTruthy(); // copy-the-address still works
