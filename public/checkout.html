@@ -375,6 +375,10 @@
         <div class="acct-label">Send to this address</div>
         <div class="acct-addr" id="addr">${inst.depositAddress}</div>
         <button id="copyaddr">${ICON.copy || ""} Copy address</button>
+        ${inst.walletChainId && inst.tokenAddress
+          ? `<button id="paywallet" class="alt">${ICON.wallet || ICON.coin} Pay from my wallet</button>`
+          : ""}
+        <button id="sent" class="alt">${ICON.check} I've sent it — check now</button>
         <div class="hint">Send <b>${symbol}</b>${on ? ` on <b>${network}</b>` : ""} only. Sending a
           different amount, a different token, or on another network means the payment
           cannot be matched. You'll get a receipt once it settles.</div>`;
@@ -387,6 +391,42 @@
           window.prompt("Copy the address:", inst.depositAddress);
         }
       };
+
+      // "I've sent it" asks the PROVIDER, not the buyer. The bank-transfer
+      // screen has had this since it was written; the crypto screen never did,
+      // so a buyer who had already paid had nothing to press and no way to
+      // tell whether the page was still watching.
+      wireSentButton();
+
+      // Pay from a wallet, when the asset is one a wallet can send. This is an
+      // ordinary ERC-20 transfer to the deposit address — no contract of ours
+      // involved — so it settles through OnSwitch exactly like a manual send.
+      const payBtn = $("paywallet");
+      if (payBtn) payBtn.onclick = async () => {
+        const provider = evmProvider();
+        if (!provider) return needWallet();
+        try {
+          payBtn.disabled = true;
+          payBtn.textContent = "Confirm in your wallet…";
+          const hash = await payDepositFromWallet(provider, inst);
+          payBtn.textContent = "Sent — waiting for it to settle…";
+          stillWaiting(
+            "Sent" + (hash ? " (" + hash.slice(0, 10) + "…)" : "") +
+            ". It settles once the network confirms it — this page is watching.",
+          );
+        } catch (e) {
+          payBtn.disabled = false;
+          payBtn.innerHTML = `${ICON.wallet || ICON.coin} Pay from my wallet`;
+          const rejected = e && (e.code === 4001 || /reject|denied/i.test(e.message || ""));
+          const note = document.createElement("div");
+          note.className = rejected ? "hint" : "err";
+          note.textContent = rejected
+            ? "Cancelled in your wallet. You can try again, or copy the address and send it yourself."
+            : (e.message || "That did not go through.");
+          $("body").appendChild(note);
+        }
+      };
+
       pollPaid();
     }
 
@@ -500,27 +540,99 @@
           setTimeout(() => { $("copy").innerHTML = `${ICON.link} Copy account number`; }, 1800);
         } catch { /* clipboard blocked — the number is on screen anyway */ }
       };
-      const sentBtn = $("sent");
-      if (sentBtn) {
-        sentBtn.onclick = async () => {
-          sentBtn.disabled = true;
-          const original = sentBtn.textContent;
-          sentBtn.textContent = "Checking with the bank…";
-          try {
-            // Asks the PROVIDER, not the buyer. Pressing this on an unpaid
-            // order changes nothing — a claim is not a payment.
-            const r = await fetch(`/api/checkout/${orderId}/verify`, { method: "POST" });
-            const j = await r.json();
-            if (j.status === "paid") { paid(); return; }
-            stillWaiting("Not showing yet. Transfers can take a few minutes — we're still watching.");
-          } catch {
-            stillWaiting("Could not check just now. We're still watching for your transfer.");
-          }
-          sentBtn.disabled = false;
-          sentBtn.textContent = original;
-        };
-      }
+      wireSentButton("Checking with the bank…");
       pollPaid();
+    }
+
+    /**
+     * "I've sent it — check now".
+     *
+     * Asks the PROVIDER whether the money arrived, through
+     * /api/checkout/:id/verify. Pressing it on an unpaid order changes
+     * nothing: a buyer's claim is not a payment, and the server only ever
+     * believes the rail.
+     *
+     * Shared by the bank and crypto screens. It existed only on the bank one,
+     * so a buyer who had already sent USDC had nothing to press and no way to
+     * tell whether the page was still watching.
+     */
+    function wireSentButton(checkingLabel) {
+      const btn = $("sent");
+      if (!btn) return;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        const original = btn.innerHTML;
+        btn.textContent = checkingLabel || "Checking…";
+        try {
+          const r = await fetch(`/api/checkout/${orderId}/verify`, { method: "POST" });
+          const j = await r.json();
+          if (j.status === "paid") { paid(); return; }
+          stillWaiting("Not showing yet. It can take a few minutes to confirm — we're still watching.");
+        } catch {
+          stillWaiting("Could not check just now. We're still watching for your payment.");
+        }
+        btn.disabled = false;
+        btn.innerHTML = original;
+      };
+    }
+
+    /**
+     * Pay a deposit address from the buyer's wallet: a plain ERC-20 transfer.
+     *
+     * No contract of ours is involved — this is the same transaction the buyer
+     * would make by hand, so OnSwitch settles it identically. The amount is
+     * converted with the token's OWN decimals, sent by the server, rather than
+     * assuming six: getting that wrong by a factor of a hundred is not a
+     * rounding error, it is the wrong amount of money.
+     */
+    async function payDepositFromWallet(provider, inst) {
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const from = (accounts && accounts[0]) || null;
+      if (!from) throw new Error("No account selected in your wallet.");
+
+      // Move the wallet to the chain the deposit address is on — NOT whatever
+      // chain the app happens to be configured for. Sending the right token on
+      // the wrong network is how money disappears.
+      await switchChain(provider, inst.walletChainId);
+
+      const decimals = Number(inst.tokenDecimals ?? 6);
+      const units = toBaseUnits(String(inst.cryptoAmount), decimals);
+      // transfer(address,uint256)
+      const data = "0xa9059cbb" + encAddr(inst.depositAddress) + pad32(units.toString(16));
+      return provider.request({
+        method: "eth_sendTransaction",
+        params: [{ from: from, to: inst.tokenAddress, value: "0x0", data: data }],
+      });
+    }
+
+    /** Decimal string -> integer base units, without floating point. */
+    function toBaseUnits(amount, decimals) {
+      const [whole, frac = ""] = String(amount).split(".");
+      const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
+      return BigInt(whole || "0") * BigInt(10) ** BigInt(decimals) + BigInt(padded || "0");
+    }
+
+    /** Ask the wallet for a specific chain, adding Arbitrum One if unknown. */
+    async function switchChain(provider, chainId) {
+      const hex = "0x" + Number(chainId).toString(16);
+      try {
+        await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+      } catch (err) {
+        if (err && err.code === 4902 && Number(chainId) === 42161) {
+          await provider.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: hex,
+              chainName: "Arbitrum One",
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: ["https://arb1.arbitrum.io/rpc"],
+              blockExplorerUrls: ["https://arbiscan.io"],
+            }],
+          });
+          return;
+        }
+        throw err;
+      }
     }
 
     /**

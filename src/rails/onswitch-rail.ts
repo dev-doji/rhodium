@@ -29,6 +29,38 @@ interface OnSwitchConfig {
  * bank account. Same PaymentRail interface — the order is priced in naira, the
  * ledger records naira; only the buyer's payment asset differs.
  */
+/**
+ * Assets a browser wallet can pay directly, and what it needs to do so.
+ *
+ * Deliberately short. An entry here means the checkout will ask MetaMask to
+ * move real money to a contract address, so every one was verified on its own
+ * chain — symbol() and decimals() read live — rather than copied from a list.
+ * A wrong address here does not fail loudly; it sends a buyer's money to
+ * something that is not the token they think it is.
+ *
+ * Anything absent still works: the buyer copies the deposit address and pays
+ * from wherever they like. Tron and Solana belong in that group permanently,
+ * because no EVM wallet can send them.
+ */
+const PAYABLE_FROM_WALLET: Record<
+  string,
+  { chainId: number; tokenAddress: string; decimals: number }
+> = {
+  // Verified on Arbitrum One: symbol USDC, decimals 6.
+  "arbitrum:usdc": {
+    chainId: 42161,
+    tokenAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    decimals: 6,
+  },
+  // Verified on Arbitrum One: symbol USD₮0, decimals 6. Tether's own Arbitrum
+  // deployment renamed itself; the address is what matters.
+  "arbitrum:usdt": {
+    chainId: 42161,
+    tokenAddress: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+    decimals: 6,
+  },
+};
+
 export class OnSwitchRail implements PaymentRail {
   readonly id: RailId = "onswitch";
   readonly kind = "crypto" as const;
@@ -129,6 +161,7 @@ export class OnSwitchRail implements PaymentRail {
 
   private instruction(order: Order, reference: string, address: string, amount: number, asset: string): PaymentInstruction {
     const [network, token] = asset.split(":");
+    const payable = PAYABLE_FROM_WALLET[asset.toLowerCase()];
     return {
       railId: this.id,
       instructionType: "crypto",
@@ -139,6 +172,16 @@ export class OnSwitchRail implements PaymentRail {
       tokenSymbol: (token ?? "USDC").toUpperCase(),
       network: network ?? "base",
       settlesToNaira: true,
+      // Present only for assets a browser wallet can actually pay. Without
+      // these the checkout offers "copy the address" alone, which is right for
+      // Tron and Solana — MetaMask cannot send those at all.
+      ...(payable
+        ? {
+            walletChainId: payable.chainId,
+            tokenAddress: payable.tokenAddress,
+            tokenDecimals: payable.decimals,
+          }
+        : {}),
     };
   }
 

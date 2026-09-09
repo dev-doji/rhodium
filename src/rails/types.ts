@@ -45,6 +45,16 @@ export interface PaymentInstruction {
   depositAddress?: string;
   network?: string; // e.g. "base", "tron"
   settlesToNaira?: boolean;
+  /**
+   * Set only when a browser wallet can pay this deposit directly.
+   *
+   * `chainId` above is a string for historical reasons (Quai). These two say
+   * which EVM chain the deposit address lives on and which ERC-20 to move, so
+   * the checkout can build a transfer instead of asking the buyer to copy an
+   * address. Absent for Tron and Solana, which no EVM wallet can send.
+   */
+  walletChainId?: number;
+  tokenDecimals?: number;
 }
 
 /** Normalised result of interpreting a provider webhook. */

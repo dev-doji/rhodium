@@ -142,3 +142,50 @@ describe("when OnSwitch refuses the request", () => {
     expect(msg).toContain("/offramp/initiate");
   });
 });
+
+describe("which deposits a browser wallet can pay", () => {
+  async function instructionFor(asset: string) {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const product = await seedProduct(app, merchant.id, 420_000);
+    const order = await offrampOrder(app, merchant.id, product.id);
+    const rail = new OnSwitchRail({
+      mode: "mock",
+      serviceKey: "test-key",
+      baseUrl: "https://onswitch.invalid",
+      asset,
+      callbackUrl: "https://example.test/webhooks/rails/onswitch",
+    });
+    return rail.createPaymentInstruction(order, merchant);
+  }
+
+  it("carries the chain and token for an EVM asset", async () => {
+    // The checkout needs both to build a transfer. Without them it can only
+    // offer "copy the address", which is what a buyer was left with.
+    const inst = await instructionFor("arbitrum:usdc");
+    expect(inst.walletChainId).toBe(42161);
+    // Circle's NATIVE USDC on Arbitrum One, verified on chain (symbol USDC,
+    // decimals 6) rather than copied from a list. The bridged USDC.e at
+    // 0xFF970A61… also reports symbol USDC and is a different asset.
+    expect(inst.tokenAddress?.toLowerCase()).toBe("0xaf88d065e77c8cc2239327c5edb3a432268e5831");
+    expect(inst.tokenDecimals).toBe(6);
+  });
+
+  it("carries nothing for an asset no EVM wallet can send", async () => {
+    // Tron is the production default today. MetaMask cannot send TRC-20 at
+    // all, so offering a wallet button there would be a broken promise.
+    const inst = await instructionFor("tron:usdt");
+    expect(inst.walletChainId).toBeUndefined();
+    expect(inst.tokenAddress).toBeUndefined();
+    expect(inst.depositAddress).toBeTruthy(); // copy-the-address still works
+  });
+
+  it("still names the asset and network whatever the chain", async () => {
+    const tron = await instructionFor("tron:usdt");
+    expect(tron.tokenSymbol).toBe("USDT");
+    expect(tron.network).toBe("tron");
+    const arb = await instructionFor("arbitrum:usdc");
+    expect(arb.tokenSymbol).toBe("USDC");
+    expect(arb.network).toBe("arbitrum");
+  });
+});
