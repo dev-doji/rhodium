@@ -42,9 +42,16 @@ describe("embedded Quai wallet", () => {
     // Cyprus1 addresses do begin that way — but so does roughly one in every
     // 256 perfectly ordinary EVM addresses, so the check failed at random. It
     // did exactly that during this run, which is how it was found.
-    const { HDNodeWallet, Mnemonic } = await import("ethers");
-    const derived = HDNodeWallet.fromMnemonic(
-      Mnemonic.fromPhrase(secrets!.mnemonic),
+    // `quais`, not `ethers`. The app derives keys with quais — a fork of
+    // ethers v6 — precisely so there is no second crypto dependency, and
+    // ethers is not in this package at all. It resolved locally only because
+    // the chain/ workspace pulls it in for Hardhat, so this passed here and
+    // failed the moment CI installed without workspaces.
+    const { createRequire } = await import("node:module");
+    const require_ = createRequire(import.meta.url);
+    const quais = require_("quais");
+    const derived = quais.HDNodeWallet.fromMnemonic(
+      quais.Mnemonic.fromPhrase(secrets!.mnemonic),
       "m/44'/60'/0'/0/0",
     );
     expect(derived.address.toLowerCase()).toBe(merchant!.quaiAddress!.toLowerCase());
