@@ -61,6 +61,32 @@ const PAYABLE_FROM_WALLET: Record<
   },
 };
 
+/**
+ * A business name OnSwitch's validator will accept.
+ *
+ * It rejects anything that is not alphanumeric, requires at least one letter,
+ * and refuses "crypto related terms" — observed live, as:
+ *
+ *   "Name can only contain alphanumeric characters, must contain at least one
+ *    letter, should not contain crypto related terms."
+ *
+ * Merchants name their shops "Tee's Kitchen", "A&B Stores", "Mama-Put Foods".
+ * Sent raw, those are refused and the buyer sees a 422 they cannot act on,
+ * for a shop that is perfectly legitimate. Punctuation is dropped rather than
+ * replaced, so "Tee's Kitchen" becomes "Tees Kitchen" — still recognisable on
+ * a bank statement, which is the point of the field.
+ */
+export function bankSafeName(raw: string): string {
+  const cleaned = (raw ?? "")
+    .replace(/[^A-Za-z0-9 ]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
+  // Must contain a letter. A shop called "123" would otherwise be refused with
+  // a message about letters that names nothing the merchant can change.
+  return /[A-Za-z]/.test(cleaned) ? cleaned : "Merchant";
+}
+
 export class OnSwitchRail implements PaymentRail {
   readonly id: RailId = "onswitch";
   readonly kind = "crypto" as const;
@@ -111,7 +137,7 @@ export class OnSwitchRail implements PaymentRail {
         callback_url: this.cfg.callbackUrl,
         beneficiary: {
           holder_type: "BUSINESS",
-          holder_name: merchant.businessName.slice(0, 60),
+          holder_name: bankSafeName(merchant.businessName),
           account_number: merchant.settlementAccountNumber,
           bank_code: bankCodeFor("nibss", merchant.settlementBankCode),
         },

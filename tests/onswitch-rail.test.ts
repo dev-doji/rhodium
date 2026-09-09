@@ -219,3 +219,34 @@ describe("which deposits a browser wallet can pay", () => {
     expect(arb.network).toBe("arbitrum");
   });
 });
+
+describe("names the provider will accept", () => {
+  it("strips what OnSwitch refuses, keeping the shop recognisable", async () => {
+    // Observed live from their validator: "Name can only contain alphanumeric
+    // characters, must contain at least one letter, should not contain crypto
+    // related terms." Merchants call shops "Tee's Kitchen" and "A&B Stores";
+    // sent raw those are refused and the buyer sees a 422 about a name they
+    // cannot change, for a shop that is entirely legitimate.
+    const { bankSafeName } = await import("../src/rails/onswitch-rail.js");
+    expect(bankSafeName("Tee's Kitchen")).toBe("Tees Kitchen");
+    expect(bankSafeName("A&B Stores")).toBe("AB Stores");
+    expect(bankSafeName("Mama-Put Foods")).toBe("MamaPut Foods");
+    expect(bankSafeName("Shop (Ikeja)")).toBe("Shop Ikeja");
+    // Already clean names are left alone.
+    expect(bankSafeName("Tees kitchen")).toBe("Tees kitchen");
+  });
+
+  it("never sends a name with no letters in it", async () => {
+    // "123" would be refused with a message about letters that names nothing
+    // the merchant could act on.
+    const { bankSafeName } = await import("../src/rails/onswitch-rail.js");
+    expect(bankSafeName("123")).toBe("Merchant");
+    expect(bankSafeName("")).toBe("Merchant");
+    expect(bankSafeName("!!!")).toBe("Merchant");
+  });
+
+  it("stays within the field's length", async () => {
+    const { bankSafeName } = await import("../src/rails/onswitch-rail.js");
+    expect(bankSafeName("A".repeat(200)).length).toBe(60);
+  });
+});
