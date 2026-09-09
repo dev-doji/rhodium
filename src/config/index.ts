@@ -291,6 +291,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (cfg.EMAIL_MODE === "live" && !cfg.RESEND_API_KEY) {
       throw new Error("EMAIL_MODE=live requires RESEND_API_KEY");
     }
+
     if (cfg.FIELD_ENCRYPTION_KEY === "0".repeat(64)) {
       throw new Error("FIELD_ENCRYPTION_KEY must be set in production");
     }
@@ -315,6 +316,39 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
           );
         }
       }
+    }
+
+    /**
+     * No mock rail in production, ever.
+     *
+     * A mock rail confirms payments that never happened: the order is marked
+     * paid, the ledger is credited and a receipt goes out, with no money
+     * anywhere. That is free goods for anyone who notices, and it is one
+     * mistyped environment variable away — exactly the variable someone
+     * reaches for when they want to test the crypto flow without spending.
+     *
+     * Refusing to boot is the right failure. A service that will not start is
+     * a loud problem; a service quietly giving stock away is not.
+     *
+     * Checked last, so the specific guards above report first: "that contract
+     * is not on that chain" is a more useful message than a general one.
+     * The crypto rails are checked only when their feature is on, so a
+     * deployment that does not offer crypto is not held to a setting it never
+     * uses.
+     */
+    const mocked: string[] = [];
+    if (cfg.FIAT_ADAPTER_MODE === "mock") mocked.push("FIAT_ADAPTER_MODE");
+    if (cfg.FEATURE_STABLECOIN_ENABLED && cfg.ONSWITCH_ADAPTER_MODE === "mock") {
+      mocked.push("ONSWITCH_ADAPTER_MODE");
+    }
+    if (cfg.FEATURE_EVM_STABLE_ENABLED && cfg.EVM_ADAPTER_MODE === "mock") {
+      mocked.push("EVM_ADAPTER_MODE");
+    }
+    if (mocked.length) {
+      throw new Error(
+        `${mocked.join(", ")} = mock in production. A mock rail confirms payments ` +
+          "that never happened — set it to live, or run this build outside production.",
+      );
     }
   }
   cached = cfg;

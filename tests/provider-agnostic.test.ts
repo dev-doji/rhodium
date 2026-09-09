@@ -108,15 +108,21 @@ describe("the EVM deployment must hang together", () => {
     process.env.NODE_ENV = "production";
     process.env.FEATURE_EVM_STABLE_ENABLED = "true";
     process.env.EVM_ADAPTER_MODE = "live";
-    // satisfy the unrelated production guards
+    // Satisfy the unrelated production guards. The bank rail is LIVE here
+    // because production now refuses to boot on a mock money rail — a mock
+    // rail confirms payments that never happened — and this fixture should
+    // look like a real deployment, not a way around its own safeguards.
     process.env.WHATSAPP_MODE = "mock";
-    process.env.FIAT_ADAPTER_MODE = "mock";
+    process.env.FIAT_ADAPTER_MODE = "live";
+    process.env.FIAT_PROVIDER = "paystack";
+    process.env.PAYSTACK_SECRET_KEY = "sk_test_notreal";
     process.env.FIELD_ENCRYPTION_KEY = "a".repeat(64);
   };
   const clear = () => {
     for (const k of [
       "NODE_ENV", "FEATURE_EVM_STABLE_ENABLED", "EVM_ADAPTER_MODE", "EVM_CHAIN_ID",
       "EVM_CONTRACT_ADDRESS", "EVM_TOKEN_ADDRESS", "FIELD_ENCRYPTION_KEY",
+      "PAYSTACK_SECRET_KEY",
     ]) delete process.env[k];
     resetConfigCache();
   };

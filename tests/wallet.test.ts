@@ -21,10 +21,7 @@ describe("embedded Quai wallet", () => {
     const done = await app.whatsapp.handleInbound({ from: phone, text: "2" });
 
     const merchant = await app.repos.merchants.byPhone(phone);
-    // Quai is retired: onboarding now mints an ordinary EVM account for
-    // Arbitrum, so the address must NOT carry Quai's 0x00 shard prefix.
     expect(merchant!.quaiAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    expect(merchant!.quaiAddress!.startsWith("0x00")).toBe(false);
     // The message names the chain, because a merchant told only "crypto
     // wallet" cannot tell whether the address she is backing up works where
     // she expects.
@@ -33,7 +30,23 @@ describe("embedded Quai wallet", () => {
     const secrets = await app.repos.merchants.getWalletSecrets(merchant!.id);
     expect(secrets).not.toBeNull();
     expect(secrets!.mnemonic.split(/\s+/)).toHaveLength(12);
-    // the phrase must reproduce the stored address (so it works in BlipPay/Pelagus)
     expect(secrets!.privateKey).toMatch(/^0x[0-9a-fA-F]{64}$/);
+
+    // The phrase must reproduce the stored address, or a merchant who backs it
+    // up and restores it elsewhere gets a different wallet and cannot reach her
+    // money. This is also what proves the account is an ORDINARY EVM one and
+    // not a Quai shard address: the derivation is Ethereum's coin type,
+    // m/44'/60'/0'/0/0.
+    //
+    // This replaced an assertion that the address does not begin "0x00". Quai's
+    // Cyprus1 addresses do begin that way — but so does roughly one in every
+    // 256 perfectly ordinary EVM addresses, so the check failed at random. It
+    // did exactly that during this run, which is how it was found.
+    const { HDNodeWallet, Mnemonic } = await import("ethers");
+    const derived = HDNodeWallet.fromMnemonic(
+      Mnemonic.fromPhrase(secrets!.mnemonic),
+      "m/44'/60'/0'/0/0",
+    );
+    expect(derived.address.toLowerCase()).toBe(merchant!.quaiAddress!.toLowerCase());
   });
 });
