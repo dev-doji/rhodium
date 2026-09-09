@@ -30,16 +30,21 @@ const bool = (def: boolean) =>
  * that chain. That failure is invisible until a buyer's money has already
  * moved, so it is checked at boot instead.
  */
-export const EVM_DEPLOYMENTS: Record<number, { contract: string; token: string; name: string }> = {
+export const EVM_DEPLOYMENTS: Record<
+  number,
+  { contract: string; token: string; name: string; explorer: string }
+> = {
   42161: {
     name: "Arbitrum One",
     contract: "0x80cD8120170c799501E9a7eA0da4203AD52C1d7d",
     token: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // native Circle USDC
+    explorer: "https://arbiscan.io",
   },
   421614: {
     name: "Arbitrum Sepolia",
     contract: "0x34b17673E4Be07D5027cF02C63b3bDf5ed7e13b2",
     token: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    explorer: "https://sepolia.arbiscan.io",
   },
 };
 
@@ -173,7 +178,15 @@ const schema = z.object({
   EVM_CHAIN_ID: z.coerce.number().default(42161), // Arbitrum One
   EVM_CHAIN_NAME: z.string().default("Arbitrum One"),
   EVM_RPC_URL: z.string().default("https://arb1.arbitrum.io/rpc"),
-  EVM_EXPLORER_URL: z.string().default("https://sepolia.arbiscan.io"),
+  /**
+   * Left empty by default and filled in from EVM_CHAIN_ID below.
+   *
+   * It used to default to the SEPOLIA explorer while EVM_CHAIN_ID defaulted to
+   * Arbitrum One, so a mainnet payment produced a link to a testnet explorer
+   * where the transaction does not exist — a buyer checking whether their money
+   * moved would have been told, in effect, that it had not.
+   */
+  EVM_EXPLORER_URL: z.string().default(""),
   // RhodiumPay, redeployed unchanged — payToken() is already an ERC-20
   // transferFrom(buyer -> merchant) that emits Paid(orderId, ...).
   /**
@@ -262,6 +275,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
 
   if (!cfg.MERCHANT_BASE_URL) cfg.MERCHANT_BASE_URL = cfg.PUBLIC_BASE_URL;
+
+  // The explorer follows the chain unless it was set explicitly, so the two
+  // cannot drift apart. A link to the wrong explorer shows "transaction not
+  // found" for a payment that did happen.
+  if (!cfg.EVM_EXPLORER_URL) {
+    cfg.EVM_EXPLORER_URL = EVM_DEPLOYMENTS[cfg.EVM_CHAIN_ID]?.explorer ?? "https://arbiscan.io";
+  }
 
   // The vendor completes Embedded Signup, so the callback belongs on the
   // merchant origin. Must match the Meta app's registered URI character for
