@@ -59,6 +59,13 @@
     /* The amount is the second thing read, after the shop name. */
     .amount { font-size:34px; font-weight:600; letter-spacing:-.02em; margin-top:18px;
               font-variant-numeric:tabular-nums; }
+    /* The token, sized down so the NUMBER is what the eye lands on — that is
+       the part copied into a wallet. */
+    .amount-unit { font-size:20px; font-weight:600; color:var(--ink-2); margin-left:4px; }
+    /* The naira equivalent: present, subordinate, never mistakeable for the
+       amount to send. */
+    .amount-sub { display:block; font-size:13px; font-weight:500; color:var(--ink-3);
+                  letter-spacing:0; margin-top:2px; }
     .crypto { display:flex; align-items:center; gap:6px; color:var(--ink-2);
               font-weight:500; margin-top:5px; font-size:13px; }
     .crypto svg { width:14px; height:14px; color:var(--accent); }
@@ -268,6 +275,12 @@
       btns.forEach((b) => { b.disabled = true; });
       const picked = document.getElementById(method === "bank" ? "m-bank" : "m-crypto");
       if (picked) picked.textContent = "Setting up…";
+      // Setting the method up and drawing the result are separate failures and
+      // must be handled separately. They were one try block, so a rendering bug
+      // re-ran renderMethodChoice and wiped an instruction the server had
+      // already issued — the buyer saw the chooser again and a stack message,
+      // while a live deposit address sat in the database unseen.
+      let instruction;
       try {
         const res = await fetch(`/api/checkout/${orderId}/method`, {
           method: "POST",
@@ -276,13 +289,29 @@
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.message || "We couldn't set that up.");
-        renderInstruction(body.instruction);
+        instruction = body.instruction;
       } catch (e) {
+        // Nothing was issued: offering the choice again is the right move.
         btns.forEach((b) => { b.disabled = false; });
         renderMethodChoice(data.methods);
         const err = document.createElement("div");
         err.className = "err";
         err.textContent = e.message;
+        $("body").prepend(err);
+        return;
+      }
+
+      try {
+        renderInstruction(instruction);
+      } catch (e) {
+        // The instruction EXISTS. Sending the buyer back to the chooser would
+        // invite a second one against the same order, so keep the payment and
+        // say how to reach it.
+        const err = document.createElement("div");
+        err.className = "err";
+        err.textContent =
+          "We set up your payment but could not display it. Reload this page to see it — " +
+          "your order is safe. (" + e.message + ")";
         $("body").prepend(err);
       }
     }
@@ -295,7 +324,17 @@
      * a buyer whose wallet we did not anticipate must still be able to pay.
      */
     function renderDepositAddress(inst) {
-      $("crypto").innerHTML = `${ICON.coin} ${inst.cryptoAmount} ${inst.tokenSymbol || "USDC"} on ${inst.network || "Arbitrum"}`;
+      // Lead with the figure the buyer has to act on. They are about to type an
+      // amount into a wallet denominated in USDC, and naira is the one number
+      // that does NOT go in that box — showing it large invites sending the
+      // wrong thing, and the amount must match exactly or the payment cannot be
+      // matched to the order. Naira stays, small: it is what the seller
+      // receives and what the buyer agreed to.
+      const symbol = inst.tokenSymbol || "USDC";
+      $("amount").innerHTML =
+        `${inst.cryptoAmount} <span class="amount-unit">${symbol}</span>` +
+        `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
+      $("crypto").innerHTML = `${ICON.coin} ${symbol} on ${inst.network || "Arbitrum"}`;
       $("body").innerHTML = `
         <div class="rows">
           <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${inst.cryptoAmount} ${inst.tokenSymbol || "USDC"}</b></div>
@@ -317,7 +356,69 @@
           window.prompt("Copy the address:", inst.depositAddress);
         }
       };
-      poll();
+      pollPaid();
+    }
+
+    /**
+     * The on-chain path: the buyer pays the RhodiumPay contract from their own
+     * wallet, and the merchant is settled in USDC.
+     *
+     * This function did not exist. `renderInstruction` has always fallen
+     * through to it for any instruction without an account number or a deposit
+     * address — which is every merchant who chose USDC settlement — so that
+     * branch threw "renderWalletPay is not defined" and the buyer got a dead
+     * screen. The wallet machinery below it (evmProvider, needWallet,
+     * ensureEvmChain, payOnChain) was all written and reachable by nothing.
+     */
+    function renderWalletPay(inst) {
+      // Same rule as the deposit screen: the amount to send leads, in the unit
+      // the wallet will ask for. Naira is what the seller receives.
+      const symbol = inst.tokenSymbol || "USDC";
+      $("amount").innerHTML =
+        `${inst.cryptoAmount} <span class="amount-unit">${symbol}</span>` +
+        `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
+      $("crypto").innerHTML = `${ICON.coin} ${symbol} on ${inst.network || "Arbitrum"}`;
+      $("body").innerHTML = `
+        <div class="rows">
+          <div class="row">${ICON.coin}<span class="k">You send</span><b>${inst.cryptoAmount} ${symbol}</b></div>
+          <div class="row">${ICON.globe}<span class="k">Network</span><b>${inst.network || "Arbitrum"}</b></div>
+          <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
+        </div>
+        <button id="pay">${ICON.coin} Pay from your wallet</button>
+        <div class="hint">Your wallet will ask you to confirm. Keep this page open —
+          the receipt appears here once the payment settles on-chain.</div>`;
+
+      const btn = $("pay");
+      if (btn) btn.onclick = async () => {
+        const provider = evmProvider();
+        // No wallet in this browser is not an error to shout about: needWallet
+        // offers deep links on a phone and names the naira alternative on a
+        // desktop, which is the way out for most people who hit it.
+        if (!provider) return needWallet();
+        try {
+          btn.disabled = true;
+          btn.textContent = "Confirm in your wallet…";
+          await payOnChain(provider, inst);
+          btn.textContent = "Waiting for the network…";
+        } catch (e) {
+          // A rejected signature is a decision, not a failure — say so without
+          // alarming language, and give the button back.
+          btn.disabled = false;
+          btn.innerHTML = `${ICON.coin} Pay from your wallet`;
+          const rejected = e && (e.code === 4001 || /reject|denied/i.test(e.message || ""));
+          const note = document.createElement("div");
+          note.className = rejected ? "hint" : "err";
+          note.textContent = rejected
+            ? "Payment cancelled in your wallet. You can try again, or go back and pay with naira."
+            : (e.message || "That did not go through.");
+          $("body").appendChild(note);
+        }
+      };
+
+      // Poll regardless of how the buyer pays: they may send from another
+      // device or a different wallet entirely, and the server's word is what
+      // decides the order is paid.
+      pollPaid();
     }
 
     function renderBankTransfer(inst) {
