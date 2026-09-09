@@ -6,7 +6,10 @@ import { StablecoinRail } from "./stablecoin-rail.js";
 import { EvmStableRail } from "./evm-stable-rail.js";
 import { OnSwitchRail } from "./onswitch-rail.js";
 import { NotFoundError } from "../lib/errors.js";
+import { logger } from "../lib/logger.js";
 import type { AppConfig } from "../config/index.js";
+
+const log = logger("rails");
 
 /**
  * Rail registry — the anti-lock-in seam (§1.4 feature 8). Services only ever ask
@@ -118,7 +121,26 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
   // Crypto rail. When the EVM stablecoin rail is enabled it is registered FIRST,
   // so `crypto()` — which returns the first crypto rail found — routes new
   // orders to it. Same pattern as keeping Monnify registered behind Paystack.
-  if (cfg.FEATURE_EVM_STABLE_ENABLED) {
+  /**
+   * A mock crypto rail must never be reachable in production: it confirms
+   * on-chain payments that never happened. But an unconfigured optional rail
+   * is not a reason to take the whole service down — `crypto()` already falls
+   * back when a rail is absent, and the checkout only offers what a merchant
+   * can actually use. So the rail is withheld, loudly, and everything else
+   * keeps working.
+   */
+  const liveOnly = cfg.NODE_ENV === "production";
+  const withhold = (id: string, mode: string): boolean => {
+    if (!liveOnly || mode !== "mock") return false;
+    log.error(
+      { rail: id },
+      "refusing to register a MOCK crypto rail in production — it would confirm " +
+        "payments that never happened. Set its adapter mode to live to enable it.",
+    );
+    return true;
+  };
+
+  if (cfg.FEATURE_EVM_STABLE_ENABLED && !withhold("evm_stable", cfg.EVM_ADAPTER_MODE)) {
     registry.register(
       new EvmStableRail({
         mode: cfg.EVM_ADAPTER_MODE,
@@ -144,7 +166,8 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
   }
 
   // Off-ramp rail: OnSwitch (buyer pays stablecoin → merchant paid in naira).
-  registry.register(
+  if (!withhold("onswitch", cfg.ONSWITCH_ADAPTER_MODE))
+    registry.register(
     new OnSwitchRail({
       mode: cfg.ONSWITCH_ADAPTER_MODE,
       serviceKey: cfg.ONSWITCH_SERVICE_KEY,
