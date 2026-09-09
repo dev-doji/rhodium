@@ -81,6 +81,20 @@
                font-size:29px; font-weight:600; letter-spacing:.06em;
                margin:9px 0 5px; color:var(--ink); font-variant-numeric:tabular-nums;
                user-select:all; }
+    /* A wallet address, not an account number.
+       .acct-no is sized for ten digits; a 34-character Tron address — or a
+       42-character EVM one — at 29px with letter-spacing runs straight off the
+       side of the card. Smaller, wrapping, and with the tracking removed:
+       base58 is case-sensitive and mixed-width, so letter-spacing hurts
+       legibility rather than helping it. Boxed so a wrapped address still
+       reads as one value. */
+    .acct-addr { font-family:"IBM Plex Mono",ui-monospace,monospace;
+                 font-size:15px; font-weight:600; line-height:1.6;
+                 letter-spacing:0; margin:9px 0 5px; padding:12px 13px;
+                 color:var(--ink); background:var(--surface-2);
+                 border:1px solid var(--line);
+                 overflow-wrap:anywhere; word-break:break-all;
+                 user-select:all; }
     .acct-name { font-size:12px; color:var(--ink-2); }
     .copybtn { margin-top:14px; width:100%; padding:12px; border:0; border-radius:0;
                background:var(--accent); color:var(--accent-ink); font:inherit;
@@ -254,11 +268,22 @@
       return renderWalletPay(inst);
     }
 
+    /**
+     * What the crypto button promises, taken from what the server will actually
+     * issue rather than a hardcoded chain. ONSWITCH_ASSET decides this, and it
+     * is tron:usdt in production while this button read "USDC on Arbitrum".
+     */
+    function cryptoLabel(methods) {
+      const a = methods && methods.cryptoAsset;
+      if (!a || !a.token) return "Stablecoin";
+      return a.network ? `${a.token} on ${a.network}` : a.token;
+    }
+
     /** Step one: bank or crypto. */
     function renderMethodChoice(methods) {
       $("crypto").innerHTML = `${ICON.shield} Choose how to pay`;
       const cryptoBtn = methods && methods.crypto
-        ? `<button id="m-crypto" class="alt">${ICON.coin} Pay with crypto <span class="sub">USDC on Arbitrum</span></button>`
+        ? `<button id="m-crypto" class="alt">${ICON.coin} Pay with crypto <span class="sub">${cryptoLabel(methods)}</span></button>`
         : "";
       $("body").innerHTML = `
         <div class="methods">
@@ -330,23 +355,29 @@
       // wrong thing, and the amount must match exactly or the payment cannot be
       // matched to the order. Naira stays, small: it is what the seller
       // receives and what the buyer agreed to.
-      const symbol = inst.tokenSymbol || "USDC";
+      // NEVER name a chain the instruction did not name. These read
+      // `|| "Arbitrum"`, so a missing field would have told a buyer to send on
+      // Arbitrum while showing them a Tron address — the exact mistake that
+      // loses funds. If the rail did not say, this page does not guess.
+      const symbol = inst.tokenSymbol || "";
+      const network = inst.network || "";
+      const on = network ? ` on ${network}` : "";
       $("amount").innerHTML =
-        `${inst.cryptoAmount} <span class="amount-unit">${symbol}</span>` +
+        `${inst.cryptoAmount}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
         `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
-      $("crypto").innerHTML = `${ICON.coin} ${symbol} on ${inst.network || "Arbitrum"}`;
+      $("crypto").innerHTML = `${ICON.coin} ${symbol}${on}`;
       $("body").innerHTML = `
         <div class="rows">
-          <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${inst.cryptoAmount} ${inst.tokenSymbol || "USDC"}</b></div>
-          <div class="row">${ICON.globe}<span class="k">Network</span><b>${inst.network || "Arbitrum"}</b></div>
+          <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${inst.cryptoAmount} ${symbol}</b></div>
+          ${network ? `<div class="row">${ICON.globe}<span class="k">Network</span><b>${network}</b></div>` : ""}
           <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
         </div>
         <div class="acct-label">Send to this address</div>
-        <div class="acct-no" id="addr">${inst.depositAddress}</div>
+        <div class="acct-addr" id="addr">${inst.depositAddress}</div>
         <button id="copyaddr">${ICON.copy || ""} Copy address</button>
-        <div class="hint">Send from any wallet on ${inst.network || "Arbitrum"}. Sending a different
-          amount, or on another network, means the payment cannot be matched.
-          You'll get a receipt once it settles.</div>`;
+        <div class="hint">Send <b>${symbol}</b>${on ? ` on <b>${network}</b>` : ""} only. Sending a
+          different amount, a different token, or on another network means the payment
+          cannot be matched. You'll get a receipt once it settles.</div>`;
       const copy = $("copyaddr");
       if (copy) copy.onclick = async () => {
         try {
@@ -373,15 +404,16 @@
     function renderWalletPay(inst) {
       // Same rule as the deposit screen: the amount to send leads, in the unit
       // the wallet will ask for. Naira is what the seller receives.
-      const symbol = inst.tokenSymbol || "USDC";
+      const symbol = inst.tokenSymbol || "";
+      const network = inst.network || "";
       $("amount").innerHTML =
-        `${inst.cryptoAmount} <span class="amount-unit">${symbol}</span>` +
+        `${inst.cryptoAmount}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
         `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
-      $("crypto").innerHTML = `${ICON.coin} ${symbol} on ${inst.network || "Arbitrum"}`;
+      $("crypto").innerHTML = `${ICON.coin} ${symbol}${network ? ` on ${network}` : ""}`;
       $("body").innerHTML = `
         <div class="rows">
           <div class="row">${ICON.coin}<span class="k">You send</span><b>${inst.cryptoAmount} ${symbol}</b></div>
-          <div class="row">${ICON.globe}<span class="k">Network</span><b>${inst.network || "Arbitrum"}</b></div>
+          ${network ? `<div class="row">${ICON.globe}<span class="k">Network</span><b>${network}</b></div>` : ""}
           <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
         </div>
         <button id="pay">${ICON.coin} Pay from your wallet</button>

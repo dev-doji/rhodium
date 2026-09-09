@@ -466,6 +466,22 @@ export function buildApi(app: App): Express {
           // Which shape the crypto flow takes: send to an address, or pay a
           // contract from your own wallet.
           cryptoKind: cryptoUsable ? (cryptoRail!.id === "onswitch" ? "transfer" : "wallet") : null,
+          /**
+           * The asset the buyer will actually be asked for.
+           *
+           * The checkout button used to read "USDC on Arbitrum", hardcoded,
+           * while ONSWITCH_ASSET decides what is really issued — in production
+           * that is USDT on Tron. Telling a buyer one chain and handing them an
+           * address on another is how someone sends to the wrong network.
+           */
+          cryptoAsset: cryptoUsable
+            ? cryptoRail!.id === "onswitch"
+              ? {
+                  token: (app.config.ONSWITCH_ASSET.split(":")[1] ?? "").toUpperCase(),
+                  network: app.config.ONSWITCH_ASSET.split(":")[0] ?? "",
+                }
+              : { token: "USDC", network: app.config.EVM_CHAIN_NAME }
+            : null,
         },
         instruction,
         evmChainId: app.config.EVM_CHAIN_ID,

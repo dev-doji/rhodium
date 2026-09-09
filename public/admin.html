@@ -503,7 +503,8 @@
     head.appendChild(el("h2", null, isFiat ? "Bank transfer" : "Crypto"));
     head.appendChild(el("p", "lede", isFiat
       ? "Naira paid into a dedicated virtual account and split to the merchant's bank."
-      : "Stablecoin paid on Arbitrum, settled either to the merchant's wallet or off-ramped to naira."));
+      : "Stablecoin paid by the buyer, settled either to the merchant's wallet or off-ramped to naira. "
+        + "The chain and token are whatever ONSWITCH_ASSET is set to — tron:usdt in production, not Arbitrum."));
 
     if (d.note) {
       var note = el("div", "note");
