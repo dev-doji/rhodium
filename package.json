@@ -45,7 +45,8 @@
     "setup": "npm install && npm run db:up && npm run prisma:generate && npm run prisma:migrate && npm run dashboard:install && npm run dashboard:build",
     "lint": "tsc -p tsconfig.json --noEmit",
     "contracts:deploy:arbitrum": "npm --prefix chain run deploy:arbitrum",
-    "og:build": "tsx scripts/build-og-image.ts"
+    "og:build": "tsx scripts/build-og-image.ts",
+    "seed:local-shop": "tsx src/smoke/seed-local-shop.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
