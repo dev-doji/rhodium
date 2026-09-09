@@ -250,3 +250,66 @@ describe("names the provider will accept", () => {
     expect(bankSafeName("A".repeat(200)).length).toBe(60);
   });
 });
+
+describe("polling the provider for a status", () => {
+  /** Captures the URL the rail asks for, and answers with a given status. */
+  async function pollWith(status: string | null) {
+    const rail = new OnSwitchRail({
+      mode: "live",
+      serviceKey: "test-key",
+      baseUrl: "https://onswitch.invalid",
+      asset: "arbitrum:usdc",
+      callbackUrl: "https://example.test/webhooks/rails/onswitch",
+    });
+    let asked = "";
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      asked = String(url);
+      if (status === null) {
+        return new Response(JSON.stringify({ success: false, message: "Payment not found" }), { status: 404 });
+      }
+      return new Response(JSON.stringify({ success: true, data: { status, reference: "ref" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      const result = await rail.verifyPayment("ref_123");
+      return { asked, result };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("asks the endpoint that exists", async () => {
+    // It asked GET /offramp/{ref}, which OnSwitch answers 404 "Resource does
+    // not exist" — verified against their live API. The catch turned that into
+    // "pending", so the poll fallback never once worked: "I've sent it — check
+    // now" could only say "not showing yet", and reconciliation could never
+    // confirm an off-ramp the webhook had missed.
+    const { asked } = await pollWith("AWAITING_DEPOSIT");
+    expect(asked).toContain("/payment/status?reference=ref_123");
+    expect(asked).not.toContain("/offramp/ref_123");
+  });
+
+  it("confirms only on COMPLETED", async () => {
+    expect((await pollWith("COMPLETED")).result.status).toBe("confirmed");
+    for (const waiting of ["AWAITING_DEPOSIT", "PROCESSING", "SCHEDULED"]) {
+      expect((await pollWith(waiting)).result.status, waiting).toBe("pending");
+    }
+  });
+
+  it("does not report a dead payment as still coming", async () => {
+    // Telling a buyer to keep waiting for a payment that was reversed or
+    // blocked is worse than telling them nothing.
+    for (const dead of ["FAILED", "REVERSED", "BLOCKED"]) {
+      expect((await pollWith(dead)).result.status, dead).toBe("failed");
+    }
+  });
+
+  it("treats an unknown reference as pending, not failed", async () => {
+    // A 404 may mean "not yet visible" as easily as "never existed", and
+    // marking a live order failed on that would be worse than waiting.
+    expect((await pollWith(null)).result.status).toBe("pending");
+  });
+});

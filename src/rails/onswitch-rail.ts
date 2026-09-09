@@ -180,8 +180,27 @@ export class OnSwitchRail implements PaymentRail {
       if (!o) return { providerRef, status: "pending" };
       return { providerRef, status: o.status === "COMPLETED" ? "confirmed" : "pending", amount: o.nairaKobo };
     }
-    const res = await this.api(`/offramp/${encodeURIComponent(providerRef)}`, { method: "GET" }).catch(() => null);
-    const status = (res as { data?: { status?: string } } | null)?.data?.status;
+    // GET /payment/status?reference=..., NOT /offramp/{ref}.
+    //
+    // This called /offramp/{ref}, which OnSwitch answers with 404 "Resource
+    // does not exist" — verified against their API. The .catch below turned
+    // that into "pending", so the poll fallback silently never worked: the
+    // "I've sent it — check now" button could only ever say "not showing yet",
+    // and reconciliation could never confirm an off-ramp the webhook missed.
+    // A safety net that always reports nothing is worse than none, because it
+    // is believed.
+    const res = await this.api(
+      `/payment/status?reference=${encodeURIComponent(providerRef)}`,
+      { method: "GET" },
+    ).catch(() => null);
+    const data = (res as { data?: { status?: string; destination?: { amount?: number } } } | null)?.data;
+    const status = data?.status;
+    // FAILED / REVERSED / BLOCKED are terminal and must not read as "still
+    // waiting" — a buyer told to keep waiting for a payment that was reversed
+    // is being misled.
+    if (status === "FAILED" || status === "REVERSED" || status === "BLOCKED") {
+      return { providerRef, status: "failed" };
+    }
     return { providerRef, status: status === "COMPLETED" ? "confirmed" : "pending" };
   }
 
