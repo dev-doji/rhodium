@@ -66,6 +66,16 @@
        amount to send. */
     .amount-sub { display:block; font-size:13px; font-weight:500; color:var(--ink-3);
                   letter-spacing:0; margin-top:2px; }
+    /* The receipt itself, on the page. A buyer who never gets a WhatsApp
+       message still leaves with proof of payment. */
+    .receiptimg {
+      display:block; width:100%; max-width:340px; margin:18px auto 0;
+      border:1px solid var(--line); background:var(--surface);
+    }
+    .receiptactions {
+      display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-top:14px;
+    }
+    .receiptactions .btn { flex:1 1 auto; min-width:140px; }
     .crypto { display:flex; align-items:center; gap:6px; color:var(--ink-2);
               font-weight:500; margin-top:5px; font-size:13px; }
     .crypto svg { width:14px; height:14px; color:var(--accent); }
@@ -894,10 +904,43 @@
           <div class="checkwrap">${ICON.check}</div>
           <h2>Payment confirmed</h2>
           <span class="badge">${ICON.shield} settled to merchant · no custody</span>
-          <div class="hint" style="margin-top:12px">Receipt sent via WhatsApp. You can close this.</div>
+          <img class="receiptimg" id="receiptimg"
+               src="/api/receipt/${orderId}/image.png"
+               alt="Receipt for this order" />
+          <div class="receiptactions">
+            <a class="btn btn-primary" id="savereceipt"
+               href="/api/receipt/${orderId}/image.png"
+               download="rhodium-receipt.png">${ICON.check} Save receipt</a>
+            <button class="btn btn-ghost" id="sharereceipt" hidden>${ICON.link} Share</button>
+          </div>
+          <div class="hint" style="margin-top:12px">Your receipt is above — save it or share it.
+            It also stays at this link, so you can come back to it.</div>
           ${txLink}
           ${txHashLine}
         </div>`;
+
+      // Sharing is offered only where the browser can actually do it. Android
+      // Chrome and iOS Safari can share a file; a desktop browser usually
+      // cannot, and a button that does nothing is worse than no button.
+      const shareBtn = $("sharereceipt");
+      if (shareBtn && navigator.share) {
+        shareBtn.hidden = false;
+        shareBtn.onclick = async () => {
+          try {
+            const res = await fetch(`/api/receipt/${orderId}/image.png`);
+            const blob = await res.blob();
+            const file = new File([blob], "rhodium-receipt.png", { type: "image/png" });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], title: "Payment receipt" });
+            } else {
+              // No file sharing — share the link, which is public and permanent.
+              await navigator.share({ title: "Payment receipt", url: location.origin + "/receipt/" + orderId });
+            }
+          } catch {
+            // A cancelled share is a decision, not a failure. Say nothing.
+          }
+        };
+      }
     }
 
     load();

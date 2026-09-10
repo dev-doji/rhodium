@@ -228,8 +228,14 @@ describe("what the processor is told about the buyer", () => {
     expect(customer.body.phone).toBe("+2348031234567");
     expect(String(customer.body.email)).not.toContain("f81e22e1");
     expect(String(customer.body.email)).toContain("2348031234567");
-    // And the name a human would recognise on a support call.
-    expect(customer.body.first_name).toBe("Ada");
-    expect(customer.body.last_name).toBe("Okeke");
+    // The NAME is deliberately the SHOP's, not the buyer's. Paystack builds the
+    // dedicated account's name from these fields, and that name is what a buyer
+    // reads before transferring money. It rendered "FONIOLABS/BUYER RHODIUM",
+    // so someone who chose "Circuit City" was asked to send money to two names
+    // she had never seen — indistinguishable from a scam. The trade is made
+    // knowingly: the record loses the buyer's name and keeps her phone, which
+    // is what support and risk checks key on anyway.
+    expect(customer.body.first_name).toBe("Circuit");
+    expect(customer.body.last_name).toBe("City");
   });
 });

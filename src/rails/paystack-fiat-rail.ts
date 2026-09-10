@@ -10,6 +10,7 @@ import type {
 import type { Merchant, Order, RailId } from "../domain/types.js";
 import { MockPaystackServer } from "./mock-paystack-server.js";
 import { AppError } from "../lib/errors.js";
+import { bankSafeName } from "./onswitch-rail.js";
 import { logger } from "../lib/logger.js";
 import { bankCodeFor } from "../modules/whatsapp/banks.js";
 
@@ -130,8 +131,16 @@ export class PaystackFiatRail implements PaymentRail {
         // checks.
         email: `${digits(buyer?.phone ?? order.buyerRef)}.${merchantTag(merchant.id)}@buyers.userhodium.xyz`,
         phone: buyer?.phone ?? undefined,
-        first_name: buyer?.name?.split(" ")[0] || "Rhodium",
-        last_name: buyer?.name?.split(" ").slice(1).join(" ") || "Buyer",
+        // Named for the SHOP. Paystack builds the dedicated account's name from
+        // these, and that name is what a buyer reads before parting with money.
+        // It said "FONIOLABS/BUYER RHODIUM": someone who chose "Tees kitchen"
+        // was asked to transfer to two names she had never seen, which is
+        // exactly what a scam looks like.
+        //
+        // The record still identifies the buyer by phone and email, and the
+        // customer is already keyed per buyer-and-merchant pair, so naming it
+        // after the merchant matches what it actually represents.
+        ...shopCustomerName(merchant.businessName),
       }),
     });
     const customerCode = customer.data?.customer_code;
@@ -404,6 +413,27 @@ export class PaystackFiatRail implements PaymentRail {
  */
 function merchantTag(merchantId: string): string {
   return merchantId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toLowerCase() || "shop";
+}
+
+/**
+ * Split a shop name into the fields Paystack builds an account name from.
+ *
+ * Paystack renders the dedicated account as "<your business>/<first> <last>",
+ * so "Tees kitchen" produces "FONIOLABS/TEES KITCHEN" — a name the buyer
+ * recognises from the storefront she just came from.
+ *
+ * last_name is omitted rather than duplicated for a one-word shop: "DIADEM
+ * DIADEM" reads worse than "DIADEM", and an absent optional field is safer than
+ * a silly one.
+ */
+export function shopCustomerName(businessName: string): {
+  first_name: string;
+  last_name?: string;
+} {
+  const words = bankSafeName(businessName).split(" ").filter(Boolean);
+  const first = words[0] ?? "Rhodium";
+  const rest = words.slice(1).join(" ");
+  return rest ? { first_name: first, last_name: rest } : { first_name: first };
 }
 
 /** Digits only — a synthesised customer email must not carry a `+`. */
