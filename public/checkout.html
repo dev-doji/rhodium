@@ -282,6 +282,12 @@
     /** Step one: bank or crypto. */
     function renderMethodChoice(methods) {
       $("crypto").innerHTML = `${ICON.shield} Choose how to pay`;
+      // When crypto is off ONLY because the order is too small, say so. A
+      // missing option with no explanation reads as a bug, and the buyer can
+      // act on this one — a bigger basket brings it back.
+      const whyNoCrypto = methods && !methods.crypto && methods.cryptoUnavailable
+        ? `<p class="hint">Paying with crypto isn't available on ${methods.cryptoUnavailable}.</p>`
+        : "";
       const cryptoBtn = methods && methods.crypto
         ? `<button id="m-crypto" class="alt">${ICON.coin} Pay with crypto <span class="sub">${cryptoLabel(methods)}</span></button>`
         : "";
@@ -290,6 +296,7 @@
           <button id="m-bank">${ICON.shield} Pay with naira <span class="sub">Bank transfer</span></button>
           ${cryptoBtn}
         </div>
+        ${whyNoCrypto}
         <div class="hint">Either way the seller is paid and you get a receipt.</div>`;
       $("m-bank").onclick = () => choose("bank");
       if ($("m-crypto")) $("m-crypto").onclick = () => choose("crypto");

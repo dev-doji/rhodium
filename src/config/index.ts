@@ -145,6 +145,20 @@ const schema = z.object({
   ONSWITCH_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
   ONSWITCH_SERVICE_KEY: z.string().optional().default(""),
   ONSWITCH_BASE_URL: z.string().default("https://api.onswitch.xyz"),
+  /**
+   * Smallest order OnSwitch will off-ramp, in KOBO.
+   *
+   * Their API refuses anything below it with
+   *   422 "Minimum amount per transaction is 1,365 NGN"
+   * — observed live on 2026-09-10. Their published schema says the minimum is
+   * 0, so this is not documented anywhere we could have read it.
+   *
+   * Configurable because it is theirs to change and roughly a dollar, so it
+   * moves with the exchange rate. Setting it too HIGH only withholds the crypto
+   * option; setting it too low lets a buyer pick a path that then fails, which
+   * is the worse mistake.
+   */
+  ONSWITCH_MIN_KOBO: z.coerce.number().int().nonnegative().default(1_365_00),
   // Asset buyers pay in — "chain:token". OnSwitch off-ramp supports USDT on
   // tron/ethereum/polygon (not base). tron:usdt (USDT-TRC20) is cheapest + most
   // popular in Nigeria. NOTE: this is USDT on those chains — NOT Quai's USDT.

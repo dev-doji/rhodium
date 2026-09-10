@@ -445,8 +445,17 @@ export function buildApi(app: App): Express {
           return null;
         }
       })();
+      // The off-ramp has a floor: OnSwitch refuses anything under about a
+      // dollar with 422 "Minimum amount per transaction is 1,365 NGN". Offering
+      // crypto on a smaller order means the buyer chooses it, waits, and then
+      // gets a provider error about an amount they cannot change — for a shop
+      // whose items are simply cheap. Tees kitchen sells at ₦100.
+      const belowOfframpMinimum =
+        cryptoRail?.id === "onswitch" && order.amount < app.config.ONSWITCH_MIN_KOBO;
+
       const cryptoUsable =
         !!cryptoRail &&
+        !belowOfframpMinimum &&
         (cryptoRail.id === "onswitch"
           ? Boolean(merchant?.settlementAccountNumber)
           : Boolean(merchant?.quaiAddress));
@@ -474,6 +483,14 @@ export function buildApi(app: App): Express {
            * that is USDT on Tron. Telling a buyer one chain and handing them an
            * address on another is how someone sends to the wrong network.
            */
+          /**
+           * Why crypto is not on offer, when the only reason is the amount.
+           * The page can then say "orders under X" rather than leaving the
+           * buyer to wonder where the option went.
+           */
+          ...(belowOfframpMinimum
+            ? { cryptoUnavailable: `orders under ${formatNaira(app.config.ONSWITCH_MIN_KOBO)}` }
+            : {}),
           cryptoAsset: cryptoUsable
             ? cryptoRail!.id === "onswitch"
               ? {

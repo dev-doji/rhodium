@@ -647,3 +647,60 @@ describe("receipt as an image and a document", () => {
     expect((await fetch(`${base}/api/receipt/${order.id}/document.pdf`)).status).toBe(404);
   });
 });
+
+describe("the off-ramp has a floor", () => {
+  /** A merchant the off-ramp can actually serve: she has a bank account. */
+  async function sellableMerchant(id: string, phone: string) {
+    return app.repos.merchants.create({
+      id,
+      phone,
+      businessName: "Floor Test Shop",
+      status: "active",
+      kycState: "verified",
+      cryptoEnabled: true,
+      settlementBankCode: "opay",
+      settlementAccountNumber: "0123456789",
+    });
+  }
+
+  async function methodsFor(merchantId: string, priceKobo: number, buyer: string) {
+    const product = await app.commerce.createProduct({
+      merchantId,
+      name: `Item ${priceKobo}`,
+      price: priceKobo,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId,
+      buyerRef: buyer,
+      lines: [{ productId: product.id, qty: 1 }],
+      rail: "fiat",
+    });
+    const body = await json<{
+      methods: { crypto: boolean; bank: boolean; cryptoUnavailable?: string };
+    }>(await fetch(`${base}/api/checkout/${order.id}`));
+    return body.methods;
+  }
+
+  it("does not offer crypto below OnSwitch's minimum", async () => {
+    // Their API refuses it with 422 "Minimum amount per transaction is 1,365
+    // NGN" — observed live; their published schema claims the minimum is 0.
+    // Offering the option anyway means the buyer picks it, waits, and gets a
+    // provider error about an amount they cannot change. Tees kitchen sells at
+    // ₦100, so this would be every order she takes.
+    const m = await sellableMerchant("mch_floor_low", "+2348090007171");
+    const methods = await methodsFor(m.id, 100_00, "+2348090007171");
+
+    expect(methods.crypto).toBe(false);
+    // ...and says why, so a missing option does not read as a bug.
+    expect(methods.cryptoUnavailable).toMatch(/1,365/);
+    // Bank transfer is unaffected: a cheap order is still perfectly sellable.
+    expect(methods.bank).toBe(true);
+  });
+
+  it("offers crypto once the order clears the floor", async () => {
+    const m = await sellableMerchant("mch_floor_high", "+2348090007272");
+    const methods = await methodsFor(m.id, 5_000_00, "+2348090007272");
+    expect(methods.crypto).toBe(true);
+    expect(methods.cryptoUnavailable).toBeUndefined();
+  });
+});
