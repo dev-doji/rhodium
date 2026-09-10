@@ -130,6 +130,10 @@ export function PhotoSlot({
   sizes = "(max-width: 1024px) 100vw, 50vw",
   priority = false,
   rounded = "rounded-none",
+  // Which part of the source survives the crop. Only matters when the frame's
+  // aspect differs from the file's — a square photo in a portrait frame loses
+  // its left or right edge, and which edge is a picture decision, not a default.
+  position = "object-center",
 }: {
   src?: string;
   alt: string;
@@ -137,6 +141,7 @@ export function PhotoSlot({
   sizes?: string;
   priority?: boolean;
   rounded?: string;
+  position?: string;
 }) {
   return (
     <div
@@ -148,7 +153,7 @@ export function PhotoSlot({
           alt={alt}
           fill
           sizes={sizes}
-          className="object-cover"
+          className={`object-cover ${position}`}
           priority={priority}
         />
       ) : (
@@ -174,6 +179,55 @@ export function PhotoSlot({
  * a claim we cannot support. The title carries the word "example" rather than
  * relying on a footnote nobody reads.
  */
+/**
+ * The card a merchant actually wants to see: a sale, as it lands.
+ *
+ * Shaped like a phone notification rather than a statistic, because that is the
+ * product — she is not reading a dashboard, she is glancing at her phone. The
+ * green dot and the timestamp do the work that a chart would do badly at this
+ * size.
+ *
+ * Labelled `example` for the same reason every other figure on this page is:
+ * these are illustrative numbers on a marketing page, and presenting them as
+ * live takings would be a lie told in small type.
+ */
+export function SaleAlertCard({
+  shop,
+  amount,
+  item,
+  when,
+  className = "",
+}: {
+  shop: string;
+  amount: string;
+  item: string;
+  when: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-none border border-brand-950 bg-white p-4 ${className}`}
+      role="img"
+      aria-label={`Example notification: payment of ${amount} received by ${shop} for ${item}`}
+    >
+      <div className="flex items-center gap-2">
+        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-950/65">
+          Payment received
+        </p>
+        <span className="ml-auto text-[11px] tabular-nums text-brand-950/45">{when}</span>
+      </div>
+      <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums text-brand-950">
+        {amount}
+      </p>
+      <p className="mt-0.5 text-[11px] text-brand-950/70">
+        {item} · {shop}
+      </p>
+      <p className="mt-1 text-[11px] font-medium text-brand-500">Settled to your bank · example</p>
+    </div>
+  );
+}
+
 export function FloatCard({
   title,
   value,

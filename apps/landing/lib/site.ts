@@ -106,6 +106,15 @@ export const heroStats = {
     delta: "+12 orders",
     note: "Ledger updates the moment a payment confirms", // illustrative UI
   },
+  // The alert a merchant actually gets. Invented shop, invented order — a real
+  // merchant's takings do not belong on a marketing page, and the card says
+  // "example" on its face for the same reason.
+  sale: {
+    shop: "Ada's Kitchen",
+    amount: "₦12,500",
+    item: "2 × jollof plate",
+    when: "now",
+  },
 } as const;
 
 /**

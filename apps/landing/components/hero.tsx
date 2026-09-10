@@ -1,15 +1,20 @@
 import { ArrowUpRight } from "lucide-react";
 import { heroStats, site } from "@/lib/site";
-import { Button, FloatCard, PhotoSlot, WhatsAppIcon } from "./ui";
+import { Button, FloatCard, PhotoSlot, SaleAlertCard, WhatsAppIcon } from "./ui";
 
 /**
- * Centred headline over one large photograph, with figure cards floating at
- * its corners.
+ * Centred headline over one photograph, with three cards floating beside it.
  *
- * The cards sit *inside* the image frame on desktop and drop below it on
- * phones: overlaying them on a 375px-wide photo would either cover the
- * subject's face or shrink the type past readability, and a stat nobody can
- * read is worse than one that has moved.
+ * The photograph is SQUARE, and that dictates the layout. `object-cover` in a
+ * 16/9 frame would keep only the middle 56% of a square source — which here is
+ * the crop that takes off the subject's head and her feet — so the frame stays
+ * near-square and the picture is held to a narrow column. The cards then live
+ * in the gutters either side of it rather than on top of it.
+ *
+ * Those gutters only exist from `lg` up. Below that the cards stack under the
+ * photo: overlaying them on a 375px-wide image would cover the subject's face
+ * or shrink the type past reading, and a figure nobody can read is worse than
+ * one that has moved.
  */
 export function Hero() {
   return (
@@ -49,27 +54,49 @@ export function Hero() {
         </div>
 
         <div className="relative mx-auto mt-12 max-w-5xl lg:mt-16">
-          <PhotoSlot
-            src="/img/woman_two.jpg"
-            alt="A Nigerian shop owner taking a customer's order on her phone"
-            className="aspect-[16/11] w-full sm:aspect-[16/9]"
-            sizes="(max-width: 1024px) 100vw, 1024px"
-            priority
-            rounded="rounded-none"
-          />
+          <div className="mx-auto w-full max-w-sm sm:max-w-md lg:max-w-xl">
+            <PhotoSlot
+              src="/img/hero_cover.jpg"
+              alt="A Nigerian shop owner sitting with her phone, smiling at a payment alert"
+              className="aspect-[4/5] w-full sm:aspect-[9/10]"
+              sizes="(max-width: 1024px) 100vw, 576px"
+              priority
+              rounded="rounded-none"
+              // Anchored right: the frame is narrower than the square file, and
+              // the tenth of the picture it drops is the left edge, where the
+              // studio light and its stand foot are. The subject and the plant
+              // both sit right of centre, so nothing else is lost.
+              position="object-right"
+            />
+          </div>
 
-          <FloatCard
-            title="Today's sales · example"
-            value={heroStats.ledger.amount}
-            note={heroStats.ledger.delta}
-            className="mt-3 sm:absolute sm:-bottom-6 sm:left-6 sm:mt-0 sm:w-44 lg:left-8"
-          />
-          <FloatCard
-            title="Transfer confirmed in"
-            value={heroStats.confirm.value}
-            note="No screenshot needed"
-            className="mt-3 sm:absolute sm:-top-6 sm:right-6 sm:mt-0 sm:w-44 lg:right-8"
-          />
+          {/*
+            One grid below the photo on small screens; three absolutely placed
+            cards in the gutters from `lg`. The wrapper drops to `display:block`
+            there so the grid's own track sizing stops applying to children that
+            have left the flow.
+          */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:mt-0 lg:block">
+            <FloatCard
+              title="Transfer confirmed in"
+              value={heroStats.confirm.value}
+              note="No screenshot needed"
+              className="lg:absolute lg:left-0 lg:top-10 lg:w-52"
+            />
+            <FloatCard
+              title="Today's sales · example"
+              value={heroStats.ledger.amount}
+              note={heroStats.ledger.delta}
+              className="lg:absolute lg:bottom-10 lg:left-0 lg:w-52"
+            />
+            <SaleAlertCard
+              shop={heroStats.sale.shop}
+              amount={heroStats.sale.amount}
+              item={heroStats.sale.item}
+              when={heroStats.sale.when}
+              className="sm:col-span-1 lg:absolute lg:right-0 lg:top-1/3 lg:w-56"
+            />
+          </div>
         </div>
       </div>
     </section>
