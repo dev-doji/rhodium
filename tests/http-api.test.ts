@@ -499,8 +499,13 @@ describe("HTTP API — end-to-end over the wire", () => {
     const onAdminHost = await rawGet("/", { host: "admin.userhodium.xyz" });
     expect(onAdminHost).toContain("Admin · Rhodium");
 
+    // Any other host must NOT get the admin page. Asserting it serves the
+    // MERCHANT dashboard would be testing something else: "/" only exists when
+    // dashboard/dist has been built, and CI's test job installs with
+    // --workspaces=false and never builds it. That assertion passed locally and
+    // failed in CI for a reason with nothing to do with host routing.
     const normal = await rawGet("/", { host: "www.userhodium.xyz" });
-    expect(normal).toContain("Merchant Dashboard");
+    expect(normal).not.toContain("Admin · Rhodium");
 
     // Render terminates TLS and proxies, so the original host may arrive only
     // in X-Forwarded-Host. That one fetch can set.
