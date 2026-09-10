@@ -65,14 +65,14 @@ model Product {
 }
 
 model Order {
-  id         String   @id
-  merchantId String   @map("merchant_id")
-  buyerRef   String   @map("buyer_ref")
+  id         String    @id
+  merchantId String    @map("merchant_id")
+  buyerRef   String    @map("buyer_ref")
   items      Json
   amount     Int // kobo
-  rail       String   @default("fiat")
-  status     String   @default("draft")
-  createdAt  DateTime @default(now()) @map("created_at")
+  rail       String    @default("fiat")
+  status     String    @default("draft")
+  createdAt  DateTime  @default(now()) @map("created_at")
   expiresAt  DateTime? @map("expires_at")
 
   merchant Merchant @relation(fields: [merchantId], references: [id])
@@ -176,4 +176,28 @@ model MediaObject {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("media_object")
+}
+
+/// Short-lived state that must be the same on every instance.
+///
+/// Rate-limit windows, one-time sign-in codes and WhatsApp conversation
+/// position all lived in JavaScript Maps inside one process. That works for
+/// exactly one instance and fails the moment there are two: a buyer who
+/// requests an OTP from one and submits it to the other is told the code is
+/// invalid, and every rate limit becomes per-instance, so a cap of 3 per 15
+/// minutes silently becomes 3 x instances.
+///
+/// One table rather than three. These are all "a small value under a key, that
+/// expires", and the alternative is three near-identical tables with three
+/// near-identical sweepers.
+model EphemeralState {
+  /// Namespaced by caller, e.g. "otp:+2348030000001" or "rl:orders:ip:1.2.3.4".
+  key       String   @id
+  /// JSON. Small by construction — a counter, a code hash, a conversation step.
+  value     String
+  expiresAt DateTime @map("expires_at")
+
+  /// The sweeper reads this, and it is the only query that is not by key.
+  @@index([expiresAt])
+  @@map("ephemeral_state")
 }

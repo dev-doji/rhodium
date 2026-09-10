@@ -258,7 +258,7 @@ export function buildApi(app: App): Express {
 
   // Public endpoints that cost real money to call are counted; nothing else
   // is, because a limit that never fires is only a way to break something.
-  const limiter = new RateLimiter();
+  const limiter = new RateLimiter(app.sharedState);
 
   /**
    * "I've sent the money" — ask the PROVIDER, right now.
@@ -678,7 +678,7 @@ export function buildApi(app: App): Express {
     asyncRoute(async (req, res) => {
       const email = String(req.body?.email ?? "").trim().toLowerCase();
 
-      const byEmail = limiter.check(
+      const byEmail = await limiter.check(
         `admin-otp:email:${email}`,
         LIMITS.adminOtpPerEmail.limit,
         LIMITS.adminOtpPerEmail.windowMs,
@@ -693,7 +693,7 @@ export function buildApi(app: App): Express {
         return;
       }
       const ip = clientIp(req);
-      const byIp = limiter.check(
+      const byIp = await limiter.check(
         `admin-otp:ip:${ip}`,
         LIMITS.adminOtpPerIp.limit,
         LIMITS.adminOtpPerIp.windowMs,
@@ -716,7 +716,7 @@ export function buildApi(app: App): Express {
     "/api/admin/auth/verify-otp",
     asyncRoute(async (req, res) => {
       const ip = clientIp(req);
-      const guard = limiter.check(
+      const guard = await limiter.check(
         `admin-verify:ip:${ip}`,
         LIMITS.adminVerifyPerIp.limit,
         LIMITS.adminVerifyPerIp.windowMs,
@@ -1292,7 +1292,7 @@ export function buildApi(app: App): Express {
       // which is what makes an unlimited public endpoint expensive rather than
       // merely noisy.
       const ip = clientIp(req);
-      const byIp = limiter.check(
+      const byIp = await limiter.check(
         `order:ip:${ip}`,
         LIMITS.ordersPerIp.limit,
         LIMITS.ordersPerIp.windowMs,
@@ -1383,7 +1383,7 @@ export function buildApi(app: App): Express {
       // way to make Rhodium spam a stranger — the victim is named in the body,
       // not identified by where the request came from. The IP limit is only a
       // backstop for one source walking many numbers.
-      const byPhone = limiter.check(
+      const byPhone = await limiter.check(
         `otp:phone:${phone}`,
         LIMITS.otpPerPhone.limit,
         LIMITS.otpPerPhone.windowMs,
@@ -1399,7 +1399,7 @@ export function buildApi(app: App): Express {
       }
 
       const ip = clientIp(req);
-      const byIp = limiter.check(`otp:ip:${ip}`, LIMITS.otpPerIp.limit, LIMITS.otpPerIp.windowMs);
+      const byIp = await limiter.check(`otp:ip:${ip}`, LIMITS.otpPerIp.limit, LIMITS.otpPerIp.windowMs);
       if (!byIp.ok) {
         logRefusal("otp:ip", ip, byIp.retryAfter);
         res.set("Retry-After", String(byIp.retryAfter));

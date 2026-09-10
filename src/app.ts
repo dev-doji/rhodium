@@ -27,6 +27,7 @@ import { TractionService } from "./modules/traction/traction-service.js";
 import { AdminAuthService } from "./modules/auth/admin-auth-service.js";
 import { AdminMetricsService, AdminViews } from "./modules/admin/admin-metrics.js";
 import { MockEmailSender, ResendEmailSender, type EmailSender } from "./modules/email/email-sender.js";
+import { MemorySharedStore, type SharedStore } from "./modules/state/shared-store.js";
 import { WalletService } from "./modules/wallet/wallet-service.js";
 import { AuditService, InMemoryAuditSink, type AuditSink } from "./modules/audit/audit-service.js";
 import { InMemoryMetrics, type Metrics } from "./modules/metrics/metrics.js";
@@ -51,6 +52,8 @@ export interface App {
   adminMetrics: AdminMetricsService;
   adminViews: AdminViews;
   email: EmailSender;
+  /** Rate-limit windows and one-time codes, shared across instances. */
+  sharedState: SharedStore;
   wallets: WalletService;
   waTransport: NotificationTransport;
   fx: FxOracle;
@@ -68,6 +71,8 @@ export interface BuildAppDeps {
   objectStore?: ObjectStore;
   /** Override channels (tests use CaptureTransport). Defaults to WhatsApp first. */
   notificationChannels?: NotificationTransport[];
+  /** Shared rate-limit and one-time-code state. Postgres in production. */
+  sharedState?: SharedStore;
 }
 
 /**
@@ -158,6 +163,11 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const reconciliation = new ReconciliationJob(repos, rails, metrics, { pollProvider: true });
   const traction = new TractionService(repos);
 
+  // Rate-limit windows and one-time codes, shared so every instance agrees.
+  // Postgres-backed in production (buildPostgresApp passes one); in-memory here
+  // so a build with no database still runs.
+  const sharedState = deps.sharedState ?? new MemorySharedStore();
+
   // Admin sign-in. Mock mode logs the code rather than sending it, so the flow
   // is exercisable with no Resend account; production refuses to boot with
   // EMAIL_MODE=live and no key (see config).
@@ -196,6 +206,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
     adminAuth,
     adminMetrics,
     adminViews,
+    sharedState,
     email,
     wallets,
     waTransport,

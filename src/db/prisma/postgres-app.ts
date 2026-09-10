@@ -1,5 +1,6 @@
 import { buildApp, type App } from "../../app.js";
 import { loadConfig } from "../../config/index.js";
+import { PostgresSharedStore } from "../../modules/state/shared-store.js";
 import { prisma } from "./client.js";
 import { createPrismaRepositories } from "./prisma-repositories.js";
 import { PrismaIdempotencyStore, PrismaAuditSink } from "./prisma-idempotency.js";
@@ -16,6 +17,9 @@ export function buildPostgresApp(): App {
   return buildApp({
     config,
     repos: createPrismaRepositories(db),
+    // Shared across instances, so a rate limit and a one-time code mean the
+    // same thing on all of them.
+    sharedState: new PostgresSharedStore(db),
     idempotency: new PrismaIdempotencyStore(db),
     auditSink: new PrismaAuditSink(db),
   });

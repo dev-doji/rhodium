@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import type { SharedStore } from "../modules/state/shared-store.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger("rate-limit");
@@ -7,17 +8,13 @@ const log = logger("rate-limit");
  * Fixed-window rate limiting for the handful of public endpoints that cost
  * real money to call.
  *
- * In-memory on purpose. A shared store would be correct across several
- * instances, but this runs as one Render service, and reaching for Redis to
- * protect two endpoints would add a dependency whose own downtime becomes a
- * new way for checkout to fail. The limitation is real and worth stating:
- * running more than one instance divides every limit by the instance count.
+ * Backed by shared state rather than process memory. It was in-memory, on the
+ * reasoning that this runs as one Render service — true at the time, and the
+ * comment here said plainly that a second instance would divide every limit by
+ * the instance count. That limitation is now the thing standing between the
+ * platform and scaling out, so it is gone: the counter lives in Postgres and is
+ * incremented atomically, so ten instances share one window.
  */
-
-interface Window {
-  count: number;
-  resetAt: number;
-}
 
 export interface Decision {
   ok: boolean;
@@ -27,53 +24,34 @@ export interface Decision {
 }
 
 export class RateLimiter {
-  private windows = new Map<string, Window>();
-  private lastPrune = 0;
-
-  constructor(private now: () => number = Date.now) {}
+  /**
+   * Backed by shared state, so a limit means the same thing on every instance.
+   *
+   * It used to hold windows in a Map inside one process. With two instances a
+   * cap of 3 per 15 minutes silently became 3 x instances — on the endpoint
+   * that sends a real WhatsApp message to whatever number is in the request
+   * body, which is the one limit that protects someone other than us.
+   */
+  constructor(private store: SharedStore) {}
 
   /**
    * Count one hit against `key`. Returns whether it is allowed.
    *
    * Fixed window rather than sliding: a sliding window is fairer at the
    * boundary, but it needs per-hit timestamps, and the abuse this defends
-   * against is a loop sending hundreds of requests — which a fixed window
-   * stops just as dead, with one integer per key.
+   * against is a loop sending hundreds of requests — which a fixed window stops
+   * just as dead, with one integer per key.
    */
-  check(key: string, limit: number, windowMs: number): Decision {
-    const t = this.now();
-    this.prune(t);
-
-    const existing = this.windows.get(key);
-    if (!existing || existing.resetAt <= t) {
-      this.windows.set(key, { count: 1, resetAt: t + windowMs });
-      return { ok: true, retryAfter: 0, remaining: limit - 1 };
-    }
-
-    existing.count += 1;
-    if (existing.count > limit) {
+  async check(key: string, limit: number, windowMs: number): Promise<Decision> {
+    const { count, resetAt } = await this.store.bump(key, windowMs);
+    if (count > limit) {
       return {
         ok: false,
-        retryAfter: Math.max(1, Math.ceil((existing.resetAt - t) / 1000)),
+        retryAfter: Math.max(1, Math.ceil((resetAt.getTime() - Date.now()) / 1000)),
         remaining: 0,
       };
     }
-    return { ok: true, retryAfter: 0, remaining: limit - existing.count };
-  }
-
-  /** Drop expired windows so a long-running process does not grow forever. */
-  private prune(t: number): void {
-    if (t - this.lastPrune < 60_000) return;
-    this.lastPrune = t;
-    for (const [key, w] of this.windows) {
-      if (w.resetAt <= t) this.windows.delete(key);
-    }
-  }
-
-  /** Testing seam. */
-  reset(): void {
-    this.windows.clear();
-    this.lastPrune = 0;
+    return { ok: true, retryAfter: 0, remaining: Math.max(0, limit - count) };
   }
 }
 
