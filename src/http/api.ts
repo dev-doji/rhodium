@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import type { App } from "../app.js";
 import { asyncRoute, errorHandler } from "./errors.js";
 import { renderErrorPage, wantsHtml } from "./error-page.js";
+import { receiptCache } from "../modules/receipt/receipt-cache.js";
 import { requireMerchant, type AuthedRequest } from "./auth-middleware.js";
 import { ledgerToCsv, ledgerToStatement } from "./export.js";
 import { RateLimiter, clientIp, LIMITS, logRefusal } from "./rate-limit.js";
@@ -353,7 +354,12 @@ export function buildApi(app: App): Express {
       res.set("Content-Type", "image/png");
       res.set("Content-Disposition", `inline; filename="receipt-${data.orderRef}.png"`);
       res.set("Cache-Control", "public, max-age=31536000, immutable");
-      res.send(receiptPng(data));
+      // Rendered once. The immutable header above already told BROWSERS not to
+      // ask twice, but the server re-rendered for every request that did — and
+      // WhatsApp, a second device, or a shared link all miss that cache. resvg
+      // is the only CPU-bound work on a request path, and it blocks everything
+      // else while it runs.
+      res.send(receiptCache.get(`png:${data.orderRef}`, () => receiptPng(data)));
     }),
   );
 
@@ -369,7 +375,9 @@ export function buildApi(app: App): Express {
       res.set("Content-Type", "application/pdf");
       res.set("Content-Disposition", `attachment; filename="receipt-${data.orderRef}.pdf"`);
       res.set("Cache-Control", "public, max-age=31536000, immutable");
-      res.send(await receiptPdf(data));
+      // Same reasoning as the PNG, and the PDF is the dearer of the two. Keyed
+      // by format as well as order: the same receipt is different bytes here.
+      res.send(await receiptCache.getAsync(`pdf:${data.orderRef}`, () => receiptPdf(data)));
     }),
   );
 
@@ -1260,6 +1268,12 @@ export function buildApi(app: App): Express {
   server.get(
     "/api/shop/:handle",
     asyncRoute(async (req, res) => {
+      // A product list changes a few times a day and is read by every visitor.
+      // Thirty seconds is long enough to absorb a rush and short enough that a
+      // merchant who edits a price sees it while she is still looking at the
+      // page. Nothing here is money data — the price a buyer PAYS is fixed when
+      // the order is created, not read from this response.
+      res.set("Cache-Control", "public, max-age=30");
       const merchant = await sellableShop(String(req.params.handle));
       const products = await app.repos.products.listByMerchant(merchant.id);
       res.json({ shop: publicShop(merchant, products) });
@@ -1612,7 +1626,31 @@ export function buildApi(app: App): Express {
     }
     next();
   });
-  server.use(express.static(resolve("public")));
+  /**
+   * Static assets, cached properly.
+   *
+   * These were served with max-age=0, so every buyer re-downloaded the same
+   * four woff2 files on every page — on Nigerian mobile data, for fonts that
+   * have not changed since they were committed.
+   *
+   * Fonts get a year and `immutable` because their filenames carry a content
+   * hash from Google's CDN; a changed font is a changed filename. HTML pages
+   * get a short revalidate instead: they are edited, and a buyer must not be
+   * shown a checkout from last week.
+   */
+  server.use(
+    express.static(resolve("public"), {
+      setHeaders: (res, filePath) => {
+        if (/\.(woff2?|ttf|otf)$/i.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else if (/\.html$/i.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=3600");
+        }
+      },
+    }),
+  );
 
   // Serve product images (local object store) + built dashboard, if present.
   /**
@@ -1642,7 +1680,21 @@ export function buildApi(app: App): Express {
   server.use("/media", express.static(resolve("media-store")));
   const dashboardDist = resolve("dashboard/dist");
   if (existsSync(dashboardDist)) {
-    server.use(express.static(dashboardDist));
+    // Vite fingerprints every asset it emits (index-CciYLXJ8.js), so those can
+    // be cached forever; index.html itself must not be, or a merchant keeps
+    // loading a build whose assets have been deleted.
+    server.use(
+      express.static(dashboardDist, {
+        setHeaders: (res, filePath) => {
+          res.setHeader(
+            "Cache-Control",
+            /\.html$/i.test(filePath)
+              ? "public, max-age=0, must-revalidate"
+              : "public, max-age=31536000, immutable",
+          );
+        },
+      }),
+    );
     /**
      * The merchant dashboard, at the root only.
      *
