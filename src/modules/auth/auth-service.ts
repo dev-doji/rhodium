@@ -5,10 +5,10 @@ import { normalisePhone } from "../../lib/phone.js";
 import { UnauthorizedError, ValidationError } from "../../lib/errors.js";
 import { loadConfig } from "../../config/index.js";
 import { randomInt } from "node:crypto";
+import { MemorySharedStore, type SharedStore } from "../state/shared-store.js";
 
 interface Challenge {
   codeHash: string;
-  expiresAt: Date;
   attempts: number;
 }
 
@@ -18,23 +18,34 @@ interface Challenge {
  * HMAC-signed tokens so the API stays horizontally scalable.
  */
 export class AuthService {
-  private challenges = new Map<string, Challenge>();
-
+  /**
+   * Challenges live in shared state, not this process.
+   *
+   * They were a Map. With two instances, a merchant who received her code from
+   * one and typed it into the other was told it was invalid — a sign-in that
+   * fails at random, more often the busier the platform gets.
+   */
   constructor(
     private repos: Repositories,
     private clock: Clock,
     private deliverOtp: (phone: string, code: string) => Promise<void>,
+    private store: SharedStore = new MemorySharedStore(),
   ) {}
+
+  private key(phone: string): string {
+    return `otp:merchant:${phone}`;
+  }
 
   async requestOtp(rawPhone: string): Promise<void> {
     const phone = normalisePhone(rawPhone) || rawPhone;
     if (!/^\+?\d{7,15}$/.test(phone)) throw new ValidationError("invalid phone");
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-    this.challenges.set(phone, {
-      codeHash: hmacSign(code, this.secret()),
-      expiresAt: new Date(this.clock.now().getTime() + 5 * 60_000),
-      attempts: 0,
-    });
+    const ttl = 5 * 60_000;
+    await this.store.put(
+      this.key(phone),
+      { codeHash: hmacSign(code, this.secret()), attempts: 0 },
+      ttl,
+    );
     await this.deliverOtp(phone, code);
   }
 
@@ -44,21 +55,22 @@ export class AuthService {
     // a user who types the number differently on the second screen must still
     // land on the same key.
     const phone = normalisePhone(rawPhone) || rawPhone;
-    const challenge = this.challenges.get(phone);
+    const key = this.key(phone);
+    // The store treats an expired row as absent, so expiry needs no separate
+    // check here — and cannot be missed because a sweeper has not run.
+    const challenge = await this.store.get<Challenge>(key);
     if (!challenge) throw new UnauthorizedError("no otp requested");
-    if (this.clock.now() > challenge.expiresAt) {
-      this.challenges.delete(phone);
-      throw new UnauthorizedError("otp expired");
-    }
     if (challenge.attempts >= 5) {
-      this.challenges.delete(phone);
+      await this.store.drop(key);
       throw new UnauthorizedError("too many attempts");
     }
-    challenge.attempts++;
     if (!hmacVerify(code, challenge.codeHash, this.secret())) {
+      // Write the attempt back before refusing, or a wrong guess costs nothing
+      // and the cap of five never arrives.
+      await this.store.put(key, { ...challenge, attempts: challenge.attempts + 1 }, 5 * 60_000);
       throw new UnauthorizedError("invalid otp");
     }
-    this.challenges.delete(phone);
+    await this.store.drop(key);
 
     const merchant = await this.repos.merchants.byPhone(phone);
     if (!merchant) {

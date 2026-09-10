@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { AdminAuthService } from "../src/modules/auth/admin-auth-service.js";
 import { MockEmailSender } from "../src/modules/email/email-sender.js";
 import { FixedClock } from "../src/lib/clock.js";
+import { MemorySharedStore } from "../src/modules/state/shared-store.js";
 
 /**
  * This guards the screen that shows every merchant and every naira on the
@@ -92,11 +93,50 @@ describe("the code itself", () => {
   });
 
   it("expires", async () => {
-    const { auth, email, clock } = make();
+    // Expiry now belongs to the shared store, not this service's clock — the
+    // challenge moved into Postgres so an admin can receive a code from one
+    // instance and use it on another, and TTL there is real wall-clock time
+    // that no injected clock can advance.
+    //
+    // Expiring the row is exactly what the store does when the TTL passes, so
+    // that is what is simulated here; the TTL itself is covered in
+    // shared-store.test.ts, against both implementations including Postgres.
+    const store = new MemorySharedStore();
+    const email = new MockEmailSender();
+    const auth = new AdminAuthService({
+      clock: new FixedClock(new Date("2026-09-07T12:00:00Z")),
+      email,
+      store,
+      adminEmails: "owner@fonio.ng",
+      secret: () => SECRET,
+    });
+
     await auth.requestOtp("owner@fonio.ng");
     const code = codeFrom(email);
-    clock.advance(11 * 60_000);
+    await store.drop("otp:admin:owner@fonio.ng");
+
     await expect(auth.verifyOtp("owner@fonio.ng", code)).rejects.toThrow();
+  });
+
+  it("survives a code issued by one instance and used on another", async () => {
+    // The reason the challenge moved out of process memory: two instances
+    // sharing one store must accept each other's codes. Previously the second
+    // instance had never heard of the challenge and refused a valid code.
+    const store = new MemorySharedStore();
+    const email = new MockEmailSender();
+    const deps = {
+      clock: new FixedClock(new Date("2026-09-07T12:00:00Z")),
+      email,
+      store,
+      adminEmails: "owner@fonio.ng",
+      secret: () => SECRET,
+    };
+    const instanceA = new AdminAuthService(deps);
+    const instanceB = new AdminAuthService(deps);
+
+    await instanceA.requestOtp("owner@fonio.ng");
+    const { token } = await instanceB.verifyOtp("owner@fonio.ng", codeFrom(email));
+    expect(instanceA.verifyToken(token)).toBe("owner@fonio.ng");
   });
 
   it("is burned after five wrong guesses", async () => {

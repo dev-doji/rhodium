@@ -3,6 +3,7 @@ import type { Clock } from "../../lib/clock.js";
 import { hmacSign, hmacVerify } from "../../lib/crypto.js";
 import { UnauthorizedError, ValidationError } from "../../lib/errors.js";
 import type { EmailSender } from "../email/email-sender.js";
+import { MemorySharedStore, type SharedStore } from "../state/shared-store.js";
 
 /** How long a code is good for. Long enough to switch to a mail app and back. */
 const OTP_TTL_MS = 10 * 60_000;
@@ -19,13 +20,18 @@ const SESSION_TTL_MS = 12 * 60 * 60_000;
 
 interface Challenge {
   codeHash: string;
-  expiresAt: Date;
   attempts: number;
 }
 
 export interface AdminAuthDeps {
   clock: Clock;
   email: EmailSender;
+  /**
+   * Shared, so a code issued by one instance is accepted by another. These were
+   * held in a Map: with two instances an admin received a code from one and was
+   * refused by the other.
+   */
+  store?: SharedStore;
   /** Raw ADMIN_EMAILS value — comma-separated. */
   adminEmails: string;
   secret: () => string;
@@ -40,9 +46,15 @@ export interface AdminAuthDeps {
  * WhatsApp relationship, and a much higher blast radius if a session leaks.
  */
 export class AdminAuthService {
-  private challenges = new Map<string, Challenge>();
+  private readonly store: SharedStore;
 
-  constructor(private deps: AdminAuthDeps) {}
+  constructor(private deps: AdminAuthDeps) {
+    this.store = deps.store ?? new MemorySharedStore();
+  }
+
+  private key(email: string): string {
+    return `otp:admin:${email}`;
+  }
 
   /** The configured allowlist, normalised. Empty means nobody can sign in. */
   get admins(): string[] {
@@ -72,11 +84,11 @@ export class AdminAuthService {
     if (!this.isAdmin(email)) return;
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-    this.challenges.set(email, {
-      codeHash: hmacSign(code, this.deps.secret()),
-      expiresAt: new Date(this.deps.clock.now().getTime() + OTP_TTL_MS),
-      attempts: 0,
-    });
+    await this.store.put(
+      this.key(email),
+      { codeHash: hmacSign(code, this.deps.secret()), attempts: 0 },
+      OTP_TTL_MS,
+    );
 
     await this.deps.email.send({
       to: email,
@@ -91,7 +103,9 @@ export class AdminAuthService {
   /** Verifies the code and returns a session token. */
   async verifyOtp(rawEmail: string, code: string): Promise<{ token: string; email: string }> {
     const email = normaliseEmail(rawEmail);
-    const challenge = this.challenges.get(email);
+    const key = this.key(email);
+    // Expiry is enforced by the store, which treats an expired row as absent.
+    const challenge = await this.store.get<Challenge>(key);
     // One message for every failure below, so a wrong code and an address that
     // was never sent one are indistinguishable from outside.
     const reject = (): never => {
@@ -99,19 +113,19 @@ export class AdminAuthService {
     };
 
     if (!challenge) reject();
-    if (this.deps.clock.now() > challenge!.expiresAt) {
-      this.challenges.delete(email);
-      reject();
-    }
     if (challenge!.attempts >= MAX_ATTEMPTS) {
-      this.challenges.delete(email);
+      await this.store.drop(key);
       reject();
     }
-    challenge!.attempts++;
-    if (!hmacVerify(code, challenge!.codeHash, this.deps.secret())) reject();
+    if (!hmacVerify(code, challenge!.codeHash, this.deps.secret())) {
+      // The attempt must be written back before refusing, or a wrong guess
+      // costs nothing and the cap of five never arrives.
+      await this.store.put(key, { ...challenge!, attempts: challenge!.attempts + 1 }, OTP_TTL_MS);
+      reject();
+    }
 
     // Burned on success as well as failure: a code is good exactly once.
-    this.challenges.delete(email);
+    await this.store.drop(key);
     // Re-checked at the moment of issue, not just at request: an address
     // removed from the allowlist between the two must not get a session.
     if (!this.isAdmin(email)) reject();

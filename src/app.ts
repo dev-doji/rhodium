@@ -157,16 +157,22 @@ export function buildApp(deps: BuildAppDeps = {}): App {
       ? new MediaFetcher({ accessToken: config.WHATSAPP_ACCESS_TOKEN })
       : undefined,
   );
-  const auth = new AuthService(repos, clock, async (phone, code) => {
-    await waTransport.send(phone, `Your Rhodium code is ${code}. Expires in 5 min.`);
-  });
-  const reconciliation = new ReconciliationJob(repos, rails, metrics, { pollProvider: true });
-  const traction = new TractionService(repos);
-
   // Rate-limit windows and one-time codes, shared so every instance agrees.
   // Postgres-backed in production (buildPostgresApp passes one); in-memory here
   // so a build with no database still runs.
   const sharedState = deps.sharedState ?? new MemorySharedStore();
+
+  const auth = new AuthService(
+    repos,
+    clock,
+    async (phone, code) => {
+      await waTransport.send(phone, `Your Rhodium code is ${code}. Expires in 5 min.`);
+    },
+    sharedState,
+  );
+  const reconciliation = new ReconciliationJob(repos, rails, metrics, { pollProvider: true });
+  const traction = new TractionService(repos);
+
 
   // Admin sign-in. Mock mode logs the code rather than sending it, so the flow
   // is exercisable with no Resend account; production refuses to boot with
@@ -178,6 +184,7 @@ export function buildApp(deps: BuildAppDeps = {}): App {
   const adminAuth = new AdminAuthService({
     clock,
     email,
+    store: sharedState,
     adminEmails: config.ADMIN_EMAILS,
     secret: () => config.APP_SECRET,
   });
