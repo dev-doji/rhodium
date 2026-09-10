@@ -23,15 +23,37 @@ async function main(): Promise<void> {
   const app = makeApp();
   const server = buildApi(app);
 
-  // Daily reconciliation (§2.5). Cron in prod; setInterval is fine for the MVP.
+  // Expired rate-limit windows and spent one-time codes. Cheap and indexed, and
+  // safe to run on every instance — deleting an already-deleted row is a no-op.
+  // Without it ephemeral_state grows for the life of the deployment.
+  const sweeper = setInterval(() => {
+    app.sharedState
+      .sweep()
+      .then((removed) => {
+        if (removed > 0) log.info({ removed }, "swept expired ephemeral state");
+      })
+      .catch((err) => log.warn({ err: err.message }, "sweep failed"));
+  }, 5 * 60_000);
+  sweeper.unref();
+
+  // Daily reconciliation (§2.5).
+  //
+  // Guarded by RUN_BACKGROUND_JOBS because it walks every payment and every
+  // merchant's ledger. On one instance that is fine; on several, all of them
+  // would run the same full scan at the same moment, competing for the
+  // connections checkout needs. One instance should have it on.
   const DAY = 24 * 3600 * 1000;
-  const timer = setInterval(() => {
-    app.reconciliation
-      .run()
-      .then((r) => log.info({ clean: r.clean, drift: r.drift.length }, "reconciliation ran"))
-      .catch((err) => log.error({ err: err.message }, "reconciliation failed"));
-  }, DAY);
-  timer.unref();
+  if (config.RUN_BACKGROUND_JOBS) {
+    const timer = setInterval(() => {
+      app.reconciliation
+        .run()
+        .then((r) => log.info({ clean: r.clean, drift: r.drift.length }, "reconciliation ran"))
+        .catch((err) => log.error({ err: err.message }, "reconciliation failed"));
+    }, DAY);
+    timer.unref();
+  } else {
+    log.info("RUN_BACKGROUND_JOBS=false — reconciliation runs on another instance");
+  }
 
   const http = server.listen(config.PORT, () => {
     log.info(

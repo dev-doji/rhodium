@@ -16,6 +16,17 @@ services:
       npm --prefix dashboard run build &&
       npm run build:prod
     startCommand: npx prisma migrate deploy && npm run start:prod
+    # SCALING — the load audit measured ~610 req/s per instance, and Postgres
+    # accepts 100 connections in total.
+    #
+    #   DATABASE_URL should carry ?connection_limit=N so instances cannot
+    #   collectively exhaust those 100. With Prisma's default (num_cpus*2+1)
+    #   and several instances, the fleet can. Neon's POOLED endpoint handles
+    #   this for you; a direct endpoint does not.
+    #
+    #   RUN_BACKGROUND_JOBS=false on every instance but one. Reconciliation
+    #   walks every payment and every merchant's ledger; running it on all of
+    #   them at once competes for the connections checkout needs.
     # NOTE: assets/fonts/ ships DejaVu with the repo. Receipt PNGs are rendered
     # server-side by resvg, and this container has almost no system fonts — the
     # naira sign in particular would render as a tofu box without them.

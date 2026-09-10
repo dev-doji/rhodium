@@ -159,6 +159,19 @@ const schema = z.object({
    * is the worse mistake.
    */
   ONSWITCH_MIN_KOBO: z.coerce.number().int().nonnegative().default(1_365_00),
+
+  /**
+   * Whether THIS instance runs the background jobs.
+   *
+   * Reconciliation walks every payment and every merchant's ledger. Running it
+   * inside the web process was fine as one instance; with several, every one of
+   * them runs the same full scan at the same time, competing for the same
+   * connections the checkout needs.
+   *
+   * Defaults to true so a single-instance deployment keeps working untouched.
+   * Set it to false on all but one instance when scaling out.
+   */
+  RUN_BACKGROUND_JOBS: bool(true),
   // Asset buyers pay in — "chain:token". OnSwitch off-ramp supports USDT on
   // tron/ethereum/polygon (not base). tron:usdt (USDT-TRC20) is cheapest + most
   // popular in Nigeria. NOTE: this is USDT on those chains — NOT Quai's USDT.
