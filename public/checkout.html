@@ -434,7 +434,7 @@
         }
       };
 
-      pollPaid();
+      waitForPayment();
     }
 
     /**
@@ -514,7 +514,7 @@
       // Poll regardless of how the buyer pays: they may send from another
       // device or a different wallet entirely, and the server's word is what
       // decides the order is paid.
-      pollPaid();
+      waitForPayment();
     }
 
     function renderBankTransfer(inst) {
@@ -548,7 +548,7 @@
         } catch { /* clipboard blocked — the number is on screen anyway */ }
       };
       wireSentButton("Checking with the bank…");
-      pollPaid();
+      waitForPayment();
     }
 
     /**
@@ -798,6 +798,58 @@
      * success on the server's word. A page left open is fine; a false
      * confirmation is not.
      */
+    /**
+     * Wait for the server to say the order is paid.
+     *
+     * Prefers one open connection over repeated asking. The page used to poll
+     * every 0.7 seconds; at twenty thousand waiting buyers that is twenty-eight
+     * thousand requests a second against a server that serves about six
+     * hundred. One connection that stays quiet until there is news costs
+     * essentially nothing.
+     *
+     * Polling remains as the fallback, because EventSource is missing in a few
+     * in-app browsers and some corporate proxies break streaming responses. A
+     * buyer on one of those still gets paid — just the old way.
+     */
+    function waitForPayment() {
+      if (typeof EventSource !== "function") { pollPaid(); return; }
+
+      let settled = false;
+      let stream;
+      try {
+        stream = new EventSource(`/api/checkout/${orderId}/events`);
+      } catch {
+        waitForPayment();
+        return;
+      }
+
+      stream.addEventListener("status", (message) => {
+        let payload;
+        try { payload = JSON.parse(message.data); } catch { return; }
+        if (payload.status === "paid") {
+          settled = true;
+          stream.close();
+          paid();
+        } else if (payload.status === "expired" || payload.status === "cancelled") {
+          settled = true;
+          stream.close();
+          stillWaiting(`This order is ${payload.status}. Ask the seller for a new link.`);
+        }
+      });
+
+      stream.onerror = () => {
+        // EventSource reconnects on its own, so an error is not necessarily
+        // fatal. Only fall back once it has given up entirely — otherwise a
+        // brief network blip would start a poll loop running alongside a
+        // stream that recovers, and the page would do both forever.
+        if (settled) return;
+        if (stream.readyState === EventSource.CLOSED) {
+          stream.close();
+          waitForPayment();
+        }
+      };
+    }
+
     async function pollPaid() {
       let attempt = 0;
       for (;;) {

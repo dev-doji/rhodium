@@ -704,3 +704,103 @@ describe("the off-ramp has a floor", () => {
     expect(methods.cryptoUnavailable).toBeUndefined();
   });
 });
+
+describe("the checkout is told, not asked", () => {
+  it("pushes the moment the order is paid, over one connection", async () => {
+    // The page polled every 0.7 seconds while a buyer waited. Measured, each
+    // poll cost 5.8 database round trips — so twenty thousand people waiting on
+    // transfers was twenty-eight thousand requests a second against a server
+    // that serves about six hundred. One connection that stays quiet until
+    // there is news costs almost nothing.
+    const merchant = await app.repos.merchants.create({
+      id: "mch_sse",
+      phone: "+2348090005050",
+      businessName: "Stream Shop",
+      status: "active",
+      kycState: "verified",
+      cryptoEnabled: true,
+      // Settles to her own wallet, so this routes to the EVM rail rather than
+      // the off-ramp — which would need a bank account she does not have here.
+      cryptoSettlement: "usdc",
+      quaiAddress: "0x000000000000000000000000000000000000dEaD",
+    });
+    const product = await app.commerce.createProduct({
+      merchantId: merchant.id,
+      name: "Streamed item",
+      price: 250_000,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: merchant.id,
+      buyerRef: "+2348090005050",
+      lines: [{ productId: product.id, qty: 1 }],
+      rail: "crypto",
+    });
+    await app.payments.requestPayment(order.id);
+
+    const stream = await fetch(`${base}/api/checkout/${order.id}/events`);
+    expect(stream.headers.get("content-type")).toContain("text/event-stream");
+    const reader = stream.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    // The server speaks first: the current state arrives without being asked.
+    const opening = await reader.read();
+    buffer += decoder.decode(opening.value, { stream: true });
+    expect(buffer).toContain("event: status");
+    expect(buffer).toContain("awaiting_payment");
+
+    // Pay it the way the real flow does.
+    await fetch(`${base}/api/crypto/simulate-pay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id }),
+    });
+
+    // The push arrives from the event bus, not from a timer — so it must land
+    // well inside the 10s database fallback.
+    const deadline = Date.now() + 5000;
+    while (!buffer.includes('"paid"') && Date.now() < deadline) {
+      const next = await reader.read();
+      if (next.done) break;
+      buffer += decoder.decode(next.value, { stream: true });
+    }
+    expect(buffer).toContain('"paid"');
+    await reader.cancel();
+  });
+
+  it("says paid immediately for an order that is already paid", async () => {
+    // Someone reopening a link must not wait on a tick to be told what already
+    // happened. Builds its own paid order rather than reusing the previous
+    // test's — a test that depends on another having run first fails for
+    // reasons that have nothing to do with what it checks.
+    const product = await app.commerce.createProduct({
+      merchantId: "mch_sse",
+      name: "Already paid item",
+      price: 150_000,
+    });
+    const order = await app.commerce.createOrder({
+      merchantId: "mch_sse",
+      buyerRef: "+2348090006060",
+      lines: [{ productId: product.id, qty: 1 }],
+      rail: "crypto",
+    });
+    await app.payments.requestPayment(order.id);
+    await fetch(`${base}/api/crypto/simulate-pay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderId: order.id }),
+    });
+    expect((await app.repos.orders.byId(order.id))!.status).toBe("paid");
+
+    // The stream should say so and close, without waiting for the fallback.
+    const stream = await fetch(`${base}/api/checkout/${order.id}/events`);
+    const text = await stream.text();
+    expect(text).toContain('"paid"');
+  });
+
+  it("404s for an order that does not exist", async () => {
+    const res = await fetch(`${base}/api/checkout/ord_nope/events`);
+    expect(res.status).toBe(404);
+    await res.text();
+  });
+});

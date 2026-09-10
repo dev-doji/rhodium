@@ -425,6 +425,102 @@ export function buildApi(app: App): Express {
   );
 
   // --- Crypto buyer-facing checkout ---
+  /**
+   * Tell the buyer the moment their order is paid, instead of being asked.
+   *
+   * The checkout page used to poll this server every 0.7 seconds while waiting.
+   * Measured, each poll cost 5.8 database round trips — so twenty thousand
+   * people waiting on transfers was not twenty thousand requests, it was
+   * twenty-eight thousand per SECOND, against a measured ceiling of about six
+   * hundred. This one interval was the largest multiplier in the system.
+   *
+   * Now the page opens one connection and the server speaks first.
+   *
+   * Two ways an order is noticed as paid, because neither alone is enough:
+   *
+   *   The event bus — instant, and covers the ordinary case where the webhook
+   *   that confirmed the payment arrived at THIS instance.
+   *
+   *   A slow database check — because with several instances the webhook lands
+   *   on one of them and the buyer is connected to another, which would
+   *   otherwise never hear. At 10s this costs one query per waiting buyer per
+   *   ten seconds, against roughly eight per second before.
+   */
+  server.get(
+    "/api/checkout/:orderId/events",
+    asyncRoute(async (req, res) => {
+      const orderId = String(req.params.orderId);
+      const order = await app.repos.orders.byId(orderId);
+      if (!order) throw new NotFoundError("order", { id: orderId });
+
+      res.set({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        // Render and Cloudflare both buffer responses by default, which would
+        // hold every event until the stream closed — the opposite of the point.
+        "X-Accel-Buffering": "no",
+      });
+      res.flushHeaders?.();
+
+      let closed = false;
+      // Declared before finish() so the already-paid path below can call it.
+      // As consts assigned later they sat in the temporal dead zone, and an
+      // order that was paid before the page opened threw instead of answering
+      // — the one case where the stream has news immediately.
+      let fallback: ReturnType<typeof setInterval> | undefined;
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+
+      const send = (event: string, data: unknown): void => {
+        if (closed) return;
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const finish = (status: string): void => {
+        if (closed) return;
+        send("status", { status });
+        closed = true;
+        clearInterval(fallback);
+        clearInterval(heartbeat);
+        res.end();
+      };
+
+      // Say the current state immediately: an order already paid when the page
+      // opens must not wait for a tick to find out.
+      if (order.status === "paid") {
+        finish("paid");
+        return;
+      }
+      send("status", { status: order.status });
+
+      const onPaid = async (event: { name: string } & Record<string, unknown>): Promise<void> => {
+        if (event.orderId === orderId) finish("paid");
+      };
+      app.bus.on("order.paid", onPaid as never);
+
+      fallback = setInterval(() => {
+        void (async () => {
+          const fresh = await app.repos.orders.byId(orderId).catch(() => null);
+          if (!fresh) return;
+          if (fresh.status === "paid") finish("paid");
+          else if (fresh.status === "expired" || fresh.status === "cancelled") finish(fresh.status);
+        })();
+      }, 10_000);
+
+      // Proxies drop a silent connection. A comment line is not an event, so it
+      // costs the client nothing to receive.
+      heartbeat = setInterval(() => {
+        if (!closed) res.write(": keep-alive\n\n");
+      }, 20_000);
+
+      req.on("close", () => {
+        closed = true;
+        clearInterval(fallback);
+        clearInterval(heartbeat);
+      });
+    }),
+  );
+
   // Public order + payment instruction for the checkout page (no auth: buyer-facing).
   server.get(
     "/api/checkout/:orderId",
