@@ -11,8 +11,10 @@ import { Button, FloatCard, SaleAlertCard, WhatsAppIcon } from "./ui";
  * past the window, because a hero you have to scroll to finish is not a hero.
  *
  * Height comes first. `h-[calc(100vh-6.5rem)]` is the viewport minus the header,
- * capped at 48rem so a tall window does not stretch the section past what the
- * copy needs. That makes the FRAME wider than the file, and object-cover has to
+ * so the hero fills the window and there is no strip of the next section
+ * showing under it. The cap is 62vw rather than a flat rem, because the only
+ * window that must not get its full height is a narrow, tall one, where the
+ * image would scale up until she sat under the copy. That makes the FRAME wider than the file, and object-cover has to
  * take the difference out of something.
  *
  * So the file is built to have something worthless to take. `hero_wide.jpg` is
@@ -39,7 +41,7 @@ export function Hero() {
   return (
     <section
       id="top"
-      className="relative isolate flex flex-col overflow-hidden bg-[#e8cdb0] lg:h-[calc(100vh-6.5rem)] lg:max-h-[48rem] lg:min-h-[max(32rem,37vw)] lg:bg-[url('/img/hero_wide.jpg')] lg:bg-cover lg:bg-right lg:bg-no-repeat"
+      className="relative isolate flex flex-col overflow-hidden bg-[#e8cdb0] lg:h-[calc(100vh-6.5rem)] lg:max-h-[62vw] lg:min-h-[max(32rem,37vw)] lg:bg-[url('/img/hero_wide.jpg')] lg:bg-cover lg:bg-right lg:bg-no-repeat"
     >
       <div className="relative order-1 mx-auto w-full max-w-7xl px-5 pb-10 pt-12 sm:px-8 lg:pb-40 lg:pt-14 xl:pt-20">
         <div className="max-w-xl lg:max-w-md xl:max-w-lg">
@@ -84,38 +86,46 @@ export function Hero() {
       </div>
 
       {/*
-        One grid under the photo on small screens; from `lg` the three cards
-        cascade left-to-right across the empty sweep, each one stepped so they
-        read as three separate things rather than a stack in a corner. They sit
-        below the copy and left of her at every width — at 1024px she begins
-        around x=520, which is what holds the `lg` positions in tighter than the
-        `xl` ones.
+        One grid under the photo on small screens. From `lg` the cards are
+        placed, and from `xl` two of them are placed against HER rather than
+        against the text column: the alert beside her phone, the ledger down by
+        her front foot.
 
-        The wrapper drops to `display:block` at `lg` so the grid's track sizing
-        stops applying to children that have left the flow, and the whole
-        overlay is pointer-events:none — it covers the CTA, and without that it
-        would swallow every click on it. Nothing in it is interactive.
+        That works because both offsets are written in the same terms the
+        background is drawn in. The photo is anchored right and scaled to the
+        section's height, so a distance measured from its right edge in source
+        pixels is `sourcePx / 940 * heroHeight` — hence the calc()s below, where
+        0.609 puts the alert's right edge just left of the phone (source x=1120)
+        and 0.821 puts the ledger's just left of her front shoe (source x=920).
+        Tops and bottoms are percentages for the same reason: the image's height
+        IS the section's height, so a percentage tracks her exactly.
+
+        Between `lg` and `xl` they stay in the old cascade — at 1024px she
+        begins around x=520 and there is no room beside her for anything.
+
+        The overlay covers the CTA, so it is pointer-events:none; without that
+        it would swallow every click on it. Nothing in it is interactive.
       */}
       <div className="order-3 px-5 pb-12 pt-6 sm:px-8 sm:pt-8 lg:pointer-events-none lg:absolute lg:inset-0 lg:p-0">
-        <div className="mx-auto grid w-full max-w-7xl gap-3 sm:grid-cols-3 lg:relative lg:block lg:h-full">
+        <div className="mx-auto grid w-full max-w-7xl gap-3 sm:grid-cols-3 lg:relative lg:block lg:h-full lg:max-w-none">
           <FloatCard
             title="Transfer confirmed in"
             value={heroStats.confirm.value}
             note="No screenshot needed"
-            className="sm:order-first lg:absolute lg:bottom-10 lg:left-8 lg:w-52"
+            className="sm:order-first lg:absolute lg:bottom-10 lg:left-[calc(max(0px,(100vw-80rem)/2)+2rem)] lg:w-52"
           />
           <SaleAlertCard
             shop={heroStats.sale.shop}
             amount={heroStats.sale.amount}
             item={heroStats.sale.item}
             when={heroStats.sale.when}
-            className="lg:absolute lg:bottom-[9.5rem] lg:left-[12rem] lg:w-60 xl:left-[20rem]"
+            className="lg:absolute lg:bottom-[9.5rem] lg:left-[12rem] lg:w-60 xl:bottom-auto xl:left-auto xl:top-[26%] xl:right-[calc((100vh-6.5rem)*0.609)]"
           />
           <FloatCard
             title="Today's sales · example"
             value={heroStats.ledger.amount}
             note={heroStats.ledger.delta}
-            className="sm:order-last lg:absolute lg:bottom-10 lg:left-[17rem] lg:w-52 xl:left-[32rem]"
+            className="sm:order-last lg:absolute lg:bottom-10 lg:left-[17rem] lg:w-52 xl:left-auto xl:bottom-[6%] xl:right-[calc((100vh-6.5rem)*0.821)]"
           />
         </div>
       </div>
