@@ -135,15 +135,21 @@ export default function PrivacyPage() {
           <b>Meta / WhatsApp</b> — to send and receive messages.
         </li>
         <li>
-          <b>Monnify</b> — bank transfers and payout settlement.
+          <b>Paystack</b> — bank transfers, the dedicated account number issued
+          for an order, and payout settlement to the merchant.
+        </li>
+        <li>
+          <b>Monnify</b> — bank transfers and payout settlement, where it is the
+          configured bank provider instead of Paystack.
         </li>
         <li>
           <b>OnSwitch</b> — stablecoin-to-naira settlement, where a buyer pays
           in stablecoin and the merchant is paid in naira.
         </li>
         <li>
-          <b>Quai Network</b> — on-chain payments. Blockchain transactions are
-          public and permanent by design, and cannot be deleted by us or by you.
+          <b>Arbitrum</b> — the public blockchain stablecoin payments are made
+          on. Blockchain transactions are public and permanent by design, and
+          cannot be deleted by us or by you.
         </li>
       </UL>
       <p>Each provider handles data under its own privacy policy.</p>

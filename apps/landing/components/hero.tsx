@@ -10,11 +10,17 @@ import { Button, FloatCard, SaleAlertCard, WhatsAppIcon } from "./ui";
  * sweep on the left — so the layout has two jobs: never crop her, and never run
  * past the window, because a hero you have to scroll to finish is not a hero.
  *
- * Height comes first. `h-[calc(100vh-6.5rem)]` is the viewport minus the header,
- * so the hero fills the window and there is no strip of the next section
- * showing under it. The cap is 62vw rather than a flat rem, because the only
- * window that must not get its full height is a narrow, tall one, where the
- * image would scale up until she sat under the copy. That makes the FRAME wider than the file, and object-cover has to
+ * Height comes first, and it is one value: `--hero-h`, the viewport minus the
+ * header, clamped. The hero therefore fills the window with no strip of the
+ * next section showing under it. The cap is 62vw rather than a flat rem
+ * because the only window that must not get its full height is a narrow, tall
+ * one, where the image would scale up until she sat under the copy.
+ *
+ * It is a custom property rather than min/max utilities because the cards
+ * below are positioned in terms of it. Written as calc(100vh - 6.5rem) they
+ * agreed with the section only until a clamp engaged, and then a tall window
+ * flung them off the left edge; clamp() in one place means the cards read the
+ * height the section actually got. That makes the FRAME wider than the file, and object-cover has to
  * take the difference out of something.
  *
  * So the file is built to have something worthless to take. `hero_wide.jpg` is
@@ -41,7 +47,7 @@ export function Hero() {
   return (
     <section
       id="top"
-      className="relative isolate flex flex-col overflow-hidden bg-[#e8cdb0] lg:h-[calc(100vh-6.5rem)] lg:max-h-[62vw] lg:min-h-[max(32rem,37vw)] lg:bg-[url('/img/hero_wide.jpg')] lg:bg-cover lg:bg-right lg:bg-no-repeat"
+      className="relative isolate flex flex-col overflow-hidden bg-[#e8cdb0] [--hero-h:clamp(max(32rem,37vw),calc(100vh-6.5rem),62vw)] lg:h-[var(--hero-h)] lg:bg-[url('/img/hero_wide.jpg')] lg:bg-cover lg:bg-right lg:bg-no-repeat"
     >
       <div className="relative order-1 mx-auto w-full max-w-7xl px-5 pb-10 pt-12 sm:px-8 lg:pb-40 lg:pt-14 xl:pt-20">
         <div className="max-w-xl lg:max-w-md xl:max-w-lg">
@@ -99,7 +105,7 @@ export function Hero() {
         The other two work because their offsets are written in the same terms the
         background is drawn in. The photo is anchored right and scaled to the
         section's height, so a distance measured from its right edge in source
-        pixels is `sourcePx / 940 * heroHeight` — hence the calc()s below, where
+        pixels is `sourcePx / 940 * --hero-h` — hence the calc()s below, where
         0.609 puts the alert's right edge just left of the phone (source x=1120)
         and 0.80 puts the ledger's just left of her front shoe (source x=920).
         Tops and bottoms are percentages for the same reason: the image's height
@@ -125,14 +131,14 @@ export function Hero() {
             item={heroStats.sale.item}
             fiat={heroStats.sale.fiat}
             when={heroStats.sale.when}
-            className="lg:absolute lg:bottom-[9.5rem] lg:left-[12rem] lg:w-60 xl:bottom-auto xl:left-auto xl:top-[26%] xl:right-[calc((100vh-6.5rem)*0.609)]"
+            className="lg:absolute lg:bottom-[9.5rem] lg:left-[12rem] lg:w-60 xl:bottom-auto xl:left-auto xl:top-[26%] xl:right-[calc(var(--hero-h)*0.609)]"
           />
           <FloatCard
             title="Today's sales · example"
             value={heroStats.ledger.amount}
             sub={heroStats.ledger.inUsdc}
             note={heroStats.ledger.delta}
-            className="sm:order-last lg:absolute lg:bottom-10 lg:left-[17rem] lg:w-52 xl:left-auto xl:bottom-[9%] xl:right-[calc((100vh-6.5rem)*0.80)]"
+            className="sm:order-last lg:absolute lg:bottom-10 lg:left-[17rem] lg:w-52 xl:left-auto xl:bottom-[9%] xl:right-[calc(var(--hero-h)*0.80)]"
           />
         </div>
       </div>

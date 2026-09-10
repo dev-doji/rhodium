@@ -139,6 +139,7 @@ export const mission = {
   points: [
     "Each order gets its own account number",
     "Transfers confirm themselves in about two seconds",
+    "Or take USDC on Arbitrum, settled to your bank in naira",
     "Receipts go out without you lifting a finger",
     "Every sale lands in one naira ledger",
   ],
@@ -182,8 +183,8 @@ export const features = [
   },
   {
     icon: "Coins",
-    title: "Crypto Rail on Quai",
-    body: "Take USDT or QUAI from a BlipPay wallet. Funds move buyer to merchant atomically, in a single transaction.",
+    title: "Stablecoins on Arbitrum",
+    body: "Take USDC or USDT from any wallet the buyer already has. You choose where it lands: naira in your bank, or USDC in your own wallet.",
   },
   {
     icon: "BookOpen",
@@ -197,8 +198,8 @@ export const features = [
   },
   {
     icon: "TrendingUp",
-    title: "Traction Dashboard",
-    body: "GMV, transaction count, unique buyers and the split between rails — live, and exportable as CSV.",
+    title: "Your Numbers, Yours",
+    body: "Sales, orders and running balance for your shop alone — with the whole ledger as CSV whenever your accountant asks.",
   },
 ] as const;
 
@@ -206,28 +207,28 @@ export const howItWorks = [
   {
     step: "01",
     title: "Share the product",
-    body: "Send your catalogue in WhatsApp the way you already do. Rhodium turns the message into a real order.",
+    body: "Send your catalogue in WhatsApp the way you already do. Rhodium turns the message into a real order and a checkout link to send back.",
   },
   {
     step: "02",
     title: "Buyer pays their way",
-    body: "A dedicated account number for a bank transfer, or a checkout link that opens inside their BlipPay wallet.",
+    body: "One checkout, two rails: a dedicated account number for a bank transfer, or USDC and USDT on Arbitrum, paid from the buyer's own wallet.",
   },
   {
     step: "03",
     title: "Everyone gets told",
-    body: "The payment confirms itself. You're notified, the buyer is receipted, and the sale is in your books — in naira.",
+    body: "The payment confirms itself against the bank or the chain — never against a screenshot. You're notified, the buyer gets a receipt to save or share, stock comes down, and the sale is booked in naira.",
   },
 ] as const;
 
 export const benefits = [
   {
     title: "We never hold your money",
-    body: "Bank transfers settle to your own account; crypto goes wallet to wallet in the same transaction. There is no custody path in the code — every payment rail is required to name you as the settlement target.",
+    body: "Bank transfers settle to your own account. Crypto moves buyer to merchant in a single transaction when you take USDC, or through a licensed off-ramp straight to your bank when you take naira. There is no custody path in the code — every payment rail is required to name you as the settlement target.",
   },
   {
     title: "A replayed payment can't double-count",
-    body: "Confirmations are idempotent on the provider's event id and the on-chain transaction hash. If a webhook fires twice, your ledger still shows one sale.",
+    body: "Confirmations are idempotent on the provider's event id and the on-chain transaction hash. If a webhook fires twice, or the same transfer is seen by both the webhook and the poller, your ledger still shows one sale.",
   },
   {
     title: "Books that reconcile themselves",
@@ -269,8 +270,8 @@ export const plans = [
     featured: true,
     features: [
       "Unlimited confirmed orders",
-      "Crypto rail on Quai and BlipPay",
-      "Live traction dashboard",
+      "Stablecoin rail: USDC and USDT on Arbitrum",
+      "Crypto settled to your bank in naira",
       "Daily automatic reconciliation",
     ],
   },
@@ -306,17 +307,17 @@ export const footerColumns = [
     title: "Product",
     links: [
       { label: "WhatsApp checkout", href: "#features" },
-      { label: "Crypto rail", href: "#features" },
+      { label: "Stablecoin rail", href: "#features" },
       { label: "Naira ledger", href: "#benefits" },
-      { label: "Traction dashboard", href: "#features" },
+      { label: "Receipts", href: "#features" },
     ],
   },
   {
     title: "Rails",
     links: [
       { label: "Bank transfer", href: "#features" },
-      { label: "Quai Network", href: "#integrations" },
-      { label: "BlipPay wallet", href: "#integrations" },
+      { label: "Arbitrum", href: "#integrations" },
+      { label: "Crypto to naira", href: "#integrations" },
       { label: "No-custody design", href: "#benefits" },
     ],
   },

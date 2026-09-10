@@ -25,12 +25,12 @@ export function HowItWorks() {
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-none bg-brand-500" />
                 <p className="text-xs font-semibold text-brand-950">
-                  Payment confirmed
+                  Payment confirmed · example
                 </p>
               </div>
               <p className="mt-1.5 text-sm text-brand-950/60">
-                ₦12,500 from Ada landed in your account. Receipt sent, stock
-                updated.
+                You&rsquo;ve been paid ₦12,500. 2 × jollof plate, Ada&rsquo;s
+                order — settled to your account, receipt sent, stock updated.
               </p>
             </div>
           </div>
@@ -42,7 +42,8 @@ export function HowItWorks() {
             </h2>
             <p className="measure mt-4 text-sm text-brand-950/60 sm:text-base">
               Nothing new to learn and nothing to install. You keep selling the
-              way you already sell — Rhodium handles the money and the records.
+              way you already sell — bank transfer or stablecoin, Rhodium
+              handles the money and the records.
             </p>
 
             <ol className="mt-8 space-y-5">

@@ -66,8 +66,12 @@ export default function TermsPage() {
           to the merchant&rsquo;s own account.
         </li>
         <li>
-          Crypto payments settle wallet-to-wallet in a single on-chain
-          transaction. <b>On-chain payments are irreversible.</b> Once confirmed
+          Crypto payments are made in stablecoin on a public blockchain. Where
+          the merchant settles in stablecoin, the payment moves wallet-to-wallet
+          in a single on-chain transaction. Where the merchant settles in naira,
+          the payment is converted by a licensed off-ramp provider and paid to
+          the merchant&rsquo;s own bank account. In both cases we take no
+          custody. <b>On-chain payments are irreversible.</b> Once confirmed
           they cannot be recalled by us, by the merchant, or by you.
         </li>
         <li>

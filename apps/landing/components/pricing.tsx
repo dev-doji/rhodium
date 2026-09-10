@@ -22,8 +22,8 @@ export function Pricing() {
           </p>
         )}
 <p className="measure mx-auto mt-4 max-w-lg text-sm text-white/50 sm:text-base">
-            Start free on the bank rail. Move up when you want crypto payments
-            and the traction dashboard.
+            Start free on the bank rail. Move up when you want to take
+            stablecoins too, settled to your bank in naira.
           </p>
         </div>
 
