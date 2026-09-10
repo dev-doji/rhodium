@@ -1,42 +1,44 @@
+import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import { heroStats, site } from "@/lib/site";
-import { Button, FloatCard, PhotoSlot, SaleAlertCard, WhatsAppIcon } from "./ui";
+import { Button, FloatCard, SaleAlertCard, WhatsAppIcon } from "./ui";
 
 /**
- * Centred headline over one photograph, with three cards floating beside it.
+ * The photograph IS the hero: full-bleed, with the copy set over it.
  *
- * The photograph is SQUARE, and that dictates the layout. `object-cover` in a
- * 16/9 frame would keep only the middle 56% of a square source — which here is
- * the crop that takes off the subject's head and her feet — so the frame stays
- * near-square and the picture is held to a narrow column. The cards then live
- * in the gutters either side of it rather than on top of it.
+ * Two facts about the file decide the whole layout. It is square, and its
+ * subject sits centre-right against an otherwise empty backdrop. So from `lg`
+ * the picture becomes the section's background and the copy takes the empty
+ * left of it — the one place text can sit without covering her.
  *
- * Those gutters only exist from `lg` up. Below that the cards stack under the
- * photo: overlaying them on a 375px-wide image would cover the subject's face
- * or shrink the type past reading, and a figure nobody can read is worse than
- * one that has moved.
+ * That leaves the copy column narrow on purpose. At exactly 1024px the image is
+ * shown at native size and her face begins around x=480, so a wider column
+ * would run into it; the cream wash reaches 30% and is gone by 58%, well clear
+ * of her, rather than veiling the subject to make room for words.
+ *
+ * Below `lg` there is no empty left to use — the photo is a full-width band
+ * under the copy instead, with the cards below it. `flex` plus `order` does
+ * that with one image element rather than one per breakpoint.
  */
 export function Hero() {
   return (
-    <section id="top" className="relative overflow-hidden bg-white">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 -top-32 h-[380px] bg-[radial-gradient(55%_100%_at_50%_0%,rgba(0,51,231,0.12),transparent_70%)]"
-      />
-
-      <div className="relative mx-auto max-w-7xl px-5 pb-16 pt-12 sm:px-8 sm:pt-16 lg:pb-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <h1 className="display text-[2.15rem] font-extrabold sm:text-5xl lg:text-[4rem]">
+    <section
+      id="top"
+      className="relative isolate flex flex-col overflow-hidden bg-cream"
+    >
+      <div className="relative order-1 mx-auto w-full max-w-7xl px-5 pb-10 pt-12 sm:px-8 lg:min-h-[42rem] lg:pb-40 lg:pt-28">
+        <div className="max-w-xl lg:max-w-md xl:max-w-lg">
+          <h1 className="display text-[2.15rem] font-extrabold sm:text-5xl lg:text-[3rem] xl:text-[3.5rem]">
             Sell on WhatsApp.
             <br />
             Get paid without the screenshot.
           </h1>
 
-          <p className="measure mx-auto mt-5 max-w-xl text-base text-brand-950/60 sm:text-lg">
+          <p className="measure mt-5 max-w-xl text-base text-brand-950/65 sm:text-lg">
             {site.description}
           </p>
 
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button
               href={site.registerUrl}
               target="_blank"
@@ -52,51 +54,63 @@ export function Hero() {
             </Button>
           </div>
         </div>
+      </div>
 
-        <div className="relative mx-auto mt-12 max-w-5xl lg:mt-16">
-          <div className="mx-auto w-full max-w-sm sm:max-w-md lg:max-w-xl">
-            <PhotoSlot
-              src="/img/hero_cover.jpg"
-              alt="A Nigerian shop owner sitting with her phone, smiling at a payment alert"
-              className="aspect-[4/5] w-full sm:aspect-[9/10]"
-              sizes="(max-width: 1024px) 100vw, 576px"
-              priority
-              rounded="rounded-none"
-              // Anchored right: the frame is narrower than the square file, and
-              // the tenth of the picture it drops is the left edge, where the
-              // studio light and its stand foot are. The subject and the plant
-              // both sit right of centre, so nothing else is lost.
-              position="object-right"
-            />
-          </div>
+      <div className="relative order-2 aspect-[4/5] w-full sm:aspect-[16/10] lg:absolute lg:inset-0 lg:-z-10 lg:aspect-auto">
+        <Image
+          src="/img/hero_cover.jpg"
+          alt="A Nigerian shop owner sitting with her phone, smiling at a payment alert"
+          fill
+          sizes="100vw"
+          priority
+          // Portrait frame on phones, so the crop is horizontal: anchored right
+          // of centre to drop the studio light and its stand foot on the left.
+          // Landscape from `sm`, so the crop turns vertical: anchored high, to
+          // keep her face and lose the floor.
+          className="object-cover object-[72%_50%] sm:object-[50%_18%]"
+        />
+        {/*
+          The wash that makes the copy legible, and only from `lg`, where copy
+          is actually over the picture. It is opaque cream to 30% and gone by
+          58% — the backdrop behind the words is a mid-taupe (#887459), which
+          dark navy type does not clear on its own.
+        */}
+        <div
+          aria-hidden
+          className="absolute inset-0 hidden bg-gradient-to-r from-cream from-30% to-transparent to-58% lg:block"
+        />
+      </div>
+      {/*
+        One grid under the photo on small screens; three cards placed over it
+        from `lg`, where the wrapper drops to `display:block` so the grid's
+        track sizing stops applying to children that have left the flow. The
+        alert sits right, beside her phone rather than beside the copy.
 
-          {/*
-            One grid below the photo on small screens; three absolutely placed
-            cards in the gutters from `lg`. The wrapper drops to `display:block`
-            there so the grid's own track sizing stops applying to children that
-            have left the flow.
-          */}
-          <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:mt-0 lg:block">
-            <FloatCard
-              title="Transfer confirmed in"
-              value={heroStats.confirm.value}
-              note="No screenshot needed"
-              className="lg:absolute lg:left-0 lg:top-10 lg:w-52"
-            />
-            <FloatCard
-              title="Today's sales · example"
-              value={heroStats.ledger.amount}
-              note={heroStats.ledger.delta}
-              className="lg:absolute lg:bottom-10 lg:left-0 lg:w-52"
-            />
-            <SaleAlertCard
-              shop={heroStats.sale.shop}
-              amount={heroStats.sale.amount}
-              item={heroStats.sale.item}
-              when={heroStats.sale.when}
-              className="sm:col-span-1 lg:absolute lg:right-0 lg:top-1/3 lg:w-56"
-            />
-          </div>
+        The `lg` overlay covers the whole hero, including the buttons, so it is
+        pointer-events:none — otherwise it would swallow every click on the CTA
+        underneath it. Nothing in it is interactive, so nothing is lost.
+      */}
+      <div className="order-3 px-5 pb-12 pt-6 sm:px-8 sm:pt-8 lg:pointer-events-none lg:absolute lg:inset-0 lg:p-0">
+        <div className="mx-auto grid w-full max-w-7xl gap-3 sm:grid-cols-3 lg:relative lg:block lg:h-full">
+          <FloatCard
+            title="Transfer confirmed in"
+            value={heroStats.confirm.value}
+            note="No screenshot needed"
+            className="lg:absolute lg:bottom-14 lg:left-8 lg:w-52"
+          />
+          <FloatCard
+            title="Today's sales · example"
+            value={heroStats.ledger.amount}
+            note={heroStats.ledger.delta}
+            className="lg:absolute lg:bottom-14 lg:left-64 lg:w-52"
+          />
+          <SaleAlertCard
+            shop={heroStats.sale.shop}
+            amount={heroStats.sale.amount}
+            item={heroStats.sale.item}
+            when={heroStats.sale.when}
+            className="lg:absolute lg:right-8 lg:top-24 lg:w-64"
+          />
         </div>
       </div>
     </section>
