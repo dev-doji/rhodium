@@ -34,8 +34,15 @@ export class TractionService {
     const railSplit = { fiat: 0, crypto: 0 };
     const recent: TractionSnapshot["recent"] = [];
 
+    // One query for every order behind these payments, rather than one query
+    // per payment. At a thousand sales that was a thousand round trips for a
+    // page anyone can load.
+    const orders = new Map(
+      (await this.repos.orders.byIds(confirmed.map((p) => p.orderId))).map((o) => [o.id, o]),
+    );
+
     for (const p of confirmed) {
-      const order = await this.repos.orders.byId(p.orderId);
+      const order = orders.get(p.orderId);
       if (!order) continue;
       gmv += p.amount;
       buyers.add(`${order.merchantId}:${order.buyerRef}`);

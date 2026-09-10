@@ -259,6 +259,14 @@ class PgOrderRepo implements OrderRepo {
     const row = await this.db.order.findUnique({ where: { id } });
     return row ? this.map(row) : null;
   }
+  async byIds(ids: string[]): Promise<Order[]> {
+    if (ids.length === 0) return [];
+    // Deduplicated: a dedicated virtual account is reused across orders, so the
+    // same order id can appear against more than one payment row.
+    const unique = [...new Set(ids)];
+    const rows = await this.db.order.findMany({ where: { id: { in: unique } } });
+    return rows.map((row) => this.map(row));
+  }
   async listByMerchant(merchantId: string): Promise<Order[]> {
     const rows = await this.db.order.findMany({
       where: { merchantId },

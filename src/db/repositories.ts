@@ -51,6 +51,15 @@ export interface ProductRepo {
 export interface OrderRepo {
   create(o: Omit<Order, "createdAt">): Promise<Order>;
   byId(id: string): Promise<Order | null>;
+  /**
+   * Several orders in one query.
+   *
+   * Exists because the reporting code held a list of payments and fetched each
+   * one's order individually — a thousand payments meant a thousand round
+   * trips, five times over across traction, the admin views and reconciliation.
+   * Ids the caller already has should cost one query, not one each.
+   */
+  byIds(ids: string[]): Promise<Order[]>;
   listByMerchant(merchantId: string): Promise<Order[]>;
   updateStatus(id: string, status: OrderStatus): Promise<Order>;
   /**

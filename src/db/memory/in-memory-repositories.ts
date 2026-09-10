@@ -135,6 +135,14 @@ class MemOrderRepo implements OrderRepo {
   async byId(id: string): Promise<Order | null> {
     return this.o.get(id) ?? null;
   }
+  async byIds(ids: string[]): Promise<Order[]> {
+    const out: Order[] = [];
+    for (const id of new Set(ids)) {
+      const hit = this.o.get(id);
+      if (hit) out.push(hit);
+    }
+    return out;
+  }
   async listByMerchant(merchantId: string): Promise<Order[]> {
     return [...this.o.values()].filter((x) => x.merchantId === merchantId);
   }

@@ -110,8 +110,14 @@ export class AdminMetricsService {
     };
     const recent: AdminOverview["recent"] = [];
 
+    // One query for all of them. This was one per payment, on a page that
+    // walks every payment ever taken.
+    const ordersById = new Map(
+      (await this.repos.orders.byIds(confirmed.map((p) => p.orderId))).map((o) => [o.id, o]),
+    );
+
     for (const p of confirmed) {
-      const order = await this.repos.orders.byId(p.orderId);
+      const order = ordersById.get(p.orderId);
       // A payment whose order is gone is a data problem, not a sale: counting
       // it would inflate volume with money that cannot be attributed to anyone.
       if (!order) continue;
@@ -308,8 +314,12 @@ export class AdminViews {
     const perMerchant = new Map<string, { count: number; volume: Kobo }>();
     const recent: RailReport["recent"] = [];
 
+    const ordersById = new Map(
+      (await this.repos.orders.byIds(payments.map((p) => p.orderId))).map((o) => [o.id, o]),
+    );
+
     for (const p of payments) {
-      const order = await this.repos.orders.byId(p.orderId);
+      const order = ordersById.get(p.orderId);
       if (!order || order.rail !== which) continue;
 
       // Every payment on this rail counts towards the status mix — a rail whose
@@ -434,8 +444,11 @@ export class AdminViews {
     }
 
     const payments = await this.repos.payments.all();
+    const orderById = new Map(
+      (await this.repos.orders.byIds(payments.map((p) => p.orderId))).map((o) => [o.id, o]),
+    );
     for (const p of payments) {
-      const order = await this.repos.orders.byId(p.orderId);
+      const order = orderById.get(p.orderId);
       if (!order) {
         issues.push({
           severity: "warning",
@@ -504,9 +517,12 @@ export class AdminViews {
   }> {
     const countByMerchant = new Map<string, number>();
     const volumeByMerchant = new Map<string, Kobo>();
-    for (const p of await this.repos.payments.all()) {
-      if (p.status !== "confirmed") continue;
-      const order = await this.repos.orders.byId(p.orderId);
+    const confirmed = (await this.repos.payments.all()).filter((p) => p.status === "confirmed");
+    const orderById = new Map(
+      (await this.repos.orders.byIds(confirmed.map((p) => p.orderId))).map((o) => [o.id, o]),
+    );
+    for (const p of confirmed) {
+      const order = orderById.get(p.orderId);
       if (!order) continue;
       countByMerchant.set(order.merchantId, (countByMerchant.get(order.merchantId) ?? 0) + 1);
       volumeByMerchant.set(order.merchantId, (volumeByMerchant.get(order.merchantId) ?? 0) + p.amount);
