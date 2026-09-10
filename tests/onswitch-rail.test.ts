@@ -189,6 +189,48 @@ describe("which deposits a browser wallet can pay", () => {
     expect(inst.depositAddress).toBeTruthy();
   });
 
+  it("offers no wallet payment for OnSwitch's sandbox placeholder address", async () => {
+    // The sandbox returns the literal 0x000000000000000000000000000000000sandbox
+    // — 42 characters, deliberately address-shaped, not hex — and it runs with
+    // mode "live" because the environment is chosen by the API key, not the
+    // host. A mode check alone therefore offered a wallet payment to a string
+    // no wallet can parse, and the buyer got a failure with no explanation.
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const product = await seedProduct(app, merchant.id, 420_000);
+    const order = await offrampOrder(app, merchant.id, product.id);
+    const rail = new OnSwitchRail({
+      mode: "live",
+      serviceKey: "test-key",
+      baseUrl: "https://onswitch.invalid",
+      asset: "arbitrum:usdc",
+      callbackUrl: "https://example.test/webhooks/rails/onswitch",
+    });
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: {
+            reference: "ref_sandbox",
+            deposit: {
+              address: "0x000000000000000000000000000000000sandbox",
+              amount: 3.0625,
+              asset: "arbitrum:usdc",
+            },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      const inst = await rail.createPaymentInstruction(order, merchant);
+      expect(inst.depositAddress).toBe("0x000000000000000000000000000000000sandbox");
+      expect(inst.walletChainId).toBeUndefined();
+      expect(inst.tokenAddress).toBeUndefined();
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it("carries the chain and token for an EVM asset", async () => {
     // The checkout needs both to build a transfer. Without them it can only
     // offer "copy the address", which is what a buyer was left with.

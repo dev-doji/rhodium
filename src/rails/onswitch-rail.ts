@@ -204,6 +204,31 @@ export class OnSwitchRail implements PaymentRail {
     return { providerRef, status: status === "COMPLETED" ? "confirmed" : "pending" };
   }
 
+  /**
+   * Whether a browser wallet can genuinely pay this deposit.
+   *
+   * Two conditions, and both are needed:
+   *
+   *   The rail is LIVE. A mock deposit address is "0x" + random hex — it is
+   *   perfectly well-formed and belongs to nobody, so a shape check alone
+   *   would wave it through and offer to send real mainnet money into a void.
+   *
+   *   The address is really an EVM address. OnSwitch's SANDBOX returns the
+   *   literal string 0x000000000000000000000000000000000sandbox — 42
+   *   characters, deliberately address-shaped, and not hex. The sandbox runs
+   *   with mode "live" (it is selected by the API key, not the host), so the
+   *   mode check alone would offer a wallet payment to a string no wallet can
+   *   parse. The buyer would get a failure from MetaMask and no idea why.
+   *
+   * When either fails the checkout still shows the address to copy, which is
+   * the honest thing to offer for a deposit nobody can pay from a browser.
+   */
+  private canBePaidFromWallet(asset: string, address: string): boolean {
+    if (this.cfg.mode !== "live") return false;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return false;
+    return Boolean(PAYABLE_FROM_WALLET[asset.toLowerCase()]);
+  }
+
   private instruction(order: Order, reference: string, address: string, amount: number, asset: string): PaymentInstruction {
     const [network, token] = asset.split(":");
     // Live only. A mock deposit address is "0x" + random hex — it belongs to
@@ -211,7 +236,9 @@ export class OnSwitchRail implements PaymentRail {
     // real USDC contract to that would put a "Pay from my wallet" button in
     // front of a buyer that moves REAL mainnet money into a void. The rest of
     // the mock instruction is harmless; this part is not.
-    const payable = this.cfg.mode === "live" ? PAYABLE_FROM_WALLET[asset.toLowerCase()] : undefined;
+    const payable = this.canBePaidFromWallet(asset, address)
+      ? PAYABLE_FROM_WALLET[asset.toLowerCase()]
+      : undefined;
     return {
       railId: this.id,
       instructionType: "crypto",
