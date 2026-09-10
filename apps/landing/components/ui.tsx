@@ -194,12 +194,14 @@ export function PhotoSlot({
 export function SaleAlertCard({
   shop,
   amount,
+  fiat,
   item,
   when,
   className = "",
 }: {
   shop: string;
   amount: string;
+  fiat: string;
   item: string;
   when: string;
   className?: string;
@@ -208,7 +210,7 @@ export function SaleAlertCard({
     <div
       className={`rounded-none border border-brand-950 bg-white p-4 ${className}`}
       role="img"
-      aria-label={`Example notification: payment of ${amount} received by ${shop} for ${item}`}
+      aria-label={`Example notification: payment of ${amount}, about ${fiat}, received by ${shop} for ${item}`}
     >
       <div className="flex items-center gap-2">
         <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
@@ -217,10 +219,17 @@ export function SaleAlertCard({
         </p>
         <span className="ml-auto text-[11px] tabular-nums text-brand-950/45">{when}</span>
       </div>
+      {/*
+        The buyer paid stablecoin; the merchant is paid naira. Both figures
+        belong on the card because that swap IS the product — showing only one
+        of them would hide the half a merchant actually cares about. The one
+        they were paid in leads.
+      */}
       <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums text-brand-950">
         {amount}
       </p>
-      <p className="mt-0.5 text-[11px] text-brand-950/70">
+      <p className="text-[11px] font-medium tabular-nums text-brand-950/55">≈ {fiat}</p>
+      <p className="mt-1 text-[11px] text-brand-950/70">
         {item} · {shop}
       </p>
       <p className="mt-1 text-[11px] font-medium text-brand-500">Settled to your bank · example</p>
@@ -231,11 +240,14 @@ export function SaleAlertCard({
 export function FloatCard({
   title,
   value,
+  sub,
   note,
   className = "",
 }: {
   title: string;
   value: string;
+  /** A second reading of the same figure — the other currency it was taken in. */
+  sub?: string;
   note?: string;
   className?: string;
 }) {
@@ -247,6 +259,7 @@ export function FloatCard({
       <p className="mt-0.5 text-xl font-bold tracking-tight text-brand-950 tabular-nums">
         {value}
       </p>
+      {sub && <p className="text-[11px] font-medium tabular-nums text-brand-950/55">{sub}</p>}
       {note && <p className="mt-0.5 text-[11px] text-brand-500">{note}</p>}
     </div>
   );

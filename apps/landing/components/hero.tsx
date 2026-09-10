@@ -91,12 +91,17 @@ export function Hero() {
         against the text column: the alert beside her phone, the ledger down by
         her front foot.
 
-        That works because both offsets are written in the same terms the
+        The ~2s card rides with the copy instead, pinned a fixed 29rem down so
+        it sits under the CTA at every height — a percentage would work at
+        1900px and slide up into the buttons at 1280px, because the copy block
+        is a fixed height while the section's is not.
+
+        The other two work because their offsets are written in the same terms the
         background is drawn in. The photo is anchored right and scaled to the
         section's height, so a distance measured from its right edge in source
         pixels is `sourcePx / 940 * heroHeight` — hence the calc()s below, where
         0.609 puts the alert's right edge just left of the phone (source x=1120)
-        and 0.821 puts the ledger's just left of her front shoe (source x=920).
+        and 0.80 puts the ledger's just left of her front shoe (source x=920).
         Tops and bottoms are percentages for the same reason: the image's height
         IS the section's height, so a percentage tracks her exactly.
 
@@ -112,20 +117,22 @@ export function Hero() {
             title="Transfer confirmed in"
             value={heroStats.confirm.value}
             note="No screenshot needed"
-            className="sm:order-first lg:absolute lg:bottom-10 lg:left-[calc(max(0px,(100vw-80rem)/2)+2rem)] lg:w-52"
+            className="sm:order-first lg:absolute lg:bottom-10 lg:left-[calc(max(0px,(100vw-80rem)/2)+2rem)] lg:w-52 xl:bottom-auto xl:top-[29rem]"
           />
           <SaleAlertCard
             shop={heroStats.sale.shop}
             amount={heroStats.sale.amount}
             item={heroStats.sale.item}
+            fiat={heroStats.sale.fiat}
             when={heroStats.sale.when}
             className="lg:absolute lg:bottom-[9.5rem] lg:left-[12rem] lg:w-60 xl:bottom-auto xl:left-auto xl:top-[26%] xl:right-[calc((100vh-6.5rem)*0.609)]"
           />
           <FloatCard
             title="Today's sales · example"
             value={heroStats.ledger.amount}
+            sub={heroStats.ledger.inUsdc}
             note={heroStats.ledger.delta}
-            className="sm:order-last lg:absolute lg:bottom-10 lg:left-[17rem] lg:w-52 xl:left-auto xl:bottom-[6%] xl:right-[calc((100vh-6.5rem)*0.821)]"
+            className="sm:order-last lg:absolute lg:bottom-10 lg:left-[17rem] lg:w-52 xl:left-auto xl:bottom-[9%] xl:right-[calc((100vh-6.5rem)*0.80)]"
           />
         </div>
       </div>

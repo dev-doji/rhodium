@@ -103,6 +103,10 @@ export const heroStats = {
   ledger: {
     title: "Today's sales",
     amount: "₦184,500",
+    // The same day's takings in the other rail's unit, at ~₦1,524/USDC. Both
+    // hero cards use that one rate, so a reader converting between them gets
+    // the same answer twice.
+    inUsdc: "≈ 121 USDC",
     delta: "+12 orders",
     note: "Ledger updates the moment a payment confirms", // illustrative UI
   },
@@ -111,7 +115,9 @@ export const heroStats = {
   // "example" on its face for the same reason.
   sale: {
     shop: "Ada's Kitchen",
-    amount: "₦12,500",
+    // A crypto sale: the buyer sends stablecoin, the merchant banks naira.
+    amount: "8.20 USDC",
+    fiat: "₦12,500",
     item: "2 × jollof plate",
     when: "now",
   },
