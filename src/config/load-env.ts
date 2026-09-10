@@ -40,8 +40,10 @@ export function loadEnv(path = ".env"): void {
   if (duplicates.length) {
     const list = [...new Set(duplicates)].join(", ");
     process.stderr.write(
-      `[env] ${path} sets these more than once: ${list}. The FIRST value wins — ` +
-        "the later one is ignored. Delete the duplicate so the file says what it does.\n",
+      `[env] ${path} sets these more than once: ${list}. Which value wins is ` +
+        "AMBIGUOUS: this loader keeps the first, but @prisma/client loads .env with " +
+        "dotenv before this runs and dotenv keeps the last. Delete the duplicates — " +
+        "do not rely on either.\n",
     );
   }
 }
