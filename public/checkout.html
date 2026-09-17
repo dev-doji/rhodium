@@ -128,7 +128,10 @@
              background:var(--accent); color:var(--accent-ink);
              transition:opacity .15s ease; }
     button:hover { opacity:.88; }
-    button svg { width:18px; height:18px; }
+    /* `.btn` too, not just `button`: the Save receipt control is an <a> styled
+       as one, and an inline SVG carrying only a viewBox falls back to 300x150
+       when nothing sizes it — a checkmark taller than the receipt beside it. */
+    button svg, .btn svg { width:18px; height:18px; flex:none; }
     button:disabled { opacity:.5; cursor:default; }
     /* Quieter than the primary action: this only asks the bank to look again,
        so it must not compete with the thing the buyer actually needs to do. */
