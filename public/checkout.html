@@ -204,12 +204,26 @@
       link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg>',
     };
 
+    /**
+     * The amount as a buyer reads it.
+     *
+     * Prefers the rail's own display figure, because `cryptoAmount` means
+     * different things on different rails — base units for a contract call,
+     * a decimal for the off-ramp's API. Rendering that field directly is what
+     * put "75164 USDC" on screen for a ₦100 order. The fallback only runs for
+     * an instruction issued before rails stated the display form.
+     */
     function humanCrypto(inst) {
+      if (inst.cryptoAmountDisplay) return trimZeros(inst.cryptoAmountDisplay);
       if (!inst.cryptoAmount) return "?";
       // USDC and USDT are both six decimals.
-      const decimals = 6;
-      const n = Number(inst.cryptoAmount) / Math.pow(10, decimals);
-      return n.toLocaleString(undefined, { maximumFractionDigits: 6 }) + " " + (inst.tokenSymbol || "");
+      const n = Number(inst.cryptoAmount) / Math.pow(10, 6);
+      return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+
+    /** "0.075164" not "0.075164000000" — trailing zeros read as false precision. */
+    function trimZeros(s) {
+      return String(s).indexOf(".") === -1 ? String(s) : String(s).replace(/0+$/, "").replace(/\.$/, "");
     }
 
     async function load() {
@@ -380,12 +394,12 @@
       const network = inst.network || "";
       const on = network ? ` on ${network}` : "";
       $("amount").innerHTML =
-        `${inst.cryptoAmount}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
+        `${humanCrypto(inst)}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
         `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
       $("crypto").innerHTML = `${ICON.coin} ${symbol}${on}`;
       $("body").innerHTML = `
         <div class="rows">
-          <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${inst.cryptoAmount} ${symbol}</b></div>
+          <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${humanCrypto(inst)} ${symbol}</b></div>
           ${network ? `<div class="row">${ICON.globe}<span class="k">Network</span><b>${network}</b></div>` : ""}
           <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
         </div>
@@ -464,12 +478,12 @@
       const symbol = inst.tokenSymbol || "";
       const network = inst.network || "";
       $("amount").innerHTML =
-        `${inst.cryptoAmount}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
+        `${humanCrypto(inst)}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
         `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
       $("crypto").innerHTML = `${ICON.coin} ${symbol}${network ? ` on ${network}` : ""}`;
       $("body").innerHTML = `
         <div class="rows">
-          <div class="row">${ICON.coin}<span class="k">You send</span><b>${inst.cryptoAmount} ${symbol}</b></div>
+          <div class="row">${ICON.coin}<span class="k">You send</span><b>${humanCrypto(inst)} ${symbol}</b></div>
           ${network ? `<div class="row">${ICON.globe}<span class="k">Network</span><b>${network}</b></div>` : ""}
           <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
         </div>

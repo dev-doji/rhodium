@@ -37,6 +37,17 @@ export interface PaymentInstruction {
   tokenAddress?: string; // ERC-20 (USDT); omitted for native QUAI
   tokenSymbol?: string;
   cryptoAmount?: string; // token base units / wei (string to avoid float/BigInt json issues)
+  /**
+   * The same amount as a human reads it — "0.075164" — for display only.
+   *
+   * `cryptoAmount` does NOT mean the same thing on every rail: the EVM rail
+   * puts base units there because that is what the contract call takes, while
+   * the off-ramp puts a decimal figure because that is what its API takes.
+   * Rendering that field directly showed a buyer "75164 USDC" for a ₦100 order.
+   * Each rail states the display form itself; nothing downstream has to know
+   * which convention it used.
+   */
+  cryptoAmountDisplay?: string;
   merchantAddress?: string;
   orderIdBytes32?: string; // keccak(orderId) — the contract call arg + event match key
   deepLink?: string; // blip://browser?url=... to open checkout inside BlipPay

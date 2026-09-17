@@ -50,6 +50,19 @@ describe("EVM stablecoin rail", () => {
     expect(inst.chainId).toBe("421614");
   });
 
+  it("states the display amount as a buyer reads it, not base units", async () => {
+    const inst = await rail().createPaymentInstruction(order, merchant);
+    // The contract call takes base units; a buyer does not. Rendering the call
+    // argument put "1000000 USDC" on screen for a ₦1,600 order.
+    expect(inst.cryptoAmount).toBe("1000000");
+    expect(Number(inst.cryptoAmountDisplay)).toBe(1);
+
+    const small = { ...order, amount: 100_00 } as Order; // ₦100
+    const inst2 = await rail().createPaymentInstruction(small, merchant);
+    expect(inst2.cryptoAmount).toBe("62500");
+    expect(Number(inst2.cryptoAmountDisplay)).toBeCloseTo(0.0625, 6);
+  });
+
   it("settles to the MERCHANT's wallet, never ours", () => {
     const t = rail().settlementTarget(merchant);
     expect(t.owner).toBe("merchant");

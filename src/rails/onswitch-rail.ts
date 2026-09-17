@@ -246,6 +246,8 @@ export class OnSwitchRail implements PaymentRail {
       amount: order.amount, // naira kobo (what the merchant is credited)
       depositAddress: address,
       cryptoAmount: String(amount),
+      // Already a decimal figure on this rail — its API is quoted that way.
+      cryptoAmountDisplay: String(amount),
       tokenSymbol: (token ?? "USDC").toUpperCase(),
       network: network ?? "base",
       settlesToNaira: true,

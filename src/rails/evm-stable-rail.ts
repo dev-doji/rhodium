@@ -112,6 +112,18 @@ export class EvmStableRail implements PaymentRail {
     return units.toString();
   }
 
+  /**
+   * The same figure a buyer reads, from the same conversion the call uses.
+   *
+   * Derived from the base units rather than recomputed, so the number on the
+   * screen and the number in the transaction cannot drift apart by a rounding
+   * step.
+   */
+  private toDisplayAmount(amount: Kobo): string {
+    const units = Number(this.toBaseUnits(amount));
+    return (units / 10 ** this.cfg.tokenDecimals).toFixed(this.cfg.tokenDecimals);
+  }
+
   async createPaymentInstruction(order: Order, merchant: Merchant): Promise<PaymentInstruction> {
     const merchantAddress = merchant.quaiAddress;
     if (!merchantAddress) {
@@ -132,6 +144,7 @@ export class EvmStableRail implements PaymentRail {
       tokenAddress: this.cfg.tokenAddress,
       tokenSymbol: this.cfg.tokenSymbol,
       cryptoAmount: this.toBaseUnits(order.amount),
+      cryptoAmountDisplay: this.toDisplayAmount(order.amount),
       merchantAddress,
       orderIdBytes32: orderIdToBytes32(order.id),
       checkoutUrl: `${this.cfg.publicBaseUrl}/checkout/${order.id}`,
