@@ -66,6 +66,17 @@ export interface PaymentEvent {
   /** Stable idempotency key derived from the provider's event identity. */
   idempotencyKey: string;
   rawEventId?: string;
+  /**
+   * Who actually received the funds, when the rail can observe it.
+   *
+   * Checked against the address the buyer was quoted before the order is
+   * credited. A chain rail can prove an order id was paid without proving it
+   * was paid to the MERCHANT: the on-chain call names its own recipient, so a
+   * buyer can pay themselves, quote the real hash, and take the goods for the
+   * price of gas. Absent on rails where the recipient is fixed by the provider
+   * rather than chosen by the payer.
+   */
+  recipient?: string;
 }
 
 export interface PaymentStatusResult {
@@ -79,6 +90,8 @@ export interface PaymentStatusResult {
    * confirm two different orders.
    */
   rawEventId?: string;
+  /** Who received the funds — see `PaymentEvent.recipient`. */
+  recipient?: string;
 }
 
 export interface WebhookPayload {

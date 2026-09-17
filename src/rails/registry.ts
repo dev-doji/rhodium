@@ -6,6 +6,7 @@ import { StablecoinRail } from "./stablecoin-rail.js";
 import { EvmStableRail } from "./evm-stable-rail.js";
 import { OnSwitchRail } from "./onswitch-rail.js";
 import { NotFoundError } from "../lib/errors.js";
+import { ngnPerUsd } from "../lib/fx.js";
 import { logger } from "../lib/logger.js";
 import type { AppConfig } from "../config/index.js";
 
@@ -152,7 +153,9 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
         tokenAddress: cfg.EVM_TOKEN_ADDRESS,
         tokenSymbol: cfg.EVM_TOKEN_SYMBOL,
         tokenDecimals: cfg.EVM_TOKEN_DECIMALS,
-        ngnPerUsd: cfg.FX_NGN_PER_USD,
+        // The live oracle, not the configured constant — the catalogue quotes
+        // the buyer through the same function, and the two must agree.
+        ngnPerUsd,
         publicBaseUrl: cfg.PUBLIC_BASE_URL,
       }),
     );

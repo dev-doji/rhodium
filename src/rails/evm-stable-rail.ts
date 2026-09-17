@@ -31,10 +31,40 @@ export interface EvmStableConfig {
   tokenAddress: string;
   tokenSymbol: string;
   tokenDecimals: number;
-  /** Naira per 1 USD. A stablecoin is pegged, so this is the whole conversion. */
-  ngnPerUsd: number;
+  /**
+   * Naira per 1 USD. A stablecoin is pegged, so this is the whole conversion.
+   *
+   * Read through a function, not captured as a number, so the amount charged
+   * comes from the same live rate the buyer was quoted in chat. Held as a
+   * constant it silently became the boot-time configured value while the
+   * catalogue quoted the oracle — the merchant was then paid at whichever
+   * rate was staler.
+   */
+  ngnPerUsd: () => number;
   publicBaseUrl: string;
+  /**
+   * How far back the poll fallback scans for a Paid log.
+   *
+   * Bounded because no production RPC will scan a chain from genesis: Arc
+   * refuses a range over 100k blocks outright. This only has to cover the
+   * window between issuing an instruction and the money landing — an order's
+   * quote expires in an hour — not the chain's whole history.
+   */
+  logLookbackBlocks?: number;
+  /**
+   * Largest span one eth_getLogs request may ask for.
+   *
+   * Providers cap this and disagree about where: Arc's documented ceiling is
+   * 100k, but the public endpoint refuses 10k and serves 5k. Set per provider;
+   * the default is chosen to work on the strictest one seen.
+   */
+  logChunkBlocks?: number;
 }
+
+/** About an hour of blocks on a sub-second chain — an order's quote lifetime. */
+const DEFAULT_LOG_LOOKBACK = 20_000;
+/** What Arc's public RPC actually serves; 10k is refused. */
+const DEFAULT_LOG_CHUNK = 5_000;
 
 /**
  * Stablecoin payments on any EVM chain — Arbitrum by default.
@@ -77,7 +107,7 @@ export class EvmStableRail implements PaymentRail {
    */
   private toBaseUnits(amount: Kobo): string {
     const naira = amount / 100;
-    const usd = naira / this.cfg.ngnPerUsd;
+    const usd = naira / this.cfg.ngnPerUsd();
     const units = BigInt(Math.round(usd * 10 ** this.cfg.tokenDecimals));
     return units.toString();
   }
@@ -131,7 +161,7 @@ export class EvmStableRail implements PaymentRail {
           idempotencyKey: `evm:${body.txHash}:nomatch`,
         };
       }
-      return this.confirmed(body.orderId, hit.amount, body.txHash);
+      return this.confirmed(body.orderId, hit.amount, body.txHash, hit.merchant);
     }
 
     const receipt = await this.rpc<{ logs?: EvmLog[]; status?: string }>(
@@ -157,7 +187,7 @@ export class EvmStableRail implements PaymentRail {
         idempotencyKey: `evm:${body.txHash}:nolog`,
       };
     }
-    return this.confirmed(body.orderId, paid.amount, body.txHash);
+    return this.confirmed(body.orderId, paid.amount, body.txHash, paid.merchant);
   }
 
   async verifyPayment(providerRef: string): Promise<PaymentStatusResult> {
@@ -165,32 +195,92 @@ export class EvmStableRail implements PaymentRail {
     if (this.cfg.mode === "mock") {
       const hit = this.mock!.findByOrderIdHash(expected);
       return hit
-        ? { providerRef, status: "confirmed", amount: this.toKobo(hit.amount), rawEventId: hit.txHash }
+        ? {
+            providerRef,
+            status: "confirmed",
+            amount: this.toKobo(hit.amount),
+            rawEventId: hit.txHash,
+            recipient: hit.merchant,
+          }
         : { providerRef, status: "pending" };
     }
     // Poll fallback: scan the contract's Paid logs for this order's id hash.
-    const logs = await this.rpc<EvmLog[]>("eth_getLogs", [
-      {
-        address: this.cfg.contractAddress,
-        topics: [PAID_TOPIC, expected],
-        fromBlock: "earliest",
-        toBlock: "latest",
-      },
-    ]).catch(() => null);
-    const paid = this.findPaidLog(logs ?? [], expected);
+    //
+    // Over a BOUNDED, recent window, in hex. This asked for earliest->latest as
+    // a bare string, which no production RPC accepts: Arbitrum rejects a
+    // non-hex fromBlock outright and Arc caps a range at 100k blocks. Both
+    // errors were then swallowed and reported as "pending", so the poll — the
+    // safety net for a webhook that never arrived — silently never ran, and
+    // reconciliation called that clean.
+    // Walked backwards in chunks, because the window worth searching is longer
+    // than one request may cover: Arc rejects anything over a few thousand
+    // blocks, while an order's quote stays payable for an hour — which at
+    // sub-second blocks is far more than a single chunk holds.
+    let head: bigint;
+    try {
+      head = BigInt(await this.rpc<string>("eth_blockNumber", []));
+    } catch (err) {
+      log.error(
+        { err, providerRef },
+        "eth_blockNumber failed — payment could NOT be verified, not proven unpaid",
+      );
+      return { providerRef, status: "pending" };
+    }
+    const lookback = BigInt(this.cfg.logLookbackBlocks ?? DEFAULT_LOG_LOOKBACK);
+    const chunk = BigInt(this.cfg.logChunkBlocks ?? DEFAULT_LOG_CHUNK);
+    const floor = head > lookback ? head - lookback : 0n;
+
+    let paid: ReturnType<EvmStableRail["findPaidLog"]> = null;
+    for (let to = head; to >= floor && !paid; to = to - chunk - 1n) {
+      const from = to > floor + chunk ? to - chunk : floor;
+      let logs: EvmLog[];
+      try {
+        logs = await this.rpc<EvmLog[]>("eth_getLogs", [
+          {
+            address: this.cfg.contractAddress,
+            topics: [PAID_TOPIC, expected],
+            fromBlock: `0x${from.toString(16)}`,
+            toBlock: `0x${to.toString(16)}`,
+          },
+        ]);
+      } catch (err) {
+        // "Could not check" is not "not paid". Reporting pending is honest —
+        // the caller polls again — but it must be visible, because a provider
+        // rejecting every query looks exactly like an order nobody paid.
+        log.error(
+          { err, providerRef, fromBlock: from.toString(), toBlock: to.toString() },
+          "eth_getLogs failed — payment could NOT be verified, not proven unpaid",
+        );
+        return { providerRef, status: "pending" };
+      }
+      paid = this.findPaidLog(logs, expected);
+      if (from === floor) break;
+    }
     return paid
-      ? { providerRef, status: "confirmed", amount: this.toKobo(paid.amount), rawEventId: paid.txHash }
+      ? {
+          providerRef,
+          status: "confirmed",
+          amount: this.toKobo(paid.amount),
+          rawEventId: paid.txHash,
+          recipient: paid.merchant,
+        }
       : { providerRef, status: "pending" };
   }
 
   // --- internals -------------------------------------------------------------
 
-  private confirmed(orderId: string, baseUnits: string, txHash: string): PaymentEvent {
+  private confirmed(
+    orderId: string,
+    baseUnits: string,
+    txHash: string,
+    recipient: string,
+  ): PaymentEvent {
     return {
       railId: this.id,
       providerRef: orderId,
       status: "confirmed",
       amount: this.toKobo(baseUnits),
+      recipient,
       // The TRANSACTION is the idempotency anchor: the same hash submitted twice
       // must credit the ledger once.
       idempotencyKey: `evm:${txHash.toLowerCase()}`,
@@ -201,7 +291,7 @@ export class EvmStableRail implements PaymentRail {
   /** Stablecoin base units back to kobo, for the amount-integrity check. */
   private toKobo(baseUnits: string): Kobo {
     const usd = Number(BigInt(baseUnits)) / 10 ** this.cfg.tokenDecimals;
-    return Math.round(usd * this.cfg.ngnPerUsd * 100);
+    return Math.round(usd * this.cfg.ngnPerUsd() * 100);
   }
 
   private findPaidLog(logs: EvmLog[], expectedOrderIdHash: string):

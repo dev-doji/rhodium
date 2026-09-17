@@ -3,6 +3,7 @@ import type { RailRegistry } from "../../rails/registry.js";
 import type { EventBus } from "../../events/bus.js";
 import type { PaymentInstruction, PaymentRail, WebhookPayload } from "../../rails/types.js";
 import type { Merchant, Payment, RailId } from "../../domain/types.js";
+import { isAnomalyStatus } from "../../domain/types.js";
 import type { Clock } from "../../lib/clock.js";
 import type { Metrics } from "../metrics/metrics.js";
 import type { AuditService } from "../audit/audit-service.js";
@@ -163,6 +164,7 @@ export class PaymentsOrchestrator {
       event.providerRef,
       event.amount,
       event.idempotencyKey,
+      event.recipient,
     );
   }
 
@@ -181,7 +183,7 @@ export class PaymentsOrchestrator {
       const key = status.rawEventId
         ? `${payment.railId}:${status.rawEventId}`
         : `poll:${providerRef}:${payment.id}`;
-      await this.confirmByProviderRef(providerRef, status.amount, key);
+      await this.confirmByProviderRef(providerRef, status.amount, key, status.recipient);
       return true;
     }
     return false;
@@ -194,6 +196,7 @@ export class PaymentsOrchestrator {
     providerRef: string,
     amount: number | undefined,
     idempotencyKey: string,
+    recipient?: string,
   ): Promise<void> {
     // Match the PENDING payment for this account. Live DVAs are per-customer
     // and reused, so there may be older confirmed payments on the same ref.
@@ -204,6 +207,17 @@ export class PaymentsOrchestrator {
         // Layer 1: nothing pending + a confirmed exists => duplicate delivery.
         this.metrics.increment("webhook_duplicate");
         log.info({ providerRef, paymentId: any.id }, "duplicate confirm dropped");
+        return;
+      }
+      if (any && isAnomalyStatus(any.status)) {
+        // Already recorded as an anomaly and awaiting review. Providers retry,
+        // so this arrives repeatedly; re-recording it would spam the audit log
+        // and a throw here would keep the retries coming forever.
+        this.metrics.increment("webhook_duplicate");
+        log.info(
+          { providerRef, paymentId: any.id, status: any.status },
+          "duplicate anomaly delivery dropped",
+        );
         return;
       }
       log.warn({ providerRef }, "confirmation for unknown providerRef");
@@ -218,24 +232,64 @@ export class PaymentsOrchestrator {
     const toleranceBps =
       rail.kind !== "crypto" ? 0 : rail.id === "evm_stable" ? 50 : 150;
     if (amount != null && !withinTolerance(amount, payment.amount, toleranceBps)) {
-      this.metrics.increment("payment_amount_mismatch");
-      await this.audit.record({
-        actor: "system",
-        action: "payment.amount_mismatch",
-        entity: "payment",
-        entityId: payment.id,
-        metadata: { expected: payment.amount, received: amount },
-      });
-      throw new ValidationError("payment amount mismatch", {
-        expected: payment.amount,
-        received: amount,
-      });
+      // The buyer's money moved, just not in the amount we quoted. Recording it
+      // beats throwing: a throw left the payment pending forever with nothing
+      // anywhere saying funds had arrived, and made the provider retry the same
+      // rejected webhook indefinitely.
+      await this.recordAnomaly(
+        payment,
+        amount < payment.amount ? "underpaid" : "overpaid",
+        { expected: payment.amount, received: amount },
+      );
+      return;
     }
 
     const order = await this.repos.orders.byId(payment.orderId);
     if (!order) throw new NotFoundError("order", { id: payment.orderId });
     if (order.status !== "awaiting_payment" && order.status !== "draft") {
       throw new ConflictError(`order ${order.id} not payable in ${order.status}`);
+    }
+
+    // Recipient integrity. Proving that an order id was paid is NOT proving the
+    // merchant was paid: on a chain rail the payer names the recipient in the
+    // call, so a buyer could pay their own wallet, quote the real transaction
+    // hash, and take the goods for the price of gas. Compare against the
+    // address the buyer was actually quoted, falling back to the merchant's
+    // wallet for rows written before instructions were snapshotted.
+    if (recipient) {
+      const quoted =
+        this.quotedRecipient(payment) ??
+        (await this.repos.merchants.byId(order.merchantId))?.quaiAddress;
+      if (!quoted || recipient.toLowerCase() !== quoted.toLowerCase()) {
+        this.metrics.increment("payment_recipient_mismatch");
+        await this.audit.record({
+          actor: "system",
+          action: "payment.recipient_mismatch",
+          entity: "payment",
+          entityId: payment.id,
+          metadata: { orderId: order.id, expected: quoted ?? null, received: recipient },
+        });
+        throw new ValidationError("payment went to an unexpected recipient", {
+          expected: quoted ?? null,
+          received: recipient,
+        });
+      }
+    }
+
+    // Expiry, checked only once the funds are known to have reached the
+    // merchant. The quote had a shelf life and the money arrived after it; on a
+    // crypto order the stablecoin amount was priced when the order was made, so
+    // honouring a stale quote pays her at whatever the rate was then. Recorded
+    // rather than rejected: the transfer already happened, and a payment nobody
+    // wrote down is worse than one flagged for review.
+    if (order.expiresAt && this.clock.now() > order.expiresAt) {
+      await this.recordAnomaly(payment, "expired", {
+        orderId: order.id,
+        expiresAt: order.expiresAt.toISOString(),
+        receivedAt: this.clock.now().toISOString(),
+        received: amount ?? null,
+      });
+      return;
     }
 
     const now = this.clock.now();
@@ -278,6 +332,44 @@ export class PaymentsOrchestrator {
       reason,
       occurredAt: this.clock.now().toISOString(),
     });
+  }
+
+  /**
+   * Record money that arrived on terms we cannot accept, and stop.
+   *
+   * Terminal for this payment: the order is NOT credited and the ledger is not
+   * touched, so nothing downstream treats the sale as complete. Resolving it is
+   * a human decision (refund, top-up, honour the stale quote) — see the refund
+   * and dispute model, which is still an open product question.
+   */
+  private async recordAnomaly(
+    payment: Payment,
+    status: "underpaid" | "overpaid" | "expired",
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    await this.repos.payments.updateStatus(payment.id, status);
+    this.metrics.increment(`payment_${status}`);
+    await this.audit.record({
+      actor: "system",
+      action: `payment.${status}`,
+      entity: "payment",
+      entityId: payment.id,
+      metadata,
+    });
+    log.warn(
+      { paymentId: payment.id, orderId: payment.orderId, status, ...metadata },
+      "payment recorded as an anomaly — order not credited, awaiting review",
+    );
+  }
+
+  /** The recipient address the buyer was quoted, from the instruction snapshot. */
+  private quotedRecipient(payment: Payment): string | undefined {
+    if (!payment.instructionJson) return undefined;
+    try {
+      return (JSON.parse(payment.instructionJson) as PaymentInstruction).merchantAddress;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Rebuild the buyer-facing DVA view for an idempotent re-request. */

@@ -94,11 +94,27 @@ export interface Order {
 }
 
 export type InstructionType = "dva" | "link" | "crypto";
+/**
+ * `underpaid` / `overpaid` / `expired` are ANOMALIES, not failures: the money
+ * moved, but not on the terms the order was quoted on. They are terminal and
+ * await manual review — the order is deliberately not credited, because a
+ * mismatched amount silently accepted is how a ledger stops being evidence.
+ * A failure, by contrast, means no money moved at all.
+ */
 export type PaymentStatus =
   | "pending"
   | "confirmed"
   | "failed"
-  | "expired";
+  | "expired"
+  | "underpaid"
+  | "overpaid";
+
+/** Statuses that record a payment we received but deliberately did not credit. */
+export const ANOMALY_STATUSES = ["underpaid", "overpaid", "expired"] as const;
+
+export function isAnomalyStatus(status: PaymentStatus): boolean {
+  return (ANOMALY_STATUSES as readonly string[]).includes(status);
+}
 
 export interface Payment {
   id: string;

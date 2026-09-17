@@ -7,7 +7,8 @@
     "compile": "hardhat compile",
     "deploy": "node scripts/deploy.cjs",
     "pay": "node scripts/pay.cjs",
-    "deploy:arbitrum": "node scripts/deploy-arbitrum.cjs"
+    "deploy:arbitrum": "node scripts/deploy-arbitrum.cjs",
+    "deploy:arc": "node scripts/deploy-arc.cjs"
   },
   "devDependencies": {
     "hardhat": "^2.22.0"

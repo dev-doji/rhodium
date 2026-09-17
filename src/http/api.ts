@@ -16,6 +16,7 @@ import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
 import type { Merchant, Product, RailId } from "../domain/types.js";
 import type { PaymentRail } from "../rails/types.js";
 import { demoImageByName, demoImageUrl, TEST_SHOP_ITEMS } from "../domain/demo-catalogue.js";
+import { evmChainMetadata } from "../config/index.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
 
@@ -609,6 +610,9 @@ export function buildApi(app: App): Express {
         evmChainName: app.config.EVM_CHAIN_NAME,
         evmRpcUrl: app.config.EVM_RPC_URL,
         evmExplorerUrl: app.config.EVM_EXPLORER_URL,
+        // What the wallet needs to ADD this chain. Arc's native token is USDC,
+        // so the page cannot assume ether when offering to add a network.
+        evmNativeCurrency: evmChainMetadata(app.config.EVM_CHAIN_ID).native,
         fx: app.fx.snapshot(),
       });
     }),
@@ -1266,6 +1270,51 @@ export function buildApi(app: App): Express {
       await app.repos.merchants.setWalletSecrets(merchant.id, wallet.mnemonic, wallet.privateKey);
       await app.repos.merchants.update(merchant.id, { quaiAddress: wallet.address });
       res.json({ merchantId: merchant.id, quaiAddress: wallet.address });
+    }),
+  );
+
+  /**
+   * Set how a merchant's crypto sales reach her, without WhatsApp onboarding.
+   *
+   *   "usdc"  — the EVM rail pays her own wallet (Arbitrum, Arc)
+   *   "naira" — OnSwitch off-ramps to her bank; she needs no wallet
+   *
+   * Onboarding is the only other place this is chosen, so a merchant created
+   * by hand or by a seed script can never reach the EVM rail: with no
+   * preference recorded the registry falls back to the off-ramp. That made the
+   * stablecoin rail impossible to exercise outside a full WhatsApp journey.
+   */
+  server.post(
+    "/admin/merchants/:id/settlement",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const merchant = await app.repos.merchants.byId(req.params.id!);
+      if (!merchant) throw new NotFoundError("merchant", { id: req.params.id });
+
+      const settlement = String(req.body?.cryptoSettlement ?? "").toLowerCase();
+      if (settlement !== "usdc" && settlement !== "naira") {
+        throw new ValidationError("cryptoSettlement must be 'usdc' or 'naira'");
+      }
+      // Being paid in USDC means being paid to a wallet. Recording the
+      // preference without one leaves a merchant who looks payable and is not:
+      // the rail refuses at quote time, with the buyer already waiting.
+      if (settlement === "usdc" && !merchant.quaiAddress) {
+        throw new ValidationError(
+          "merchant has no wallet address — POST /admin/merchants/:id/wallet first",
+          { merchantId: merchant.id },
+        );
+      }
+
+      const updated = await app.repos.merchants.update(merchant.id, {
+        cryptoSettlement: settlement,
+        cryptoEnabled: true,
+      });
+      res.json({
+        merchantId: updated.id,
+        cryptoSettlement: updated.cryptoSettlement,
+        quaiAddress: updated.quaiAddress,
+        rail: app.rails.crypto(updated.cryptoSettlement).id,
+      });
     }),
   );
 

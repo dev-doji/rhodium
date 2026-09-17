@@ -713,7 +713,14 @@
         'EVM wallet, or go back and choose <b>Pay with naira</b> — a bank transfer needs no wallet.</div>');
     }
 
-    /** Move the wallet to Arbitrum, adding the chain if it does not know it. */
+    /**
+     * Move the wallet to the configured chain, adding it if it is unknown.
+     *
+     * The native currency comes from the SERVER, not a constant here: on Arc
+     * the gas token is USDC, and a wallet told "ETH" would label the buyer's
+     * dollars as ether — while MetaMask rejects a symbol that contradicts what
+     * it already knows about a chain, so the add would simply fail.
+     */
     async function ensureEvmChain(provider) {
       const hexId = "0x" + Number(data.evmChainId).toString(16);
       try {
@@ -721,15 +728,16 @@
       } catch (err) {
         // 4902 = the wallet has never heard of this chain.
         if (err && (err.code === 4902 || err.code === -32603)) {
-          await provider.request({
-            method: "wallet_addEthereumChain",
-            params: [{
-              chainId: hexId,
-              chainName: data.evmChainName || "Arbitrum One",
-              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [data.evmRpcUrl],
-            }],
-          });
+          const native = data.evmNativeCurrency ||
+            { name: "Ether", symbol: "ETH", decimals: 18 };
+          const params = {
+            chainId: hexId,
+            chainName: data.evmChainName || "Arbitrum One",
+            nativeCurrency: native,
+            rpcUrls: [data.evmRpcUrl],
+          };
+          if (data.evmExplorerUrl) params.blockExplorerUrls = [data.evmExplorerUrl];
+          await provider.request({ method: "wallet_addEthereumChain", params: [params] });
         } else {
           throw err;
         }
@@ -772,14 +780,20 @@
           }],
         });
         if (btn) btn.innerHTML = "2 of 2 — confirm payment…";
-        // payToken(bytes32,address,address,uint256)
+        // payToken(bytes32 orderId, address merchant, address token, uint256 amount)
+        //
+        // MERCHANT BEFORE TOKEN. Both are addresses, so swapping them still
+        // produces the same selector and a perfectly well-formed transaction —
+        // it just reverts on execution, because the contract then calls
+        // transferFrom on the merchant's wallet, which holds no code. The
+        // argument order is the only thing distinguishing them; keep it.
         return provider.request({
           method: "eth_sendTransaction",
           params: [{
             from: from,
             to: contract,
-            data: "0x5237f0bc" + pad32(orderHash) + encAddr(inst.tokenAddress) +
-                  encAddr(inst.merchantAddress) + encUint(inst.cryptoAmount),
+            data: "0x5237f0bc" + pad32(orderHash) + encAddr(inst.merchantAddress) +
+                  encAddr(inst.tokenAddress) + encUint(inst.cryptoAmount),
           }],
         });
       }

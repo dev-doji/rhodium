@@ -18,3 +18,9 @@ apps/*/next-env.d.ts
 apps/*/*.tsbuildinfo
 backups/
 .neon
+
+# Internal docs stay local: planning, handoffs, decks and the TRD are working
+# notes, not part of the published repository. The root README is the one
+# public document. Files remain on disk — only the repo stops carrying them.
+*.md
+!/README.md

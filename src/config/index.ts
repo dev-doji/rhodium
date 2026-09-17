@@ -30,23 +30,80 @@ const bool = (def: boolean) =>
  * that chain. That failure is invisible until a buyer's money has already
  * moved, so it is checked at boot instead.
  */
+/** What a wallet must be told to ADD a chain it does not know (EIP-3085). */
+export interface NativeCurrency {
+  name: string;
+  symbol: string;
+  decimals: number;
+}
+
+const ETHER: NativeCurrency = { name: "Ether", symbol: "ETH", decimals: 18 };
+
 export const EVM_DEPLOYMENTS: Record<
   number,
-  { contract: string; token: string; name: string; explorer: string }
+  {
+    contract: string;
+    token: string;
+    name: string;
+    explorer: string;
+    native: NativeCurrency;
+  }
 > = {
   42161: {
     name: "Arbitrum One",
     contract: "0x80cD8120170c799501E9a7eA0da4203AD52C1d7d",
     token: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // native Circle USDC
     explorer: "https://arbiscan.io",
+    native: ETHER,
   },
   421614: {
     name: "Arbitrum Sepolia",
     contract: "0x34b17673E4Be07D5027cF02C63b3bDf5ed7e13b2",
     token: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
     explorer: "https://sepolia.arbiscan.io",
+    native: ETHER,
+  },
+  /**
+   * Arc — Circle's stablecoin L1. USDC is the NATIVE gas token here, exposed at
+   * a fixed system address that also satisfies IERC20, so payToken() moves it
+   * exactly as it moves USDC anywhere else. Same token address on both networks.
+   *
+   * The contract address is identical to Arbitrum One's because the same
+   * deployer deployed at the same nonce, so CREATE produced the same address on
+   * every chain. The contract check below therefore CANNOT catch a wrong
+   * EVM_CHAIN_ID here — the token check is what still can, since Arc's USDC
+   * shares no address with Arbitrum's.
+   */
+  5042: {
+    name: "Arc",
+    contract: "0x80cD8120170c799501E9a7eA0da4203AD52C1d7d",
+    token: "0x3600000000000000000000000000000000000000",
+    explorer: "https://explorer.arc.io",
+    // USDC, not ETH — there is no ether on Arc. A wallet told "ETH" here would
+    // label the buyer's dollars as ether, and MetaMask refuses a symbol that
+    // contradicts what it already knows about the chain.
+    native: { name: "USD Coin", symbol: "USDC", decimals: 18 },
+  },
+  5042002: {
+    name: "Arc Testnet",
+    contract: "0x80cD8120170c799501E9a7eA0da4203AD52C1d7d",
+    token: "0x3600000000000000000000000000000000000000",
+    explorer: "https://explorer.testnet.arc.io",
+    native: { name: "USD Coin", symbol: "USDC", decimals: 18 },
   },
 };
+
+/** Chain metadata a wallet needs to add a network, for whatever chain is configured. */
+export function evmChainMetadata(chainId: number): {
+  explorer: string;
+  native: NativeCurrency;
+} {
+  const known = EVM_DEPLOYMENTS[chainId];
+  return {
+    explorer: known?.explorer ?? "",
+    native: known?.native ?? ETHER,
+  };
+}
 
 /**
  * Assets OnSwitch will off-ramp, exactly as its API enumerates them.

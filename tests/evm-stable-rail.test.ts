@@ -19,7 +19,7 @@ function rail(over: Partial<ConstructorParameters<typeof EvmStableRail>[0]> = {}
     tokenAddress: USDC_SEPOLIA,
     tokenSymbol: "USDC",
     tokenDecimals: 6,
-    ngnPerUsd: 1600,
+    ngnPerUsd: () => 1600,
     publicBaseUrl: "https://pay.userhodium.xyz",
     ...over,
   });
@@ -92,6 +92,24 @@ describe("EVM stablecoin rail", () => {
     expect(event.status).toBe("ignored");
   });
 
+  it("reports who received the funds, so the recipient can be checked", async () => {
+    const r = rail();
+    const inst = await r.createPaymentInstruction(order, merchant);
+    const log = r.mock!.pay({
+      orderId: order.id, merchant: MERCHANT_WALLET,
+      token: USDC_SEPOLIA, amount: inst.cryptoAmount!,
+    });
+    const event = await r.handleWebhook({
+      headers: {}, rawBody: JSON.stringify({ orderId: order.id, txHash: log.txHash }),
+    });
+    // A Paid log names its own recipient. The rail cannot know which address
+    // was quoted, so it surfaces what it saw and the orchestrator decides.
+    expect(event.recipient?.toLowerCase()).toBe(MERCHANT_WALLET.toLowerCase());
+    expect((await r.verifyPayment(order.id)).recipient?.toLowerCase()).toBe(
+      MERCHANT_WALLET.toLowerCase(),
+    );
+  });
+
   it("ignores an unknown transaction hash", async () => {
     const event = await rail().handleWebhook({
       headers: {}, rawBody: JSON.stringify({ orderId: order.id, txHash: "0xdeadbeef" }),
@@ -138,6 +156,64 @@ describe("EVM stablecoin rail", () => {
     expect(inst.cryptoAmount).toBe("1000000"); // pricing is chain-independent
   });
 
+  it("prices at the CURRENT rate, not the one captured at boot", async () => {
+    let rate = 1600;
+    const r = rail({ ngnPerUsd: () => rate });
+    expect((await r.createPaymentInstruction(order, merchant)).cryptoAmount).toBe("1000000");
+
+    // The naira price is unchanged; the market moved. A buyer quoted ₦1,600 at
+    // 1320/USD must be asked for 1.21 USDC, not the 1.00 the boot-time constant
+    // would have charged — that gap is the merchant's, and it is silent.
+    rate = 1320;
+    expect((await r.createPaymentInstruction(order, merchant)).cryptoAmount).toBe("1212121");
+  });
+
+  it("polls over bounded hex block ranges, never earliest→latest", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      const req = JSON.parse(init.body) as { method: string; params: unknown[] };
+      if (req.method === "eth_blockNumber") {
+        return { ok: true, json: async () => ({ result: "0x3ba0000" }) };
+      }
+      calls.push(req.params[0] as Record<string, unknown>);
+      return { ok: true, json: async () => ({ result: [] }) };
+    }) as unknown as typeof fetch;
+
+    try {
+      const live = rail({ mode: "live", logLookbackBlocks: 12_000, logChunkBlocks: 5_000 });
+      await live.verifyPayment(order.id);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    expect(calls.length).toBeGreaterThan(1); // the window needs more than one request
+    for (const c of calls) {
+      // Arbitrum rejects a non-hex fromBlock outright and Arc caps the span, so
+      // an unbounded earliest→latest scan silently verified nothing in prod.
+      expect(c.fromBlock).toMatch(/^0x[0-9a-f]+$/);
+      expect(c.toBlock).toMatch(/^0x[0-9a-f]+$/);
+      const span = BigInt(c.toBlock as string) - BigInt(c.fromBlock as string);
+      expect(span).toBeLessThanOrEqual(5_000n);
+    }
+  });
+
+  it("reports pending, not confirmed, when the chain cannot be reached", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    try {
+      const live = rail({ mode: "live" });
+      // An RPC that refuses every query must never read as "nobody paid this".
+      await expect(live.verifyPayment(order.id)).resolves.toMatchObject({ status: "pending" });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("derives the order id hash the contract is called with", () => {
     expect(orderIdToBytes32("ord_evm_1")).toMatch(/^0x[0-9a-f]{64}$/);
     expect(orderIdToBytes32("a")).not.toBe(orderIdToBytes32("b"));
@@ -180,6 +256,47 @@ describe("EVM stablecoin through the whole payment loop", () => {
       // Same transaction submitted twice must not credit twice.
       await app.payments.handleRailWebhook("evm_stable", { headers: {}, rawBody: body });
       expect(await app.ledger.entries(m.id)).toHaveLength(1);
+    } finally {
+      delete process.env.FEATURE_EVM_STABLE_ENABLED;
+      delete process.env.EVM_CONTRACT_ADDRESS;
+    }
+  });
+
+  it("refuses a payment that went to the payer's own wallet", async () => {
+    process.env.FEATURE_EVM_STABLE_ENABLED = "true";
+    process.env.EVM_ADAPTER_MODE = "mock";
+    process.env.EVM_CONTRACT_ADDRESS = CONTRACT;
+    const { makeApp, seedMerchant, seedProduct } = await import("./helpers/harness.js");
+    const app = makeApp();
+    try {
+      const m = await seedMerchant(app, { quaiAddress: MERCHANT_WALLET, cryptoEnabled: true, cryptoSettlement: "usdc" });
+      const p = await seedProduct(app, m.id, 1_600_00);
+      const o = await app.commerce.createOrder({
+        merchantId: m.id, buyerRef: "+2349032621846",
+        lines: [{ productId: p.id, qty: 1 }], rail: "crypto",
+      });
+      const inst = await app.payments.requestPayment(o.id);
+
+      // RhodiumPay.payToken lets the caller name the recipient, so the buyer
+      // can route their own USDC back to themselves while quoting this order.
+      // The transaction is real and the order id matches — only the recipient
+      // is wrong, and that is the whole of the fraud.
+      const ATTACKER = "0x00000000000000000000000000000000000000cc";
+      const evm = app.rails.get("evm_stable") as { mock?: { pay: (i: Record<string, string>) => { txHash: string } } };
+      const log = evm.mock!.pay({
+        orderId: o.id, merchant: ATTACKER,
+        token: USDC_SEPOLIA, amount: inst.cryptoAmount!,
+      });
+
+      await expect(
+        app.payments.handleRailWebhook("evm_stable", {
+          headers: {},
+          rawBody: JSON.stringify({ orderId: o.id, txHash: log.txHash }),
+        }),
+      ).rejects.toThrow(/recipient/i);
+
+      expect((await app.repos.orders.byId(o.id))!.status).toBe("awaiting_payment");
+      expect(await app.ledger.balance(m.id)).toBe(0);
     } finally {
       delete process.env.FEATURE_EVM_STABLE_ENABLED;
       delete process.env.EVM_CONTRACT_ADDRESS;

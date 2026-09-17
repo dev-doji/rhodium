@@ -7,7 +7,6 @@ import {
   payWebhook,
   replayWebhook,
 } from "./helpers/harness.js";
-import { ValidationError } from "../src/lib/errors.js";
 
 describe("the magic moment — sell → pay → confirm → receipt → ledger", () => {
   it("confirms an order end-to-end and appends exactly one ledger entry", async () => {
@@ -78,14 +77,84 @@ describe("the magic moment — sell → pay → confirm → receipt → ledger",
     const product = await seedProduct(app, merchant.id, 500_000);
     const { order, providerRef } = await orderWithDva(app, merchant.id, product.id);
 
-    await expect(payWebhook(app, providerRef, 400_000)).rejects.toBeInstanceOf(
-      ValidationError,
-    );
+    // The money moved, just not in the amount quoted. That is recorded, not
+    // thrown away: throwing left the payment pending with nothing anywhere
+    // saying funds had arrived, and made the provider retry it forever.
+    await payWebhook(app, providerRef, 400_000);
 
     const finalOrder = await app.repos.orders.byId(order.id);
     expect(finalOrder!.status).toBe("awaiting_payment");
     expect(await app.ledger.entries(merchant.id)).toHaveLength(0);
-    expect(app.metrics.snapshot()["payment_amount_mismatch"]).toBe(1);
+    expect((await app.repos.payments.byProviderRef(providerRef))!.status).toBe("underpaid");
+    expect(app.metrics.snapshot()["payment_underpaid"]).toBe(1);
+  });
+
+  it("does not credit an order paid after its quote expired", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const product = await seedProduct(app, merchant.id, 500_000);
+
+    // Real orders carry a one-hour TTL from WhatsApp and checkout alike.
+    const order = await app.commerce.createOrder({
+      merchantId: merchant.id,
+      buyerRef: "+2348090000009",
+      lines: [{ productId: product.id, qty: 1 }],
+      ttlMs: 60 * 60 * 1000,
+    });
+    const { providerRef } = await app.payments.requestPayment(order.id);
+
+    app.clock.advance(2 * 60 * 60 * 1000);
+    await payWebhook(app, providerRef);
+
+    expect((await app.repos.orders.byId(order.id))!.status).toBe("awaiting_payment");
+    expect((await app.repos.payments.byProviderRef(providerRef))!.status).toBe("expired");
+    expect(await app.ledger.entries(merchant.id)).toHaveLength(0);
+  });
+
+  it("still credits an order paid inside its TTL", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const product = await seedProduct(app, merchant.id, 500_000);
+    const order = await app.commerce.createOrder({
+      merchantId: merchant.id,
+      buyerRef: "+2348090000009",
+      lines: [{ productId: product.id, qty: 1 }],
+      ttlMs: 60 * 60 * 1000,
+    });
+    const { providerRef } = await app.payments.requestPayment(order.id);
+
+    app.clock.advance(30 * 60 * 1000);
+    await payWebhook(app, providerRef);
+
+    expect((await app.repos.orders.byId(order.id))!.status).toBe("paid");
+    expect(await app.ledger.balance(merchant.id)).toBe(500_000);
+  });
+
+  it("records an overpayment separately from an underpayment", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const product = await seedProduct(app, merchant.id, 500_000);
+    const { providerRef } = await orderWithDva(app, merchant.id, product.id);
+
+    await payWebhook(app, providerRef, 600_000);
+
+    expect((await app.repos.payments.byProviderRef(providerRef))!.status).toBe("overpaid");
+    expect(await app.ledger.entries(merchant.id)).toHaveLength(0);
+  });
+
+  it("drops a redelivered webhook for a payment already flagged", async () => {
+    const app = makeApp();
+    const merchant = await seedMerchant(app);
+    const product = await seedProduct(app, merchant.id, 500_000);
+    const { providerRef } = await orderWithDva(app, merchant.id, product.id);
+
+    // Providers retry. The anomaly must be written once, not once per delivery.
+    await payWebhook(app, providerRef, 400_000);
+    await payWebhook(app, providerRef, 400_000);
+    await payWebhook(app, providerRef, 400_000);
+
+    expect(app.metrics.snapshot()["payment_underpaid"]).toBe(1);
+    expect(await app.ledger.entries(merchant.id)).toHaveLength(0);
   });
 
   it("poll fallback confirms a payment whose webhook never arrived", async () => {
