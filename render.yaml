@@ -34,10 +34,19 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Postgres lives on Neon, not on Render, so this is set in the dashboard.
+      #
+      # It was bound to a Render-managed database with `fromDatabase`, and a
+      # blueprint binding OVERRIDES the dashboard — so pointing the dashboard
+      # at Neon changed nothing and every deploy went on dialling a host that
+      # no longer answered. `sync: false` is what lets the dashboard value win.
+      #
+      # Use Neon's POOLED endpoint (the `-pooler` host). Prisma's default pool
+      # is num_cpus*2+1 per instance, which several instances can multiply past
+      # what a direct endpoint will accept; the pooler absorbs that. Migrations
+      # run through it fine — `prisma migrate deploy` was verified against it.
       - key: DATABASE_URL
-        fromDatabase:
-          name: rhodium-db
-          property: connectionString
+        sync: false
       # --- set these in the Render dashboard (sensitive) ---
       - key: FIELD_ENCRYPTION_KEY   # 64 hex chars: openssl rand -hex 32
         sync: false
@@ -115,8 +124,5 @@ services:
       - key: MERCHANT_BASE_URL
         value: https://app.userhodium.xyz
 
-databases:
-  - name: rhodium-db
-    plan: free
-    databaseName: rhodium
-    user: rhodium
+# No `databases:` block: Postgres is on Neon now. Declaring one here would have
+# Render provision a database nothing reads, and re-bind DATABASE_URL to it.
