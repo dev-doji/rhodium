@@ -13,7 +13,9 @@ import { normalisePhone } from "../lib/phone.js";
 import { withTrace, logger } from "../lib/logger.js";
 import { ref } from "../lib/ids.js";
 import { encryptField, decryptField, hmacSign } from "../lib/crypto.js";
-import type { Merchant, Product, RailId } from "../domain/types.js";
+import { WALK_IN_BUYER, type Merchant, type Product, type RailId } from "../domain/types.js";
+import type { OrderLineInput } from "../modules/commerce/commerce-service.js";
+import QRCode from "qrcode";
 import type { PaymentRail } from "../rails/types.js";
 import { demoImageByName, demoImageUrl, TEST_SHOP_ITEMS } from "../domain/demo-catalogue.js";
 import { evmChainMetadata } from "../config/index.js";
@@ -320,10 +322,12 @@ export function buildApi(app: App): Express {
     }
     const items = [];
     for (const line of order.items) {
-      const product = await app.repos.products.byId(line.productId).catch(() => null);
+      const product = line.productId
+        ? await app.repos.products.byId(line.productId).catch(() => null)
+        : null;
       const unit = product?.price ?? line.unitPrice ?? 0;
       items.push({
-        name: product?.name ?? "Item",
+        name: product?.name ?? line.name ?? "Item",
         qty: line.qty,
         unitPrice: unit,
         unitPriceFormatted: formatNaira(unit),
@@ -401,9 +405,11 @@ export function buildApi(app: App): Express {
 
       const items = [];
       for (const line of order.items) {
-        const product = await app.repos.products.byId(line.productId).catch(() => null);
+        const product = line.productId
+          ? await app.repos.products.byId(line.productId).catch(() => null)
+          : null;
         items.push({
-          name: product?.name ?? "Item",
+          name: product?.name ?? line.name ?? "Item",
           qty: line.qty,
           unitPrice: product?.price ?? line.unitPrice ?? 0,
           unitPriceFormatted: formatNaira(product?.price ?? line.unitPrice ?? 0),
@@ -522,6 +528,33 @@ export function buildApi(app: App): Express {
     }),
   );
 
+  /**
+   * The checkout link as a QR code — what the counter screen shows the buyer.
+   *
+   * Public, like the checkout page it points to: the order id is already the
+   * capability, and anyone holding it can open the page anyway. Rendered here
+   * rather than in the browser so the same image can later go on a printed
+   * stand, and so the dashboard bundle carries no QR encoder.
+   */
+  server.get(
+    "/api/checkout/:orderId/qr.svg",
+    asyncRoute(async (req, res) => {
+      const order = await app.repos.orders.byId(String(req.params.orderId));
+      if (!order) throw new NotFoundError("order", { id: req.params.orderId });
+      const svg = await QRCode.toString(`${app.config.PUBLIC_BASE_URL}/checkout/${order.id}`, {
+        type: "svg",
+        margin: 1,
+        // M survives a scuffed screen or a glare spot; H would make the code
+        // denser than a cheap phone camera reads comfortably at arm's length.
+        errorCorrectionLevel: "M",
+      });
+      res.set("Content-Type", "image/svg+xml");
+      // The link an order encodes never changes, so the image never does.
+      res.set("Cache-Control", "public, max-age=86400, immutable");
+      res.send(svg);
+    }),
+  );
+
   // Public order + payment instruction for the checkout page (no auth: buyer-facing).
   server.get(
     "/api/checkout/:orderId",
@@ -635,6 +668,35 @@ export function buildApi(app: App): Express {
       const wants = String(req.body?.method ?? "").toLowerCase();
       if (wants !== "bank" && wants !== "crypto") {
         throw new ValidationError("method must be 'bank' or 'crypto'");
+      }
+
+      /**
+       * One order, one way to pay, once issued.
+       *
+       * requestPayment returns an existing instruction whatever rail is asked
+       * for, so a buyer who tapped crypto after a bank account was issued — by
+       * them a moment ago, or by the cashier's "show account number" — was
+       * handed the bank account on the crypto screen with no word of why. And
+       * setRail below ran first, so the order then claimed crypto while waiting
+       * on a bank transfer, and traction counted it on the wrong rail.
+       *
+       * The switch is refused rather than honoured. An issued account number
+       * can still receive money after the buyer changes their mind, and
+       * replacing it would leave that transfer matching nothing. The existing
+       * instruction rides along so the page can show it and say what happened.
+       */
+      const existing = await app.repos.payments.byOrderId(order.id);
+      const existingKind = existing ? app.rails.find(existing.railId)?.kind : undefined;
+      if (existing && existingKind && existingKind !== (wants === "crypto" ? "crypto" : "fiat")) {
+        res.status(409).json({
+          error: "method_locked",
+          message:
+            existingKind === "fiat"
+              ? "This order is already set up for a bank transfer. Pay to the account below, or ask the seller to start a new sale if you want to pay with crypto."
+              : "This order is already set up for a crypto payment. Pay to the address below, or ask the seller to start a new sale if you want to pay by bank transfer.",
+          instruction: await app.payments.requestPayment(order.id),
+        });
+        return;
       }
 
       const rail = wants === "crypto"
@@ -1646,6 +1708,86 @@ export function buildApi(app: App): Express {
         railId as RailId | undefined,
       );
       res.status(201).json({ order, instruction });
+    }),
+  );
+
+  /**
+   * A sale at the physical counter.
+   *
+   * Unlike /api/orders this issues NO payment instruction. The buyer standing
+   * in front of the till scans the QR and chooses bank or crypto on their own
+   * phone; committing to a rail here would hand every scanner a bank account
+   * they may not want. For a buyer who would rather type an account number
+   * than scan, the counter screen asks for one through the same public
+   * /method endpoint the checkout page uses — so there is one path, not two.
+   *
+   * The amount is either keyed in or built from catalogue products, never
+   * both: a keyed amount on top of a cart is a total nobody can check.
+   */
+  server.post(
+    "/api/counter/sale",
+    guard,
+    asyncRoute(async (req: AuthedRequest, res) => {
+      const body = req.body ?? {};
+      const keyed = body.amountNaira != null && body.amountNaira !== "";
+      const rawLines = body.lines;
+      const hasLines = Array.isArray(rawLines) && rawLines.length > 0;
+      if (keyed === hasLines) {
+        throw new ValidationError("enter an amount or pick products — one, not both");
+      }
+
+      let lines: OrderLineInput[];
+      if (keyed) {
+        const naira = Number(body.amountNaira);
+        if (!Number.isFinite(naira) || naira <= 0) {
+          throw new ValidationError("amount must be more than ₦0");
+        }
+        const note = String(body.note ?? "").trim().slice(0, 80);
+        lines = [{ name: note || "Counter sale", unitPrice: nairaToKobo(naira), qty: 1 }];
+      } else {
+        if (rawLines.length > 50) throw new ValidationError("too many items in one sale");
+        // Rebuilt field by field, as the storefront does, so nothing but a
+        // product id and a quantity reaches commerce from this array.
+        lines = rawLines.map((l: unknown) => {
+          const line = l as { productId?: unknown; qty?: unknown };
+          const productId = String(line?.productId ?? "");
+          const qty = Number(line?.qty ?? 0);
+          if (!productId) throw new ValidationError("each line needs a productId");
+          if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
+            throw new ValidationError("qty must be a whole number between 1 and 99");
+          }
+          return { productId, qty };
+        });
+      }
+
+      // Optional: a buyer who gives a number gets the receipt on WhatsApp too.
+      const rawPhone = String(body.buyerPhone ?? "").trim();
+      const buyerPhone = rawPhone ? normalisePhone(rawPhone.slice(0, 20)) : "";
+      if (rawPhone && !/^\+\d{10,15}$/.test(buyerPhone)) {
+        throw new ValidationError("that doesn't look like a phone number we can reach");
+      }
+
+      const order = await app.commerce.createOrder({
+        merchantId: req.merchantId!,
+        buyerRef: buyerPhone || WALK_IN_BUYER,
+        lines,
+        // Short: the buyer is standing right there. A sale left on screen
+        // after they walk away should not stay payable all afternoon.
+        ttlMs: 30 * 60 * 1000,
+        rail: "fiat",
+      });
+
+      res.status(201).json({
+        order: {
+          id: order.id,
+          amount: order.amount,
+          amountFormatted: formatNaira(order.amount),
+          status: order.status,
+          items: order.items,
+        },
+        checkoutUrl: `${app.config.PUBLIC_BASE_URL}/checkout/${order.id}`,
+        qrUrl: `/api/checkout/${order.id}/qr.svg`,
+      });
     }),
   );
 

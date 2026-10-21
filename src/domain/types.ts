@@ -66,8 +66,22 @@ export interface Product {
   createdAt: Date;
 }
 
+/**
+ * The buyer ref for a counter sale where nobody gave a phone number.
+ *
+ * Every anonymous walk-in shares it, so they count as one buyer rather than
+ * inventing a customer per sale. It is not a phone, so nothing is ever sent to
+ * it: the buyer who scanned already holds the receipt on their own screen.
+ */
+export const WALK_IN_BUYER = "walk-in";
+
 export interface OrderItem {
-  productId: string;
+  /**
+   * Absent for an amount keyed in at the counter. A market seller charging
+   * ₦3,500 for "two yards of ankara" is not going to catalogue it first, and
+   * refusing the sale until she does is how the counter goes back to cash.
+   */
+  productId?: string;
   name: string;
   unitPrice: Kobo;
   qty: number;

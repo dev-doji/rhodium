@@ -347,6 +347,16 @@
           body: JSON.stringify({ method }),
         });
         const body = await res.json();
+        // Already set up for the OTHER method: show that one, and say so,
+        // rather than offering a choice the server will not honour.
+        if (res.status === 409 && body.instruction) {
+          renderInstruction(body.instruction);
+          const note = document.createElement("div");
+          note.className = "err";
+          note.textContent = body.message;
+          $("body").prepend(note);
+          return;
+        }
         if (!res.ok) throw new Error(body.message || "We couldn't set that up.");
         instruction = body.instruction;
       } catch (e) {

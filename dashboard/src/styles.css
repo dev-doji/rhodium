@@ -369,3 +369,59 @@ tbody tr:hover { background: var(--paper); }
   .search { display: none; }
   .hide-sm { display: none; }
 }
+
+/* ------------------------------------------------------------- counter mode
+   The till. Sized to be used at arm's length on a phone or a tablet propped
+   on a counter: big amount, big keys, one obvious button. */
+.counter, .counter-wait, .counter-done {
+  max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
+}
+.counter-top { display: flex; align-items: center; gap: 12px; }
+.counter-mode button:disabled { opacity: .45; cursor: not-allowed; }
+.counter-display {
+  font-size: clamp(38px, 11vw, 56px); font-weight: 800; text-align: right;
+  padding: 14px 4px; border-bottom: 2px solid var(--ink); overflow-wrap: anywhere;
+}
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.key {
+  min-height: 64px; font-size: 26px; font-weight: 700; font-family: inherit;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--line);
+  cursor: pointer; touch-action: manipulation;
+}
+.key:hover { background: var(--paper-2); }
+.key:active { background: var(--brand-tint-2); }
+.key:focus-visible { outline: 3px solid var(--brand); outline-offset: -3px; }
+.counter-charge { min-height: 60px; font-size: 18px; }
+
+.counter-products { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; }
+.counter-product { display: flex; align-items: stretch; border: 1px solid var(--line); background: var(--white); }
+.counter-product.picked { border-color: var(--brand); background: var(--brand-tint); }
+.counter-product-main {
+  flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  min-height: var(--tap); padding: 10px 14px; background: none; border: 0;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.counter-product-main:disabled { opacity: .45; cursor: not-allowed; }
+.counter-qty { display: flex; align-items: center; gap: 6px; padding-right: 8px; font-weight: 700; }
+
+.counter-wait { align-items: center; text-align: center; }
+.counter-wait-amount { font-size: clamp(34px, 10vw, 52px); font-weight: 800; }
+.counter-wait-sub { color: var(--muted); font-size: 15px; }
+.counter-qr {
+  width: min(320px, 100%); aspect-ratio: 1; background: #fff;
+  border: 1px solid var(--line); padding: 10px; image-rendering: pixelated;
+}
+.counter-dva { width: 100%; text-align: left; }
+.counter-listening { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.counter-dot { width: 10px; height: 10px; background: var(--warn); animation: counter-pulse 1.2s ease-in-out infinite; }
+@keyframes counter-pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .counter-dot { animation: none; } }
+.counter-cancel { margin-top: 4px; }
+
+.counter-done { align-items: center; text-align: center; padding: 32px 16px; color: var(--muted); }
+.counter-done.paid { background: var(--ok-bg); color: var(--ok); }
+.counter-done-label { font-size: 20px; font-weight: 700; }
+.counter-done-amount { font-size: clamp(38px, 11vw, 60px); font-weight: 800; color: var(--ink); }
+.counter-done-sub { font-size: 14px; }
+.counter-actions { display: flex; gap: 10px; margin-top: 10px; width: 100%; }
+.counter-actions .btn { flex: 1; justify-content: center; text-decoration: none; }

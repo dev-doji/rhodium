@@ -25,6 +25,19 @@ export interface CreateProductInput {
   stockQty?: number;
 }
 
+/**
+ * A line is either a catalogue product, priced server-side, or an amount the
+ * merchant keyed in herself at the counter.
+ *
+ * Only authenticated merchant routes may build the second kind. A public
+ * route that let a caller name its own `unitPrice` would let a buyer set what
+ * they pay; the storefront therefore rebuilds every line as `{ productId, qty }`
+ * before it gets here.
+ */
+export type OrderLineInput =
+  | { productId: string; qty: number }
+  | { name: string; unitPrice: Kobo; qty: number };
+
 export interface CreateOrderInput {
   merchantId: string;
   buyerRef: string;
@@ -35,7 +48,7 @@ export interface CreateOrderInput {
    * better served by "Ada Okeke" than by a bare phone number.
    */
   buyerName?: string;
-  lines: { productId: string; qty: number }[];
+  lines: OrderLineInput[];
   ttlMs?: number;
   /** Payment rail: bank transfer (default) or crypto (Quai/BlipPay). */
   rail?: "fiat" | "crypto";
@@ -90,6 +103,15 @@ export class CommerceService {
     let amount = 0;
     for (const line of input.lines) {
       if (line.qty <= 0) throw new ValidationError("qty must be positive");
+      if (!("productId" in line)) {
+        const name = line.name.trim();
+        if (!name) throw new ValidationError("a keyed-in amount needs a description");
+        assertKobo(line.unitPrice);
+        if (line.unitPrice <= 0) throw new ValidationError("amount must be positive");
+        items.push({ name, unitPrice: line.unitPrice, qty: line.qty });
+        amount += line.unitPrice * line.qty;
+        continue;
+      }
       const product = await this.repos.products.byId(line.productId);
       if (!product) throw new NotFoundError("product", { id: line.productId });
       if (product.merchantId !== input.merchantId) {

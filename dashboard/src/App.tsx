@@ -8,6 +8,7 @@ import {
   RhodiumLogo, Wallet, TrendUp, CheckCircle, Box, Search, Bell, Gear,
   Filter, Calendar, Rows, Grid, X, Download, Phone, ExternalLink, Receipt, Plus,
 } from "./icons.js";
+import { Counter } from "./Counter.js";
 
 /** Same short reference the server prints on the receipt. */
 function ref(orderId: string): string {
@@ -83,7 +84,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 
 /* ------------------------------------------------------------- dashboard */
 
-type Tab = "orders" | "products" | "ledger";
+type Tab = "counter" | "orders" | "products" | "ledger";
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [biz, setBiz] = useState("");
@@ -133,6 +134,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </a>
         <div className="spacer" />
         <div className="navlinks">
+          <button className={`navlink${tab === "counter" ? " active" : ""}`} onClick={() => setTab("counter")}>Counter</button>
           <button className={`navlink${tab === "orders" ? " active" : ""}`} onClick={() => setTab("orders")}>Orders</button>
           <button className={`navlink${tab === "products" ? " active" : ""}`} onClick={() => setTab("products")}>Products</button>
           <button className={`navlink${tab === "ledger" ? " active" : ""}`} onClick={() => setTab("ledger")}>Ledger</button>
@@ -225,7 +227,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="panel">
-        <div className="panel-bar">
+        {tab === "counter" && <Counter products={products} onSold={refresh} />}
+
+        {tab !== "counter" && <div className="panel-bar">
           <div className="search" style={{ width: 240 }}>
             <Search />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" />
@@ -237,7 +241,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             <button className="on" title="List"><Rows /></button>
             <button title="Grid"><Grid /></button>
           </div>
-        </div>
+        </div>}
 
         {tab === "orders" && (
           shown.length === 0
@@ -350,8 +354,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-const TITLES: Record<Tab, string> = { orders: "Orders", products: "Products", ledger: "Ledger" };
+const TITLES: Record<Tab, string> = { counter: "Counter", orders: "Orders", products: "Products", ledger: "Ledger" };
 const SUBS: Record<Tab, string> = {
+  counter: "Take a payment at the till. The buyer scans, you hear it land.",
   orders: "Every sale from WhatsApp, bank transfer and crypto — in one place.",
   products: "Your catalogue. Buyers see this when they open your shop link.",
   ledger: "Append-only naira books. Export any time.",

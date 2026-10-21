@@ -71,6 +71,7 @@ export async function downloadFile(path: string, filename: string): Promise<void
 
 export interface Product { id: string; name: string; price: number; stockQty?: number }
 export interface Order { id: string; amount: number; status: string; createdAt: string }
+export interface CounterOrder { id: string; amount: number; amountFormatted: string; status: string }
 export interface LedgerEntry { id: string; type: string; amount: number; balanceAfter: number; createdAt: string }
 
 export const api = {
@@ -98,6 +99,22 @@ export const api = {
     req<{ order: Order; instruction: { accountNumber: string; bankName: string; accountName: string } }>(
       "/api/orders",
       { method: "POST", body: JSON.stringify({ buyerPhone, lines }) },
+    ),
+  counterSale: (sale: {
+    amountNaira?: number;
+    note?: string;
+    lines?: { productId: string; qty: number }[];
+    buyerPhone?: string;
+  }) =>
+    req<{ order: CounterOrder; checkoutUrl: string; qrUrl: string }>("/api/counter/sale", {
+      method: "POST",
+      body: JSON.stringify(sale),
+    }),
+  /** Issue the bank account for a counter sale — the same call the buyer's checkout makes. */
+  bankInstruction: (orderId: string) =>
+    req<{ instruction: { accountNumber: string; bankName: string; accountName: string } }>(
+      `/api/checkout/${orderId}/method`,
+      { method: "POST", body: JSON.stringify({ method: "bank" }) },
     ),
   ledger: () =>
     req<{ balance: number; balanceFormatted: string; entries: LedgerEntry[] }>("/api/ledger"),

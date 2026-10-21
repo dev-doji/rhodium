@@ -3,6 +3,7 @@ import type { Repositories } from "../../db/repositories.js";
 import { formatNaira, type Kobo } from "../../lib/money.js";
 import { logger } from "../../lib/logger.js";
 import type { Metrics } from "../metrics/metrics.js";
+import { WALK_IN_BUYER } from "../../domain/types.js";
 
 const log = logger("notification");
 
@@ -87,6 +88,10 @@ export class NotificationService {
     const merchant = await this.repos.merchants.byId(input.merchantId);
     const buyer = await this.repos.buyers.byId(input.buyerRef);
     const to = buyer?.phoneOrRef ?? input.buyerRef;
+    if (to === WALK_IN_BUYER) {
+      log.info({ orderId: input.orderId }, "walk-in sale — receipt stays on the buyer's screen");
+      return;
+    }
     const biz = merchant?.businessName ?? "the merchant";
     const { lines } = await this.describeOrder(input.orderId);
     const buyerReceipt = this.receiptUrl(input.orderId);
@@ -127,12 +132,17 @@ export class NotificationService {
       if (!order) return { lines: [], buyer: null };
       const lines: string[] = [];
       for (const item of order.items) {
-        const product = await this.repos.products.byId(item.productId).catch(() => null);
-        const name = product?.name ?? "Item";
+        const product = item.productId
+          ? await this.repos.products.byId(item.productId).catch(() => null)
+          : null;
+        const name = product?.name ?? item.name ?? "Item";
+        // The price the buyer was CHARGED, snapshotted on the order — not the
+        // catalogue's current price, which the vendor may have edited since.
+        const unit = item.unitPrice ?? product?.price ?? 0;
         lines.push(
           item.qty > 1
-            ? `${item.qty} × ${name} — ${formatNaira(item.qty * (product?.price ?? 0))}`
-            : `${name} — ${formatNaira(product?.price ?? 0)}`,
+            ? `${item.qty} × ${name} — ${formatNaira(item.qty * unit)}`
+            : `${name} — ${formatNaira(unit)}`,
         );
       }
       // buyerRef may be a buyer id OR a raw phone depending on how the order was

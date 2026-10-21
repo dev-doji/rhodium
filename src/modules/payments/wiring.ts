@@ -58,6 +58,10 @@ export function wirePaymentEvents(deps: {
       });
       // Simple stock decrement on sale (§Phase 3).
       for (const item of order.items) {
+        // A keyed-in counter amount has no product and so no stock. Looking
+        // one up would throw, and a throw here fails the whole order.paid
+        // handler for a sale that has already been paid.
+        if (!item.productId) continue;
         await repos.products.decrementStock(item.productId, item.qty);
       }
     }
