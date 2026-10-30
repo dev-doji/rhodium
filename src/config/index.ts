@@ -295,6 +295,42 @@ const schema = z.object({
   // which is the single highest-risk number in this rail.
   EVM_TOKEN_DECIMALS: z.coerce.number().default(6),
 
+  // --- NEAR Intents (1Click): buyer pays any token on any chain, merchant
+  // receives exact-output USDC in her OWN NEAR account. Off by default.
+  FEATURE_NEAR_ENABLED: bool(false),
+  NEAR_ADAPTER_MODE: z.enum(["mock", "live"]).default("mock"),
+  NEAR_NETWORK: z.enum(["mainnet", "testnet"]).default("mainnet"),
+  NEAR_RPC_URL: z.string().default("https://rpc.mainnet.near.org"),
+  NEAR_EXPLORER_URL: z.string().default("https://nearblocks.io"),
+  /**
+   * Native Circle USDC on NEAR, read from 1Click's own /v0/tokens on
+   * 2026-10-21 (symbol USDC, 6 decimals). An earlier draft of the plan had a
+   * different suffix on this id; a wrong value here would quote a token the
+   * merchant never receives, so take it from the live list, not from memory.
+   */
+  NEAR_USDC_CONTRACT: z
+    .string()
+    .default("17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"),
+  NEAR_USDC_DECIMALS: z.coerce.number().default(6),
+  /**
+   * Who signs the NEAR transaction that delivers USDC to the merchant.
+   *
+   * NEAR's tx-status RPC needs a sender account to route the lookup. 1Click
+   * gives us the destination hash but not its signer. [VALIDATE] against a
+   * real mainnet payment before going live.
+   */
+  NEAR_TX_SENDER_HINT: z.string().default("intents.near"),
+  NEAR_PARENT_ACCOUNT: z.string().optional().default(""),
+  ONECLICK_BASE_URL: z.string().default("https://1click.chaindefuser.com"),
+  // Sent as X-API-Key. Optional: 1Click quotes without one, at a higher fee.
+  ONECLICK_API_KEY: z.string().optional().default(""),
+  ONECLICK_QUOTE_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+  // Optional Rhodium fee on a NEAR payment, in bps of amountIn. 0 = none.
+  ONECLICK_APP_FEE_BPS: z.coerce.number().int().nonnegative().default(0),
+  // Slippage on the INPUT side of an EXACT_OUTPUT quote: what the buyer may be
+  // asked to over-send. The merchant's amount does not move.
+  ONECLICK_SLIPPAGE_BPS: z.coerce.number().int().nonnegative().default(100),
+
   // BUYER-facing origin: checkout links, BlipPay deep links, rail callbacks.
   PUBLIC_BASE_URL: z.string().default("http://localhost:3000"),
   // MERCHANT-facing origin: dashboard, wallet backup, OAuth callback. Both
@@ -419,6 +455,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
               `(${cfg.EVM_CHAIN_ID}), which is ${known.token}`,
           );
         }
+      }
+    }
+
+    if (cfg.FEATURE_NEAR_ENABLED && cfg.NEAR_ADAPTER_MODE === "live") {
+      if (!cfg.NEAR_USDC_CONTRACT) {
+        throw new Error("NEAR rail is live but NEAR_USDC_CONTRACT is not set");
+      }
+      if (cfg.ONECLICK_APP_FEE_BPS > 0 && !cfg.NEAR_PARENT_ACCOUNT) {
+        throw new Error("ONECLICK_APP_FEE_BPS is set but NEAR_PARENT_ACCOUNT (the fee recipient) is not");
       }
     }
 

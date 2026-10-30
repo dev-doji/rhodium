@@ -1,7 +1,7 @@
 import type { Repositories } from "../../db/repositories.js";
 import type { RailRegistry } from "../../rails/registry.js";
 import type { EventBus } from "../../events/bus.js";
-import type { PaymentInstruction, PaymentRail, WebhookPayload } from "../../rails/types.js";
+import type { PaymentInstruction, PaymentRail, RailOptions, WebhookPayload } from "../../rails/types.js";
 import type { Merchant, Payment, RailId } from "../../domain/types.js";
 import { isAnomalyStatus } from "../../domain/types.js";
 import type { Clock } from "../../lib/clock.js";
@@ -86,8 +86,15 @@ export class PaymentsOrchestrator {
    * Issue a payment instruction for an order. `railId` picks a specific rail
    * (e.g. 'onswitch' for crypto→naira, 'quai' for crypto→wallet); otherwise the
    * order's kind decides (fiat → Monnify, crypto → Quai).
+   *
+   * `opts` carries what the buyer chose at checkout (what they pay with, where
+   * a refund goes). Rails that need nothing from the buyer ignore it.
    */
-  async requestPayment(orderId: string, railId?: RailId): Promise<PaymentInstruction> {
+  async requestPayment(
+    orderId: string,
+    railId?: RailId,
+    opts?: RailOptions,
+  ): Promise<PaymentInstruction> {
     const order = await this.repos.orders.byId(orderId);
     if (!order) throw new NotFoundError("order", { id: orderId });
     const merchant = await this.repos.merchants.byId(order.merchantId);
@@ -122,7 +129,7 @@ export class PaymentsOrchestrator {
     const instruction = await rail.createPaymentInstruction(order, merchant, {
       phone: buyer?.phoneOrRef,
       name: buyer?.name,
-    });
+    }, opts);
 
     await this.repos.payments.create({
       id: id("pay"),
@@ -174,7 +181,7 @@ export class PaymentsOrchestrator {
     if (!payment) throw new NotFoundError("payment", { providerRef });
     if (payment.status === "confirmed") return true;
     const rail = this.rails.get(payment.railId);
-    const status = await rail.verifyPayment(providerRef);
+    const status = await rail.verifyPayment(providerRef, this.issuedInstruction(payment));
     this.metrics.increment("verify_poll");
     if (status.status === "confirmed") {
       // Key on the PROVIDER's transaction where it gives us one. A dedicated
@@ -185,6 +192,14 @@ export class PaymentsOrchestrator {
         : `poll:${providerRef}:${payment.id}`;
       await this.confirmByProviderRef(providerRef, status.amount, key, status.recipient);
       return true;
+    }
+    // NEAR Intents has no webhook, so a refund or failure only ever arrives
+    // here. Left unrecorded, the payment would read "pending" for a buyer who
+    // already has their money back. Scoped to that rail: the other rails'
+    // polled "failed" has never been acted on, and changing that is its own
+    // decision.
+    if (status.status === "failed" && rail.id === "near_intents") {
+      await this.markFailed(providerRef, "NEAR Intents swap refunded or failed");
     }
     return false;
   }
@@ -229,8 +244,10 @@ export class PaymentsOrchestrator {
     // 150bps exists for a VOLATILE token, where the price moves between quoting
     // and settling. A stablecoin is pegged, so the same slack would let a real
     // underpayment through — 50bps covers only rounding at 6 decimals.
+    // NEAR Intents is EXACT_OUTPUT into USDC: the merchant's side is fixed,
+    // so it gets the stablecoin figure too.
     const toleranceBps =
-      rail.kind !== "crypto" ? 0 : rail.id === "evm_stable" ? 50 : 150;
+      rail.kind !== "crypto" ? 0 : rail.id === "evm_stable" || rail.id === "near_intents" ? 50 : 150;
     if (amount != null && !withinTolerance(amount, payment.amount, toleranceBps)) {
       // The buyer's money moved, just not in the amount we quoted. Recording it
       // beats throwing: a throw left the payment pending forever with nothing
@@ -364,9 +381,14 @@ export class PaymentsOrchestrator {
 
   /** The recipient address the buyer was quoted, from the instruction snapshot. */
   private quotedRecipient(payment: Payment): string | undefined {
+    return this.issuedInstruction(payment)?.merchantAddress;
+  }
+
+  /** The instruction as it was issued, or undefined for rows written before snapshots. */
+  private issuedInstruction(payment: Payment): PaymentInstruction | undefined {
     if (!payment.instructionJson) return undefined;
     try {
-      return (JSON.parse(payment.instructionJson) as PaymentInstruction).merchantAddress;
+      return JSON.parse(payment.instructionJson) as PaymentInstruction;
     } catch {
       return undefined;
     }

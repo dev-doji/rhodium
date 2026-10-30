@@ -5,6 +5,8 @@ import { buildApp, type App } from "../app.js";
 import { buildPostgresApp } from "../db/prisma/postgres-app.js";
 import { buildApi } from "./api.js";
 import { logger } from "../lib/logger.js";
+import { systemClock } from "../lib/clock.js";
+import { NearPaymentPoller } from "../jobs/near-payment-poller.js";
 
 const log = logger("server");
 
@@ -53,6 +55,25 @@ async function main(): Promise<void> {
     timer.unref();
   } else {
     log.info("RUN_BACKGROUND_JOBS=false — reconciliation runs on another instance");
+  }
+
+  // NEAR Intents has no webhook: pending NEAR payments are confirmed by asking.
+  if (config.RUN_BACKGROUND_JOBS && app.rails.find("near_intents")) {
+    const poller = new NearPaymentPoller(
+      app.repos,
+      app.payments,
+      systemClock,
+      config.ONECLICK_QUOTE_TTL_MINUTES,
+    );
+    const nearTimer = setInterval(() => {
+      poller
+        .tick()
+        .then((r) => {
+          if (r.confirmed > 0) log.info(r, "NEAR payments confirmed by poller");
+        })
+        .catch((err) => log.error({ err: err.message }, "NEAR poller failed"));
+    }, 10_000);
+    nearTimer.unref();
   }
 
   const http = server.listen(config.PORT, () => {

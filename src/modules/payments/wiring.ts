@@ -48,6 +48,7 @@ export function wirePaymentEvents(deps: {
       merchantId: e.merchantId,
       orderId: e.orderId,
       amount: e.amount,
+      railId: e.railId,
     });
     if (order) {
       await notifications.sendReceiptToBuyer({

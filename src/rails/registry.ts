@@ -5,6 +5,7 @@ import { PaystackFiatRail } from "./paystack-fiat-rail.js";
 import { StablecoinRail } from "./stablecoin-rail.js";
 import { EvmStableRail } from "./evm-stable-rail.js";
 import { OnSwitchRail } from "./onswitch-rail.js";
+import { NearIntentsRail } from "./near-intents-rail.js";
 import { NotFoundError } from "../lib/errors.js";
 import { ngnPerUsd } from "../lib/fx.js";
 import { logger } from "../lib/logger.js";
@@ -68,6 +69,10 @@ export class RailRegistry {
     if (settlement === "usdc") {
       const evm = this.rails.get("evm_stable");
       if (evm) return evm;
+    }
+    if (settlement === "near_usdc") {
+      const near = this.rails.get("near_intents");
+      if (near) return near;
     }
     if (settlement === "naira") {
       const off = this.rails.get("onswitch");
@@ -179,6 +184,30 @@ export function buildRegistry(cfg: AppConfig): RailRegistry {
       callbackUrl: `${cfg.PUBLIC_BASE_URL}/webhooks/rails/onswitch`,
     }),
   );
+
+  // NEAR Intents: any token on any chain in, USDC in the merchant's own NEAR
+  // account out. Only for merchants who chose it (`near_usdc`) — `crypto()`
+  // never falls back to it, since it needs her NEAR account.
+  if (cfg.FEATURE_NEAR_ENABLED && !withhold("near_intents", cfg.NEAR_ADAPTER_MODE)) {
+    registry.register(
+      new NearIntentsRail({
+        mode: cfg.NEAR_ADAPTER_MODE,
+        oneClickBaseUrl: cfg.ONECLICK_BASE_URL,
+        oneClickApiKey: cfg.ONECLICK_API_KEY,
+        rpcUrl: cfg.NEAR_RPC_URL,
+        explorerUrl: cfg.NEAR_EXPLORER_URL,
+        usdcContract: cfg.NEAR_USDC_CONTRACT,
+        usdcDecimals: cfg.NEAR_USDC_DECIMALS,
+        txSenderHint: cfg.NEAR_TX_SENDER_HINT,
+        quoteTtlMinutes: cfg.ONECLICK_QUOTE_TTL_MINUTES,
+        slippageBps: cfg.ONECLICK_SLIPPAGE_BPS,
+        appFeeBps: cfg.ONECLICK_APP_FEE_BPS,
+        feeRecipient: cfg.NEAR_PARENT_ACCOUNT,
+        ngnPerUsd,
+        publicBaseUrl: cfg.PUBLIC_BASE_URL,
+      }),
+    );
+  }
 
   return registry;
 }

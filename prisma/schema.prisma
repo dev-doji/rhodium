@@ -20,6 +20,9 @@ model Merchant {
   settlementAccountEnc    String?  @map("settlement_account_enc") // encrypted
   processorSubaccountCode String?  @map("processor_subaccount_code")
   quaiAddress             String?  @map("quai_address")
+  // Her own NEAR account (e.g. amaka.rhodium.near), where NEAR Intents delivers
+  // USDC. Public like a wallet address; Rhodium holds no key on it.
+  nearAccountId           String?  @unique @map("near_account_id")
   // How crypto sales settle: "naira" (OnSwitch off-ramps to her bank) or
   // "usdc" (the EVM rail pays her own wallet). Null means never asked, which
   // is not the same as choosing the default — an existing merchant must not be

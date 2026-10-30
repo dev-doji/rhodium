@@ -5,10 +5,17 @@ import type { Kobo } from "../lib/money.js";
 // ---------------------------------------------------------------------------
 
 export type RailKind = "fiat" | "crypto";
-export type RailId = "monnify" | "paystack" | "stablecoin_base" | "quai" | "evm_stable" | "onswitch";
+export type RailId =
+  | "monnify"
+  | "paystack"
+  | "stablecoin_base"
+  | "quai"
+  | "evm_stable"
+  | "onswitch"
+  | "near_intents";
 
 export type MerchantStatus = "pending" | "active" | "suspended";
-export type CryptoSettlement = "naira" | "usdc";
+export type CryptoSettlement = "naira" | "usdc" | "near_usdc";
 export type KycState = "unverified" | "pending" | "verified" | "rejected";
 
 export interface Merchant {
@@ -34,10 +41,18 @@ export interface Merchant {
    * How crypto sales reach her:
    *   "naira" — OnSwitch off-ramps to her bank; she needs no wallet at all
    *   "usdc"  — the EVM rail pays her own Arbitrum wallet
+   *   "near_usdc" — NEAR Intents: the buyer pays in any token on any chain,
+   *                 and USDC lands in her own NEAR account
    * Undefined means she was never asked, which is not the same as choosing
    * the default; callers fall back to the platform setting.
    */
   cryptoSettlement?: CryptoSettlement;
+  /**
+   * Her own NEAR account, e.g. `amaka.rhodium.near` — where NEAR Intents
+   * delivers USDC. Public, like a wallet address, so not encrypted. Rhodium
+   * holds no key on it: the key is generated on her phone.
+   */
+  nearAccountId?: string;
   /** Human-readable buyer-link handle, e.g. "circuitcity" → `shop-circuitcity`. */
   slug?: string;
   /** Vendor's logo for receipts. Absent => initials fallback. */

@@ -17,6 +17,8 @@ import type { Merchant, Product, RailId } from "../domain/types.js";
 import type { PaymentRail } from "../rails/types.js";
 import { demoImageByName, demoImageUrl, TEST_SHOP_ITEMS } from "../domain/demo-catalogue.js";
 import { evmChainMetadata } from "../config/index.js";
+import type { NearIntentsRail } from "../rails/near-intents-rail.js";
+import { isNearAccountId } from "../rails/near-assets.js";
 import { ValidationError, NotFoundError, UnauthorizedError } from "../lib/errors.js";
 import { timingSafeEqual } from "node:crypto";
 
@@ -31,6 +33,10 @@ const STARTED_AT = new Date().toISOString();
  */
 export function buildApi(app: App): Express {
   const server = express();
+
+  /** The NEAR Intents rail, or null when FEATURE_NEAR_ENABLED is off. */
+  const nearRail = (): NearIntentsRail | null =>
+    app.rails.find("near_intents") as NearIntentsRail | null;
 
   // In-memory recorder of inbound WhatsApp webhooks — lets us diagnose delivery
   // + processing over HTTPS without server-log access.
@@ -563,7 +569,9 @@ export function buildApi(app: App): Express {
         !belowOfframpMinimum &&
         (cryptoRail.id === "onswitch"
           ? Boolean(merchant?.settlementAccountNumber)
-          : Boolean(merchant?.quaiAddress));
+          : cryptoRail.id === "near_intents"
+            ? Boolean(merchant?.nearAccountId)
+            : Boolean(merchant?.quaiAddress));
 
       res.json({
         order: {
@@ -579,7 +587,15 @@ export function buildApi(app: App): Express {
           crypto: cryptoUsable,
           // Which shape the crypto flow takes: send to an address, or pay a
           // contract from your own wallet.
-          cryptoKind: cryptoUsable ? (cryptoRail!.id === "onswitch" ? "transfer" : "wallet") : null,
+          // "intents": the buyer picks a token and chain first, then sends to
+          // a NEAR Intents deposit address.
+          cryptoKind: cryptoUsable
+            ? cryptoRail!.id === "onswitch"
+              ? "transfer"
+              : cryptoRail!.id === "near_intents"
+                ? "intents"
+                : "wallet"
+            : null,
           /**
            * The asset the buyer will actually be asked for.
            *
@@ -597,7 +613,9 @@ export function buildApi(app: App): Express {
             ? { cryptoUnavailable: `orders under ${formatNaira(app.config.ONSWITCH_MIN_KOBO)}` }
             : {}),
           cryptoAsset: cryptoUsable
-            ? cryptoRail!.id === "onswitch"
+            ? cryptoRail!.id === "near_intents"
+              ? { token: "Any token", network: "any chain → USDC on NEAR" }
+              : cryptoRail!.id === "onswitch"
               ? {
                   token: (app.config.ONSWITCH_ASSET.split(":")[1] ?? "").toUpperCase(),
                   network: app.config.ONSWITCH_ASSET.split(":")[0] ?? "",
@@ -647,8 +665,64 @@ export function buildApi(app: App): Express {
       const kind = wants === "crypto" ? "crypto" : "fiat";
       if (order.rail !== kind) await app.repos.orders.setRail(order.id, kind);
 
-      const instruction = await app.payments.requestPayment(order.id, rail.id);
+      // What the buyer pays with and their refund address. Only the NEAR
+      // Intents rail reads these; every other rail ignores them.
+      const opts = {
+        originAsset: req.body?.originAsset ? String(req.body.originAsset) : undefined,
+        refundTo: req.body?.refundTo ? String(req.body.refundTo) : undefined,
+      };
+      const instruction = await app.payments.requestPayment(order.id, rail.id, opts);
       res.json({ instruction });
+    }),
+  );
+
+  /**
+   * What a buyer can pay with on NEAR Intents. Public: the checkout needs it
+   * before anyone has chosen anything. A fixed, curated list — see
+   * near-assets.ts for why it is not 1Click's full catalogue.
+   */
+  server.get("/api/near/tokens", (_req, res) => {
+    const rail = nearRail();
+    res.json({ tokens: rail ? rail.payAssets() : [] });
+  });
+
+  /**
+   * Where a NEAR payment is: waiting for the deposit, swapping, paid,
+   * refunded. Drives the progress line on the checkout so a buyer who has
+   * sent money sees it moving, not a spinner that says nothing.
+   *
+   * Display only. Whether the order is PAID is still decided by the
+   * orchestrator after the on-chain check — never by this.
+   */
+  server.get(
+    "/api/checkout/:orderId/near-status",
+    asyncRoute(async (req, res) => {
+      const order = await app.repos.orders.byId(req.params.orderId!);
+      if (!order) throw new NotFoundError("order", { id: req.params.orderId });
+      if (order.status === "paid") {
+        res.json({ phase: "paid", orderStatus: "paid" });
+        return;
+      }
+      const payment = await app.repos.payments.byOrderId(order.id);
+      const rail = nearRail();
+      if (!payment || payment.railId !== "near_intents" || !rail) {
+        throw new NotFoundError("NEAR payment", { orderId: order.id });
+      }
+      let memo: string | undefined;
+      try {
+        memo = payment.instructionJson
+          ? (JSON.parse(payment.instructionJson) as { depositMemo?: string }).depositMemo
+          : undefined;
+      } catch {
+        memo = undefined;
+      }
+      const phase = await rail.phase(payment.providerRef, memo).catch(() => "unknown");
+      // A refund or failure is final; the payment row should say so too, not
+      // sit "pending" until the poller's window closes.
+      if (phase === "refunded" || phase === "failed") {
+        await app.payments.reconcileByPolling(payment.providerRef).catch(() => false);
+      }
+      res.json({ phase, orderStatus: order.status });
     }),
   );
 
@@ -687,6 +761,17 @@ export function buildApi(app: App): Express {
       // Safe to accept from a browser: the rail fetches the receipt itself and
       // refuses anything without a Paid log carrying this order's id. A forged
       // or borrowed hash confirms nothing.
+      if (railId === "near_intents") {
+        // NEAR Intents takes the deposit hash as a hint only; the payment is
+        // confirmed by polling 1Click and then checking the NEAR chain.
+        await app.payments.handleRailWebhook(railId, {
+          headers: {},
+          rawBody: JSON.stringify({ depositAddress: existing.providerRef, txHash: String(txHash) }),
+        });
+        const paid = await app.payments.reconcileByPolling(existing.providerRef).catch(() => false);
+        res.json({ ok: true, paid });
+        return;
+      }
       await app.payments.handleRailWebhook(railId, {
         headers: {},
         rawBody: JSON.stringify({ orderId: order.id, txHash: String(txHash) }),
@@ -700,13 +785,40 @@ export function buildApi(app: App): Express {
   server.post(
     "/api/crypto/simulate-pay",
     asyncRoute(async (req, res) => {
-      if (app.config.EVM_ADAPTER_MODE !== "mock") {
-        throw new ValidationError("simulate-pay is disabled in live mode");
-      }
       const { orderId } = req.body ?? {};
       const order = await app.repos.orders.byId(String(orderId));
       if (!order) throw new NotFoundError("order", { id: orderId });
       const merchant = await app.repos.merchants.byId(order.merchantId);
+
+      // NEAR Intents: play the buyer depositing and a solver delivering USDC,
+      // then let the normal poll path confirm it — including the on-chain
+      // check, which runs against the mock chain exactly as it would live.
+      const issued = await app.repos.payments.byOrderId(order.id);
+      if (issued?.railId === "near_intents") {
+        const near = nearRail();
+        if (app.config.NEAR_ADAPTER_MODE !== "mock" || !near?.mock) {
+          throw new ValidationError("simulate-pay is disabled in live mode");
+        }
+        const modes = ["success", "short", "wrong_recipient", "incomplete", "refund"] as const;
+        const mode = String(req.body?.mode ?? "success") as (typeof modes)[number];
+        if (!modes.includes(mode)) {
+          throw new ValidationError(`mode must be one of ${modes.join(", ")}`);
+        }
+        const paid = near.mock.pay(issued.providerRef, mode);
+        const confirmed = await app.payments
+          .reconcileByPolling(issued.providerRef)
+          .catch((err: Error) => {
+            // A mismatch is the point of some modes: it is refused, not a 500.
+            log.info({ orderId: order.id, err: err.message }, "simulated NEAR payment not credited");
+            return false;
+          });
+        res.json({ ok: true, confirmed, destinationTxHash: paid.destinationTxHash ?? null });
+        return;
+      }
+
+      if (app.config.EVM_ADAPTER_MODE !== "mock") {
+        throw new ValidationError("simulate-pay is disabled in live mode");
+      }
 
       // The rail THIS merchant's order will actually use, not "the crypto
       // rail" — those differ now that she chooses between naira and USDC, and
@@ -1292,8 +1404,14 @@ export function buildApi(app: App): Express {
       if (!merchant) throw new NotFoundError("merchant", { id: req.params.id });
 
       const settlement = String(req.body?.cryptoSettlement ?? "").toLowerCase();
-      if (settlement !== "usdc" && settlement !== "naira") {
-        throw new ValidationError("cryptoSettlement must be 'usdc' or 'naira'");
+      if (settlement !== "usdc" && settlement !== "naira" && settlement !== "near_usdc") {
+        throw new ValidationError("cryptoSettlement must be 'usdc', 'naira' or 'near_usdc'");
+      }
+      if (settlement === "near_usdc" && !merchant.nearAccountId) {
+        throw new ValidationError(
+          "merchant has no NEAR account — POST /admin/merchants/:id/near first",
+          { merchantId: merchant.id },
+        );
       }
       // Being paid in USDC means being paid to a wallet. Recording the
       // preference without one leaves a merchant who looks payable and is not:
@@ -1314,6 +1432,49 @@ export function buildApi(app: App): Express {
         cryptoSettlement: updated.cryptoSettlement,
         quaiAddress: updated.quaiAddress,
         rail: app.rails.crypto(updated.cryptoSettlement).id,
+      });
+    }),
+  );
+
+  /**
+   * Point a merchant's NEAR sales at a NEAR account she already owns, and
+   * switch her crypto checkout to NEAR Intents. The same thing the dashboard's
+   * "I already have a NEAR wallet" does, for an admin setting up a shop.
+   */
+  const linkNearAccount = async (merchant: Merchant, raw: unknown): Promise<Merchant> => {
+    const rail = nearRail();
+    if (!rail) throw new ValidationError("NEAR payments are not enabled (FEATURE_NEAR_ENABLED)");
+    const accountId = String(raw ?? "").trim().toLowerCase();
+    if (!isNearAccountId(accountId)) {
+      throw new ValidationError("that is not a NEAR account id — it looks like amaka.near");
+    }
+    if (!(await rail.accountExists(accountId))) {
+      throw new ValidationError(`${accountId} does not exist on NEAR yet`);
+    }
+    const holder = (await app.repos.merchants.list()).find(
+      (m) => m.nearAccountId === accountId && m.id !== merchant.id,
+    );
+    if (holder) throw new ValidationError("that NEAR account is already linked to another shop");
+    const updated = await app.repos.merchants.update(merchant.id, {
+      nearAccountId: accountId,
+      cryptoSettlement: "near_usdc",
+      cryptoEnabled: true,
+    });
+    log.info({ merchantId: merchant.id, accountId }, "NEAR account linked");
+    return updated;
+  };
+
+  server.post(
+    "/admin/merchants/:id/near",
+    asyncRoute(async (req, res) => {
+      requireAdmin(req);
+      const merchant = await app.repos.merchants.byId(req.params.id!);
+      if (!merchant) throw new NotFoundError("merchant", { id: req.params.id });
+      const updated = await linkNearAccount(merchant, req.body?.accountId);
+      res.json({
+        merchantId: updated.id,
+        nearAccountId: updated.nearAccountId,
+        cryptoSettlement: updated.cryptoSettlement,
       });
     }),
   );
@@ -1593,6 +1754,46 @@ export function buildApi(app: App): Express {
         merchant,
         waNumber: app.config.WHATSAPP_WA_NUMBER,
         shopUrl: handle ? `${app.config.PUBLIC_BASE_URL}/s/${handle}` : undefined,
+      });
+    }),
+  );
+
+  // --- NEAR: her own dollar account ---
+
+  /** Her NEAR account, if any, and whether NEAR payments are switched on at all. */
+  server.get(
+    "/api/merchant/near",
+    guard,
+    asyncRoute(async (req: AuthedRequest, res) => {
+      const merchant = await app.repos.merchants.byId(req.merchantId!);
+      if (!merchant) throw new UnauthorizedError("that shop no longer exists — please sign in again");
+      const rail = nearRail();
+      res.json({
+        enabled: Boolean(rail),
+        accountId: merchant.nearAccountId ?? null,
+        active: merchant.cryptoSettlement === "near_usdc",
+        explorerUrl:
+          rail && merchant.nearAccountId ? rail.explorerAccountUrl(merchant.nearAccountId) : null,
+      });
+    }),
+  );
+
+  /**
+   * "I already have a NEAR wallet": link it. Only the account id is sent —
+   * a public name, like a bank account number. Her key never leaves her wallet.
+   */
+  server.post(
+    "/api/merchant/near/link",
+    guard,
+    asyncRoute(async (req: AuthedRequest, res) => {
+      const merchant = await app.repos.merchants.byId(req.merchantId!);
+      if (!merchant) throw new UnauthorizedError("that shop no longer exists — please sign in again");
+      const updated = await linkNearAccount(merchant, req.body?.accountId);
+      const rail = nearRail()!;
+      res.json({
+        accountId: updated.nearAccountId,
+        active: true,
+        explorerUrl: rail.explorerAccountUrl(updated.nearAccountId!),
       });
     }),
   );

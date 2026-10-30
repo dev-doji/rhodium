@@ -175,6 +175,24 @@
            padding:12px 14px; border-radius:0; margin-top:14px; font-size:13px; line-height:1.55; }
     .err a { color:inherit; font-weight:600; }
 
+    /* NEAR Intents: what the buyer pays with, then where a refund goes. */
+    .picklabel { font-size:12px; font-weight:600; color:var(--ink-2); margin-top:18px; }
+    .assets { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+    .assets button { margin:0; padding:11px 8px; font-size:13px; font-weight:500;
+                     background:var(--surface); color:var(--ink); border:1px solid var(--line); }
+    .assets button[aria-pressed="true"] { border-color:var(--accent); background:var(--bg);
+                                         box-shadow:inset 0 0 0 1px var(--accent); }
+    .field { width:100%; margin-top:8px; padding:12px; font:inherit; font-size:14px;
+             border:1px solid var(--line); border-radius:0; background:var(--surface);
+             color:var(--ink); font-family:"IBM Plex Mono",ui-monospace,monospace; }
+    .field:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+    .back { background:none; color:var(--ink-3); font-size:12.5px; font-weight:500;
+            margin-top:10px; padding:6px; }
+    .steps { display:flex; justify-content:space-between; gap:4px; margin-top:18px;
+             font-size:10.5px; color:var(--ink-3); }
+    .steps span { flex:1; text-align:center; padding-top:7px; border-top:3px solid var(--line); }
+    .steps span.done { color:var(--ink-2); border-top-color:var(--accent); }
+
     @media (prefers-reduced-motion: reduce) {
       * { animation-duration:.01ms !important; transition-duration:.01ms !important; }
     }
@@ -326,13 +344,93 @@
         ${whyNoCrypto}
         <div class="hint">Either way the seller is paid and you get a receipt.</div>`;
       $("m-bank").onclick = () => choose("bank");
-      if ($("m-crypto")) $("m-crypto").onclick = () => choose("crypto");
+      if ($("m-crypto")) {
+        $("m-crypto").onclick = () =>
+          methods.cryptoKind === "intents" ? renderNearPicker() : choose("crypto");
+      }
     }
 
-    async function choose(method) {
-      const btns = document.querySelectorAll(".methods button");
+    /**
+     * NEAR Intents, step one: what are you paying with, and where should a
+     * refund go?
+     *
+     * Both are needed BEFORE a deposit address exists: the quote is for one
+     * specific token on one specific chain, and 1Click refunds to the address
+     * given here if the payment cannot complete. The refund address is the
+     * buyer's own — never ours — which is what keeps this no-custody.
+     */
+    async function renderNearPicker() {
+      $("crypto").innerHTML = `${ICON.coin} Pay with any token · seller gets USDC on NEAR`;
+      $("body").innerHTML = `<div class="waiting"><span class="spinner"></span> Loading tokens…</div>`;
+      let tokens = [];
+      try {
+        tokens = (await (await fetch("/api/near/tokens")).json()).tokens || [];
+      } catch { /* handled below */ }
+      if (!tokens.length) {
+        renderMethodChoice(data.methods);
+        const err = document.createElement("div");
+        err.className = "err";
+        err.textContent = "Crypto payment isn't available right now. Please pay with naira.";
+        $("body").prepend(err);
+        return;
+      }
+
+      let picked = null;
+      $("body").innerHTML = `
+        <div class="picklabel">1. What are you paying with?</div>
+        <div class="assets" id="assets">
+          ${tokens.map((t, i) => `<button type="button" data-i="${i}" aria-pressed="false">${t.label}</button>`).join("")}
+        </div>
+        <div class="picklabel" id="refundlabel">2. Your address, for a refund</div>
+        <input class="field" id="refund" autocomplete="off" spellcheck="false"
+               placeholder="Pick a token first" disabled />
+        <button id="nearcontinue" disabled>${ICON.coin} Get my payment address</button>
+        <button class="back" id="nearback">← Other ways to pay</button>
+        <div class="hint">Only used if the payment can't complete — the money goes back to
+          you, never to us. The seller always receives exactly ${data.order.amountFormatted}
+          worth of USDC.</div>`;
+
+      const refund = $("refund");
+      const go = $("nearcontinue");
+      const ready = () => { go.disabled = !(picked && refund.value.trim()); };
+      $("assets").querySelectorAll("button").forEach((b) => {
+        b.onclick = () => {
+          $("assets").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+          b.setAttribute("aria-pressed", "true");
+          picked = tokens[Number(b.dataset.i)];
+          refund.disabled = false;
+          refund.placeholder = `Your ${picked.chainName} address`;
+          $("refundlabel").textContent = `2. Your ${picked.chainName} address, for a refund`;
+          ready();
+          refund.focus();
+        };
+      });
+      refund.oninput = ready;
+      $("nearback").onclick = () => renderMethodChoice(data.methods);
+      go.onclick = () => choose("crypto", { originAsset: picked.assetId, refundTo: refund.value.trim() });
+
+      // A connected EVM wallet already knows the buyer's address; offering it
+      // saves pasting the one string most likely to be mistyped.
+      const provider = evmProvider();
+      if (provider && provider.request) {
+        provider.request({ method: "eth_accounts" }).then((accts) => {
+          if (accts && accts[0]) refund.dataset.evm = accts[0];
+        }).catch(() => {});
+        $("assets").addEventListener("click", () => {
+          if (picked && picked.evmChainId && refund.dataset.evm && !refund.value) {
+            refund.value = refund.dataset.evm;
+            ready();
+          }
+        });
+      }
+    }
+
+    async function choose(method, extra) {
+      const btns = document.querySelectorAll(".methods button, #nearcontinue");
       btns.forEach((b) => { b.disabled = true; });
-      const picked = document.getElementById(method === "bank" ? "m-bank" : "m-crypto");
+      const picked = document.getElementById(
+        extra ? "nearcontinue" : method === "bank" ? "m-bank" : "m-crypto",
+      );
       if (picked) picked.textContent = "Setting up…";
       // Setting the method up and drawing the result are separate failures and
       // must be handled separately. They were one try block, so a rendering bug
@@ -344,7 +442,7 @@
         const res = await fetch(`/api/checkout/${orderId}/method`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ method }),
+          body: JSON.stringify(Object.assign({ method }, extra || {})),
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.message || "We couldn't set that up.");
@@ -352,6 +450,18 @@
       } catch (e) {
         // Nothing was issued: offering the choice again is the right move.
         btns.forEach((b) => { b.disabled = false; });
+        if (extra) {
+          // Keep what they picked and typed: the usual mistake here is the
+          // refund address, and making them start over is no way to fix it.
+          if (picked) picked.innerHTML = `${ICON.coin} Get my payment address`;
+          const err = document.createElement("div");
+          err.className = "err";
+          err.textContent = e.message;
+          const old = $("body").querySelector(".err");
+          if (old) old.remove();
+          $("body").prepend(err);
+          return;
+        }
         renderMethodChoice(data.methods);
         const err = document.createElement("div");
         err.className = "err";
@@ -400,12 +510,23 @@
         `${humanCrypto(inst)}${symbol ? ` <span class="amount-unit">${symbol}</span>` : ""}` +
         `<span class="amount-sub">≈ ${data.order.amountFormatted}</span>`;
       $("crypto").innerHTML = `${ICON.coin} ${symbol}${on}`;
+      const near = inst.railId === "near_intents";
+      // On NEAR the seller is paid in USDC, not naira — say what actually
+      // lands, and where. "≈ ₦3,500" is still shown above as what was agreed.
+      const sellerGets = near && inst.settlesTo ? esc(inst.settlesTo) : data.order.amountFormatted;
       $("body").innerHTML = `
         <div class="rows">
           <div class="row">${ICON.coin}<span class="k">Send exactly</span><b>${humanCrypto(inst)} ${symbol}</b></div>
           ${network ? `<div class="row">${ICON.globe}<span class="k">Network</span><b>${network}</b></div>` : ""}
-          <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${data.order.amountFormatted}</b></div>
+          <div class="row">${ICON.shield}<span class="k">Seller receives</span><b>${sellerGets}</b></div>
+          ${near && inst.expiresAt ? `<div class="row">${ICON.globe}<span class="k">Send within</span><b id="countdown">—</b></div>` : ""}
         </div>
+        ${near ? `<div class="steps" id="steps">
+          <span data-p="waiting">Waiting</span><span data-p="deposit_seen">Deposit seen</span>
+          <span data-p="swapping">Swapping</span><span data-p="paid">Paid</span></div>
+          <div class="waiting" id="waiting"><span class="spinner"></span> Waiting for your deposit…</div>` : ""}
+        ${inst.depositMemo ? `<div class="acct-label">Memo — you MUST include this</div>
+          <div class="acct-addr">${esc(inst.depositMemo)}</div>` : ""}
         <div class="acct-label">Send to this address</div>
         <div class="acct-addr" id="addr">${inst.depositAddress}</div>
         <button id="copyaddr">${ICON.copy || ""} Copy address</button>
@@ -431,6 +552,7 @@
       // so a buyer who had already paid had nothing to press and no way to
       // tell whether the page was still watching.
       wireSentButton();
+      if (near) watchNear(inst);
 
       // Pay from a wallet, when the asset is one a wallet can send. This is an
       // ordinary ERC-20 transfer to the deposit address — no contract of ours
@@ -444,6 +566,15 @@
           payBtn.textContent = "Confirm in your wallet…";
           const hash = await payDepositFromWallet(provider, inst);
           payBtn.textContent = "Sent — waiting for it to settle…";
+          // NEAR Intents finds the deposit faster when told the hash. A hint
+          // only: the server still confirms against the chain.
+          if (near && hash) {
+            fetch("/api/crypto/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: orderId, txHash: hash }),
+            }).catch(function () {});
+          }
           stillWaiting(
             "Sent" + (hash ? " (" + hash.slice(0, 10) + "…)" : "") +
             ". It settles once the network confirms it — this page is watching.",
@@ -462,6 +593,66 @@
       };
 
       waitForPayment();
+    }
+
+    /** Text from an instruction, made safe to put in markup. */
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    }
+
+    /**
+     * A NEAR payment's progress, and the clock on its quote.
+     *
+     * Display only: "paid" here just lights the last step. The order turns
+     * paid when the SERVER says so (waitForPayment), after it has checked the
+     * USDC transfer on the NEAR chain — not because 1Click said SUCCESS.
+     */
+    function watchNear(inst) {
+      const order = ["waiting", "deposit_seen", "swapping", "paid"];
+      const words = {
+        waiting: "Waiting for your deposit…",
+        deposit_seen: "Deposit seen — swapping it to USDC for the seller…",
+        swapping: "Swapping to USDC on NEAR…",
+        paid: "Delivered — confirming on the NEAR chain…",
+      };
+      const deadline = inst.expiresAt ? new Date(inst.expiresAt).getTime() : null;
+      let stopped = false;
+
+      const tickClock = () => {
+        const el = $("countdown");
+        if (!el || !deadline) return;
+        const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+        el.textContent = left > 0
+          ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`
+          : "expired — don't send now";
+      };
+      tickClock();
+      const clock = setInterval(() => { if (!$("countdown")) clearInterval(clock); else tickClock(); }, 1000);
+
+      const poll = async () => {
+        if (stopped || !$("steps")) return;
+        try {
+          const r = await (await fetch(`/api/checkout/${orderId}/near-status`)).json();
+          if (r.orderStatus === "paid") { stopped = true; return; } // waitForPayment draws it
+          if (r.phase === "refunded" || r.phase === "failed") {
+            stopped = true;
+            stillWaiting(r.phase === "refunded"
+              ? "This payment was refunded to your address. Nothing was charged — you can try again."
+              : "This payment could not complete. Any deposit is returned to your refund address.");
+            return;
+          }
+          const at = order.indexOf(r.phase);
+          if (at >= 0) {
+            $("steps").querySelectorAll("span").forEach((s) => {
+              s.classList.toggle("done", order.indexOf(s.dataset.p) <= at);
+            });
+            stillWaiting(words[r.phase]);
+          }
+        } catch { /* transient — the next tick tries again */ }
+        setTimeout(poll, 5000);
+      };
+      poll();
     }
 
     /**

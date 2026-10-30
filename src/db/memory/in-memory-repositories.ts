@@ -8,6 +8,7 @@ import type {
   LedgerEntry,
   Buyer,
   RailKind,
+  RailId,
 } from "../../domain/types.js";
 import type {
   Repositories,
@@ -73,6 +74,7 @@ class MemMerchantRepo implements MerchantRepo {
     for (const k of [
       "processorSubaccountCode",
       "cryptoSettlement",
+      "nearAccountId",
       "slug",
       "waPhoneNumberId",
       "waBusinessAccountId",
@@ -187,6 +189,11 @@ class MemPaymentRepo implements PaymentRepo {
       .filter((p) => p.providerRef === providerRef && p.status === "pending")
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     return pending[0] ?? null;
+  }
+  async listPendingByRail(railId: RailId, since: Date): Promise<Payment[]> {
+    return [...this.p.values()]
+      .filter((p) => p.railId === railId && p.status === "pending" && p.createdAt >= since)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
   async markConfirmed(id: string, confirmedAt: Date): Promise<Payment> {
     return this.updateInternal(id, { status: "confirmed", confirmedAt });

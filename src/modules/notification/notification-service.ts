@@ -41,9 +41,16 @@ export class NotificationService {
     merchantId: string;
     orderId: string;
     amount: Kobo;
+    railId?: string;
   }): Promise<void> {
     const merchant = await this.repos.merchants.byId(input.merchantId);
     if (!merchant) return;
+    // A NEAR sale lands as USDC in her own NEAR account, not in a bank — say
+    // where, in the words she will see in her wallet.
+    const settledLine =
+      input.railId === "near_intents"
+        ? await this.nearSettledLine(input.orderId)
+        : "settled to your account";
     // A bare "payment received for order 804DC5" makes the vendor go and look
     // up what they just sold. Name the item and the buyer so the message is
     // the whole story.
@@ -56,7 +63,7 @@ export class NotificationService {
       ...(lines.length ? ["", ...lines.map((l) => `• ${l}`)] : []),
       ...(buyer ? [`Buyer: ${buyer}`] : []),
       "",
-      `Order ${short(input.orderId)} · settled to your account`,
+      `Order ${short(input.orderId)} · ${settledLine}`,
       ...(balance != null ? [`Balance: *${formatNaira(balance)}*`] : []),
       "",
       ...(receipt ? [`🧾 Receipt: ${receipt}`] : []),
@@ -76,6 +83,20 @@ export class NotificationService {
       merchant.waPhoneNumberId,
       this.receiptImageUrl(input.orderId) ?? undefined,
     );
+  }
+
+  /** "2.19 USDC landed in amaka.rhodium.near", from the instruction she was paid on. */
+  private async nearSettledLine(orderId: string): Promise<string> {
+    const payment = await this.repos.payments.byOrderId(orderId).catch(() => null);
+    try {
+      const settlesTo = payment?.instructionJson
+        ? (JSON.parse(payment.instructionJson) as { settlesTo?: string }).settlesTo
+        : undefined;
+      if (settlesTo) return settlesTo.replace(" → ", " landed in ");
+    } catch {
+      /* unreadable snapshot: the generic line is still true */
+    }
+    return "USDC landed in your NEAR account";
   }
 
   async sendReceiptToBuyer(input: {

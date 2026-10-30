@@ -9,6 +9,7 @@ import type {
   LedgerEntry,
   LedgerEntryType,
   Buyer,
+  RailId,
 } from "../domain/types.js";
 import type { Kobo } from "../lib/money.js";
 
@@ -84,6 +85,14 @@ export interface PaymentRepo {
    * is not unique — the pending one is the order awaiting this transfer.
    */
   findPendingByProviderRef(providerRef: string): Promise<Payment | null>;
+  /**
+   * Pending payments on one rail created after `since`, oldest first.
+   *
+   * For rails with no webhook — NEAR Intents only reports through its status
+   * endpoint — so something has to ask. Bounded by `since` so a payment
+   * abandoned last month is not polled forever.
+   */
+  listPendingByRail(railId: RailId, since: Date): Promise<Payment[]>;
   markConfirmed(id: string, confirmedAt: Date): Promise<Payment>;
   updateStatus(id: string, status: PaymentStatus): Promise<Payment>;
   all(): Promise<Payment[]>;

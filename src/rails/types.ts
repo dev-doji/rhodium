@@ -66,6 +66,31 @@ export interface PaymentInstruction {
    */
   walletChainId?: number;
   tokenDecimals?: number;
+  // NEAR Intents specifics: the buyer pays `originAsset` on `originChain`, and
+  // the merchant receives exact-output USDC in her NEAR account.
+  originAsset?: string; // 1Click asset id, e.g. nep141:tron-….omft.near
+  originChain?: string; // 1Click blockchain id, e.g. "tron"
+  /** Some chains (Stellar, XRP, TON) need a memo alongside the address. */
+  depositMemo?: string;
+  /** The buyer's own address on the origin chain — where 1Click refunds. */
+  refundTo?: string;
+  destinationAsset?: string;
+  /** What the merchant receives, as a human reads it: "2.19 USDC → amaka.rhodium.near". */
+  settlesTo?: string;
+  /** The exact USDC base units the merchant must receive — the on-chain check's floor. */
+  settleUnits?: string;
+}
+
+/**
+ * Choices the buyer makes at checkout that a rail may need.
+ *
+ * Only the NEAR Intents rail reads these today: it cannot quote without
+ * knowing what the buyer pays with and where a refund should go. Every other
+ * rail ignores them, so adding a field here changes nothing for them.
+ */
+export interface RailOptions {
+  originAsset?: string;
+  refundTo?: string;
 }
 
 /** Normalised result of interpreting a provider webhook. */
@@ -137,13 +162,19 @@ export interface PaymentRail {
      * cannot get it from the order alone.
      */
     buyer?: { phone?: string; name?: string },
+    opts?: RailOptions,
   ): Promise<PaymentInstruction>;
 
   /** Idempotent: same webhook replayed => same PaymentEvent, one side effect. */
   handleWebhook(raw: WebhookPayload): Promise<PaymentEvent>;
 
-  /** Poll fallback for missed webhooks. */
-  verifyPayment(providerRef: string): Promise<PaymentStatusResult>;
+  /**
+   * Poll fallback for missed webhooks.
+   *
+   * `issued` is the instruction as it was quoted, when the caller has it. A
+   * rail with nothing to compare against ignores it.
+   */
+  verifyPayment(providerRef: string, issued?: PaymentInstruction): Promise<PaymentStatusResult>;
 
   settlementTarget(merchant: Merchant): SettlementTarget;
 }

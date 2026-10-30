@@ -60,6 +60,7 @@ class PgMerchantRepo implements MerchantRepo {
         processorSubaccountCode: m.processorSubaccountCode ?? null,
         cryptoSettlement: m.cryptoSettlement ?? null,
         quaiAddress: m.quaiAddress ?? null,
+        nearAccountId: m.nearAccountId ?? null,
         slug: m.slug ?? null,
         logoUrl: m.logoUrl ?? null,
         waPhoneNumberId: m.waPhoneNumberId ?? null,
@@ -117,6 +118,8 @@ class PgMerchantRepo implements MerchantRepo {
     const clearable = (v: string | undefined) => (v === undefined ? undefined : v || null);
     const sub = clearable(patch.processorSubaccountCode);
     if (sub !== undefined) data.processorSubaccountCode = sub;
+    const near = clearable(patch.nearAccountId);
+    if (near !== undefined) data.nearAccountId = near ? near.toLowerCase() : null;
     const settle = clearable(patch.cryptoSettlement);
     if (settle !== undefined) data.cryptoSettlement = settle;
     const logo = clearable(patch.logoUrl);
@@ -171,6 +174,7 @@ class PgMerchantRepo implements MerchantRepo {
       cryptoSettlement:
         ((r.cryptoSettlement as string | null) ?? undefined) as Merchant["cryptoSettlement"],
       quaiAddress: (r.quaiAddress as string | null) ?? undefined,
+      nearAccountId: (r.nearAccountId as string | null) ?? undefined,
       slug: (r.slug as string | null) ?? undefined,
       logoUrl: (r.logoUrl as string | null) ?? undefined,
       waPhoneNumberId: (r.waPhoneNumberId as string | null) ?? undefined,
@@ -336,6 +340,13 @@ class PgPaymentRepo implements PaymentRepo {
       orderBy: { createdAt: "asc" },
     });
     return row ? this.map(row) : null;
+  }
+  async listPendingByRail(railId: RailId, since: Date): Promise<Payment[]> {
+    const rows = await this.db.payment.findMany({
+      where: { railId, status: "pending", createdAt: { gte: since } },
+      orderBy: { createdAt: "asc" },
+    });
+    return rows.map((r) => this.map(r));
   }
   async markConfirmed(id: string, confirmedAt: Date): Promise<Payment> {
     const row = await this.db.payment.update({

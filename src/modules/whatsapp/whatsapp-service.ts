@@ -464,12 +464,15 @@ export class WhatsAppService {
         const product = await this.repos.products.byId(ids[idx]!);
         data.productId = ids[idx];
         this.convo.set(ctx.key, "buy:select_method", data);
+        const seller = await this.repos.merchants.byId(String(data.merchantId)).catch(() => null);
         return [
           `You picked *${product?.name}* (${formatNaira(product?.price ?? 0)} ≈ ${koboToUsdcDisplay(product?.price ?? 0)}).`,
           "",
           "How would you like to pay?",
           "1) Bank transfer",
-          "2) Pay with USDC — the seller still receives naira",
+          seller?.cryptoSettlement === "near_usdc"
+            ? "2) Pay with crypto — any token, on any chain"
+            : "2) Pay with USDC — the seller still receives naira",
         ].join("\n");
       }
       case "buy:select_method": {
@@ -494,6 +497,24 @@ export class WhatsAppService {
         // the amount against.
         const bought = await this.repos.products.byId(String(data.productId)).catch(() => null);
         const itemName = bought?.name ?? "your order";
+
+        // NEAR Intents cannot quote until the buyer says which token and chain
+        // they hold and where a refund goes — a choice that belongs on a page
+        // with a picker, not in a chat of numbered replies. So send the link
+        // and issue nothing yet.
+        const seller = await this.repos.merchants.byId(order.merchantId).catch(() => null);
+        if (isCrypto && seller?.cryptoSettlement === "near_usdc" && this.opts.publicBaseUrl) {
+          return [
+            `🧾 *${itemName}* — ${formatNaira(order.amount)}`,
+            `Order ${orderRef()}`,
+            "",
+            "👉 *Tap to pay with crypto:*",
+            `${this.opts.publicBaseUrl}/checkout/${order.id}`,
+            "",
+            "Pick the token you hold (USDT on Tron, USDC on Base, SOL, BTC…).",
+            "The seller receives dollars in their NEAR account. You'll get a receipt here once it lands.",
+          ].join("\n");
+        }
 
         if (isCrypto) {
           // No rail named here: the orchestrator routes on the merchant's own
